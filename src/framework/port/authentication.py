@@ -41,20 +41,3 @@ class Port(ABC):
     @abstractmethod
     def sign_aid(self,email):
         pass
-
-    def migrate(self):
-        import psycopg2
-        conn = psycopg2.connect(self._db_url)
-        conn.autocommit = True
-        with conn.cursor() as cur:
-            for s in self._migrations:
-                try:
-                    cur.execute(s["check_sql"])
-                    if not cur.fetchone()[0]:
-                        cur.execute(s["create_sql"]); print(f"[✓] Driver:{self.name} {s['name']}")
-                    elif s["migrate_fn"] and (stmts := s["migrate_fn"](cur)):
-                        for stmt in stmts: cur.execute(stmt)
-                        print(f"[*] Driver:{self.name} {s['name']}")
-                    else: print(f"[~] Driver:{self.name} {s['name']}")
-                except Exception as e: print(f"[✗] Driver:{self.name} {s['name']}: {e}"); raise
-        conn.close()

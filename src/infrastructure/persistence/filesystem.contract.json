@@ -3,8 +3,8 @@
     "watchdog"
   ],
   "contract_version": 2,
-  "tested_at": "2026-08-16T15:40:27.283291+00:00",
-  "git_commit": "16b2a06",
+  "tested_at": "2026-08-17T21:27:22.363586+00:00",
+  "git_commit": "29c627c",
   "exports": {
     "filter": [
       "Adapter.filter"

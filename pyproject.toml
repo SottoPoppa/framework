@@ -40,6 +40,12 @@ path = "src/"
 watch = true
 message = "broker"
 
+[[persistence.api]]
+name = "source"
+path = "src/"
+watch = true
+message = "broker"
+
 #[[network.neural]]
 #name = "decoder"
 #input = 40

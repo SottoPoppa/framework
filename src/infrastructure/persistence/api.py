@@ -120,7 +120,7 @@ class Adapter(persistence.Port):
     # ------------------------------------------------------------------
 
     @flow.result(safe_kwargs=True)
-    async def request(self, **constants):
+    async def request(self, session=None, storekeeper=None, **constants):
         """
         Esegue una richiesta HTTP generica.
 
@@ -134,6 +134,12 @@ class Adapter(persistence.Port):
             timeout
             verify_ssl
         """
+
+        if storekeeper:
+            constants = {
+                **storekeeper,
+                **constants,
+            }
 
         method = str(
             constants.get("method", "GET")
@@ -234,50 +240,38 @@ class Adapter(persistence.Port):
     # CRUD-like operations
     # ------------------------------------------------------------------
 
-    async def create(self, **constants):
+    async def create(self, session, storekeeper):
         return await self.request(
-            **{
-                "method": "POST",
-                **constants,
-            }
+            session=session,
+            storekeeper={**storekeeper, "method": "POST"},
         )
 
-    async def read(self, **constants):
+    async def read(self, session, storekeeper):
         return await self.request(
-            **{
-                "method": "GET",
-                **constants,
-            }
+            session=session,
+            storekeeper={**storekeeper, "method": "GET"},
         )
 
-    async def update(self, **constants):
+    async def update(self, session, storekeeper):
         return await self.request(
-            **{
-                "method": "PUT",
-                **constants,
-            }
+            session=session,
+            storekeeper={**storekeeper, "method": "PUT"},
         )
 
-    async def delete(self, **constants):
+    async def delete(self, session, storekeeper):
         return await self.request(
-            **{
-                "method": "DELETE",
-                **constants,
-            }
+            session=session,
+            storekeeper={**storekeeper, "method": "DELETE"},
         )
 
-    async def query(self, **constants):
+    async def query(self, session, storekeeper):
         return await self.request(
-            **{
-                "method": "GET",
-                **constants,
-            }
+            session=session,
+            storekeeper={**storekeeper, "method": "GET"},
         )
 
-    async def view(self, **constants):
+    async def view(self, session, storekeeper):
         return await self.request(
-            **{
-                "method": "GET",
-                **constants,
-            }
+            session=session,
+            storekeeper={**storekeeper, "method": "GET"},
         )

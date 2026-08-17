@@ -1,0 +1,15 @@
+{
+  "hashes": {
+    "Adapter": {
+      "post": {
+        "production": "f775141ce9ad250ccefc414c0510161a5b593c5360309eb701bb7a66974b4f67"
+      },
+      "read": {
+        "production": "60217de8b270d473b68eb5cbc464e0c63cafc7ea67eefb941e29de1ced237e0a"
+      },
+      "forget": {
+        "production": "1cc66f175e7c1862276cbaf04a04a84de97a2a6a76c9d02aa5e30f7503d701d5"
+      }
+    }
+  }
+}
