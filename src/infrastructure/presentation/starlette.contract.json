@@ -5,5 +5,50 @@
     "uvicorn",
     "beautifulsoup4",
     "paramiko"
-  ]
+  ],
+  "scheme": {
+    "action": {
+      "type": "string",
+      "required": true,
+      "allowed": [
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "HEAD",
+        "OPTIONS"
+      ]
+    },
+    "resource": {
+      "type": "string",
+      "required": true,
+      "allowed": [
+        "view",
+        "controller"
+      ]
+    },
+    "location": {
+      "type": "string",
+      "required": true
+    },
+    "context": {
+      "type": "dict",
+      "required": false,
+      "scheme": {
+        "user": {
+          "type": "string",
+          "required": false
+        },
+        "ip": {
+          "type": "string",
+          "required": false
+        },
+        "params": {
+          "type": "dict",
+          "required": false
+        }
+      }
+    }
+  }
 }
