@@ -661,19 +661,13 @@ class Adapter(presentation.Port):
             presenter: Manager per presentazione
             **constants: Configurazione da pyproject.toml (adapter.registry)
         """
-        #super().__init__(loader, defender, presenter, messenger, **constants)
-        if not hasattr(self, 'init'):
-            self._render_lock = asyncio.Lock()
-            self.config = constants
-            self.messenger = messenger
-            self.defender = defender
-            self.presenter = presenter
-            self.loader = loader
-            self.initialize()
-            self.sessions: Dict[str, Dict[str, Any]] = {}
-            self.active_screens: Dict[str, 'TUIScreen'] = {}
-            self.widgets = DomRegistry()  # registro dei widget live, per id
-            self.app = AppDinamica(self)
+        super().__init__(loader, defender, presenter, messenger, **constants)
+        self._render_lock = asyncio.Lock()
+        self.sessions: Dict[str, Dict[str, Any]] = {}
+        self.active_screens: Dict[str, 'TUIScreen'] = {}
+        self.widgets = DomRegistry()  # registro dei widget live, per id
+        self.app = AppDinamica(self)
+        self.validate_adapter()
 
     def _ensure_active_app(self):
         if hasattr(self, 'app') and self.app:
@@ -697,9 +691,7 @@ class Adapter(presentation.Port):
 
     async def mount_view(self, url):
         self._ensure_active_app()
-        route_info = self.routes.get(url, {}).get('GET') if hasattr(self, 'routes') and self.routes.get(url) else None
-        if not route_info and '/' in self.routes:
-            route_info = self.routes['/'].get('GET', {})
+        route_info, params = self.match_route(url, 'GET')
         if not route_info:
             raise KeyError(f"Nessuna rotta GET trovata per l'URL '{url}'")
 
@@ -764,56 +756,6 @@ class Adapter(presentation.Port):
 
         return rendered_node
 
-    async def rebuild2(self, node_id: str, session_id: str = None, context: Dict[str, Any] = None):
-        """Ricostruisce il widget live a partire dal frammento XML aggiornato nel DOM."""
-        
-        self._ensure_active_app()
-        xml_fragment = self.DOM.get(node_id)
-        if xml_fragment is None:
-            print(f"[rebuild] Nessun nodo con id '{node_id}' in DOM")
-            return None
-
-        
-
-        try:
-            #self.session if hasattr(self, 'session') else None
-            rendered_node = await self.render_template(self.session, controllers=['terminal'], text=xml_fragment)
-        except Exception as e:
-            print(f"[rebuild] Impossibile ricostruire il nodo '{node_id}': {e}")
-            exit(e)
-
-        old_widget = self.dom_get(node_id)
-
-        if old_widget is None:
-            print("Widget non montato:", node_id)
-            return None
-
-        parent = old_widget.parent
-        if parent is None:
-            print(f"[rebuild] '{node_id}' non ha un parent montato, impossibile sostituire")
-            return None
-
-        # Monta il nuovo widget nella stessa posizione del vecchio...
-        await parent.mount(rendered_node, before=old_widget)
-        # ...poi rimuove il vecchio
-        await old_widget.remove()
-
-        self.widgets.register(node_id, rendered_node)
-
-        return rendered_node
-        
-        '''old_widget = self.dom_get(node_id)
-        exit(str([old_widget,old_widget.parent,old_widget.is_mounted]))
-        #if old_widget is not None and getattr(old_widget, "parent", None) is not None:
-        parent = old_widget.parent
-        exit(str(parent))
-        #await old_widget.remove()
-        #exit("parent3")
-        await parent.mount(rendered_node)
-        self.widgets.register(node_id, rendered_node)
-        #exit(rendered_node)
-        return rendered_node'''
-
     def dom_get(self, widget_id):
         try:
             return self.app.query_one(f"#{widget_id}")
@@ -833,29 +775,6 @@ class Adapter(presentation.Port):
             raise NotImplementedError("node_create è stato deprecato. Usa node_create2 per creare widget Textual direttamente da tag DSL.")
         instance = tag({"inner": inner, "attrs": attrs})
         return self.widgets.register(attrs.get("id"), instance)
-
-    def node_union(self, node: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Unisce un nodo descrittore ({'attrs': {...}, 'inner': [...]}) con un
-        contesto di override, producendo un nuovo descrittore pronto per
-        node_create() o node_update().
-
-        - Gli 'attrs' di `context` sovrascrivono (in merge, chiave per chiave)
-          quelli di `node`.
-        - 'inner', se presente in `context`, SOSTITUISCE quello di `node`
-          (sono liste posizionali di figli: non esiste una chiave su cui
-          fare merge parziale in modo sensato — è compito del chiamante
-          fornire la lista completa e già aggiornata).
-
-        Operazione puramente sui dati (nessun widget live viene toccato):
-        serve a comporre l'aggiornamento PRIMA di applicarlo con node_update().
-        """
-        node = node or {}
-        context = context or {}
-        return {
-            "attrs": {**node.get("attrs", {}), **context.get("attrs", {})},
-            "inner": context["inner"] if "inner" in context else node.get("inner", []),
-        }
 
     async def node_update(self, node, context: Dict[str, Any] = None):
         """

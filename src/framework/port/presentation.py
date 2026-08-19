@@ -279,12 +279,24 @@ _ATTRIBUTES_SCHEMA |= {
 
 
 class Port(ABC):
+    tags = {}
+
+    def __init__(self, loader, defender, presenter, messenger, **constants):
+        self.config = constants
+        self.loader = loader
+        self.defender = defender
+        self.presenter = presenter
+        self.messenger = messenger
+        self.executor = constants.get("executor")
+        self.views = {}
+        self.initialize()
 
     def initialize(self):
         self.components = {}
         self.DOM = {}
         self.data = {}
         self.routes = {}
+        self.views = {}
         # DOM
         self.document = {}
         fs_loader = FileSystemLoader("src/application/view/layout/")
@@ -327,6 +339,18 @@ class Port(ABC):
         self.env = Environment(loader=fs_loader,autoescape=select_autoescape(["html", "xml"]),undefined=DebugUndefined)
         #self.env.filters['route'] = language.route
 
+    def validate_adapter(self):
+        required_state = ('loader', 'defender', 'presenter', 'messenger', 'DOM', 'routes', 'env')
+        missing = [name for name in required_state if not hasattr(self, name)]
+        if missing:
+            raise RuntimeError(f"Adapter presentation incompleto: mancano {', '.join(missing)}")
+        if not isinstance(self.tags, dict) or not self.tags:
+            raise RuntimeError("Adapter presentation deve definire una mappa 'tags' non vuota")
+        for method in ('node_create', 'node_update', 'rebuild'):
+            if not callable(getattr(self, method, None)):
+                raise RuntimeError(f"Adapter presentation non implementa '{method}'")
+        return True
+
     @abstractmethod
     async def mount_view(self, *services, **constants):
         pass
@@ -340,20 +364,21 @@ class Port(ABC):
         pass
 
     @abstractmethod
-    async def mount_tag(self, *services, **constants):
+    def node_create(self, tag, attrs=None, inner=None):
         pass
 
     @abstractmethod
-    async def node_create(self, node, context):
+    async def node_update(self, node, context=None):
         pass
 
-    @abstractmethod
-    async def node_update(self, node, context):
-        pass
-
-    @abstractmethod
-    async def node_union(self, node, context):
-        pass
+    def node_union(self, node=None, context=None):
+        """Unisce un descrittore DSL con un contesto di aggiornamento."""
+        node = node or {}
+        context = context or {}
+        return {
+            "attrs": {**node.get("attrs", {}), **context.get("attrs", {})},
+            "inner": context["inner"] if "inner" in context else node.get("inner", []),
+        }
 
     def node_get(self, id: str):
         """Restituisce il widget DSL corrispondente a un id, se presente nel DOM."""
@@ -362,16 +387,12 @@ class Port(ABC):
         return None
 
     @abstractmethod
-    async def rebuild(self, node_id, view=None, context=dict()):
+    async def rebuild(self, node_id, view=None, context=None):
         pass
 
-    async def render_reactive(self, session, view, context):
-        file_path = f"src/application/controller/{dsl_alias}.dsl"
-        content = await self.presenter.get_view(file_path)
-        await self.executor.add_file(file_path, content)
-        self.executor.interpreter.runner.emit(sid, file_path, event_name)
-
-    def mount_tag(self, tag, attrs={}, inner=[], in_svg=False):
+    def mount_tag(self, tag, attrs=None, inner=None, in_svg=False):
+        attrs = attrs or {}
+        inner = inner or []
         if "}" in tag:
             tag = tag.split("}")[-1]
         tag = tag.lower()
@@ -396,65 +417,98 @@ class Port(ABC):
         #print(tag,new_attrs)
         return self.node_create(elemento,new_attrs,inner)
  
+    @staticmethod
+    def normalize_route_path(path):
+        if not isinstance(path, str) or not path.strip():
+            raise ValueError("Il path della route deve essere una stringa non vuota")
+        path = path.strip()
+        if not path.startswith("/"):
+            path = f"/{path}"
+        return re.sub(r'\{\$([a-zA-Z0-9_]+)\}', r'{\1}', path)
+
+    @staticmethod
+    def compile_route_pattern(path):
+        pattern = re.sub(r'\{([a-zA-Z0-9_]+)\}', r'(?P<\1>[^/]+)', path)
+        return re.compile(f"^{pattern}$")
+
+    def register_route(self, route):
+        view = f"application/view/page/{route['view']}" if route.get('view') else None
+        path = self.normalize_route_path(route.get('path') or (view.replace('.xml', '') if view else ''))
+        method = route.get('method', 'GET').upper()
+        if method not in {'GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'}:
+            raise ValueError(f"Metodo HTTP non supportato: {method}")
+        entry = {
+            **{key: route.get(key) for key in ['method', 'type', 'layout', 'controller', 'path']},
+            'view': view,
+            'pattern': self.compile_route_pattern(path),
+        }
+        self.routes.setdefault(path, {})[method] = entry
+        return path, method, entry
+
+    def match_route(self, path, method='GET'):
+        path = self.normalize_route_path(path)
+        method = method.upper()
+        for route_path, methods in self.routes.items():
+            entry = methods.get(method)
+            if entry is None:
+                continue
+            match = entry['pattern'].match(path)
+            if match:
+                return entry, match.groupdict()
+        return None, {}
+
+    @staticmethod
+    def parse_reactive_event(payload=None, **fields):
+        if payload is None:
+            payload = fields
+        elif fields:
+            payload = {**payload, **fields}
+        if not isinstance(payload, dict) or payload.get('type') != 'event':
+            raise ValueError("Payload reactive non valido")
+        event = payload.get('name')
+        if not isinstance(event, str) or ':' not in event:
+            raise ValueError("L'evento reactive deve avere formato alias:event")
+        alias, name = event.split(':', 1)
+        if not alias or not name:
+            raise ValueError("Alias e nome evento reactive sono obbligatori")
+        return {
+            'alias': alias,
+            'name': name,
+            'file': f"src/application/controller/{alias}.dsl",
+        }
+
     async def parse_route(self):
         routes_cfg = self.defender.get_policy('presentation').get('routes', {}).values()
-        
-        try:
-            for s in routes_cfg:
-                # 1. Preparazione metadati e path di base
-                view = f"application/view/page/{s['view']}" if s.get('view') else None
-                path = s.get('path') or (view.replace('.xml', '') if view else "")
-                
-                # 2. Normalizzazione {$id} -> {id}
-                path = re.sub(r'\{\$([a-zA-Z0-9_]+)\}', r'{\1}', path)
-                
-                # 3. Analisi opzioni multiple {a|b}
-                matches = list(re.finditer(r'\{([a-zA-Z0-9_|]+)\}', path))
-                # Estraiamo i set di opzioni solo se contengono '|'
-                opt_sets = [m.group(1).split('|') for m in matches if '|' in m.group(1)]
-                placeholders = [m.group(0) for m in matches if '|' in m.group(1)]
+        self.routes.clear()
+        for route in routes_cfg:
+            view = f"application/view/page/{route['view']}" if route.get('view') else None
+            path = self.normalize_route_path(route.get('path') or (view.replace('.xml', '') if view else ''))
+            matches = list(re.finditer(r'\{([a-zA-Z0-9_|]+)\}', path))
+            option_sets = [match.group(1).split('|') for match in matches if '|' in match.group(1)]
+            placeholders = [match.group(0) for match in matches if '|' in match.group(1)]
+            combinations = itertools.product(*option_sets) if option_sets else [()]
+            for combination in combinations:
+                expanded = path
+                for placeholder, value in zip(placeholders, combination):
+                    expanded = expanded.replace(placeholder, value, 1)
+                self.register_route({**route, 'path': expanded})
+        return self.routes
 
-                # 4. Generazione combinazioni (se non ci sono opzioni, itera una volta sul path originale)
-                combinations = itertools.product(*opt_sets) if opt_sets else [(None,)]
-                
-                for combo in combinations:
-                    new_path = path
-                    if opt_sets:
-                        for i, val in enumerate(combo):
-                            new_path = new_path.replace(placeholders[i], val, 1)
-                    
-                    # --- AGGIUNTA: CONVERSIONE IN REGEX ---
-                    # Trasforma {id} in (?P<id>[^/]+) per catturare il valore durante il match
-                    # Trasforma il path in una regex completa (es. ^/user/(?P<id>[^/]+)$)
-                    pattern = re.sub(r'\{([a-zA-Z0-9_]+)\}', r'(?P<\1>[^/]+)', new_path)
-                    regex_compiled = re.compile(f"^{pattern}$")
-                    # --------------------------------------
-
-                    # Salvataggio rotta arricchito (Raggruppato per Path e poi per Metodo)
-                    method = s.get('method', 'GET').upper()
-                    self.routes.setdefault(new_path, {})
-                    self.routes[new_path][method] = {
-                        **{k: s.get(k) for k in ['method', 'type', 'layout', 'controller', 'path']},
-                        'view': view,
-                        'pattern': regex_compiled # Fondamentale per il dispatcher
-                    }
-
-            print(f"[+] Routes: {list(self.routes.keys())}")
-        except Exception as e:
-            print(f"[!] Error: {e}")
-            #raise e
-
-    async def render_template(self, session, text=None,file=None, controllers=[], **constants):
-        if text is None and file is None: raise Exception("No text or file provided")
+    async def render_template(self, runtime_session, text=None, file=None, controllers=None, **constants):
+        if text is None and file is None:
+            raise ValueError("No text or file provided")
         if text is None:
-            text = await loader.resource(file)
+            text = await self.loader.resource(file)
 
         template = self.env.from_string(text)
 
         data = {}
 
-        for controller in controllers:
-            data[controller] = await session.run(controller,{'sid':session})
+        for controller in controllers or []:
+            data[controller] = await runtime_session.run(
+                controller,
+                {"sid": runtime_session},
+            )
 
         managers = self.loader.get_managers()
 
@@ -462,16 +516,23 @@ class Port(ABC):
 
         try:
             #content = template.render(constants|{'tris':data})
-            content = template.render(constants|{'sid':session}|data|{'manager': managers})
+            content = template.render(
+                constants | {"sid": runtime_session} | data | {"manager": managers}
+            )
             xml = ET.fromstring(content)
-            view = await self.render_node(text,xml,constants)
+            view = await self.render_node(
+                text,
+                xml,
+                constants,
+                runtime_session=runtime_session,
+            )
             return view
         except Exception as e:
             print(f"Si è verificato un errore durante il rendering del template: {e}",f"file: {file}")
             raise e
             #raise Exception(f"Si è verificato un errore durante il rendering del template: {e}",f"file: {file}")
 
-    async def render_node(self, parent,node, context):
+    async def render_node(self, parent, node, context, runtime_session=None):
         """Trasforma ricorsivamente i nodi XML in oggetti del Driver"""
         tag = node.tag.split('}')[-1] if '}' in node.tag else node.tag
         in_svg = context.get('in_svg', False)
@@ -509,6 +570,7 @@ class Port(ABC):
                 
                 # 3. Renderizza il componente iniettando l'XML non ancora processato
                 return await self.render_template(
+                    runtime_session,
                     **(context | {
                         'file': relative_path,
                         'inner': inner_xml,
@@ -525,7 +587,14 @@ class Port(ABC):
         new_context = context.copy()
         new_context['in_svg'] = in_svg
         for child in list(node):
-            children.append(await self.render_node(parent,child, new_context))
+            children.append(
+                await self.render_node(
+                    parent,
+                    child,
+                    new_context,
+                    runtime_session=runtime_session,
+                )
+            )
 
         # Gestione ID e Stato
         node_id = node.attrib.get('id')

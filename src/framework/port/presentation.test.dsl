@@ -51,10 +51,10 @@ tuple:test_suite := (
     },
     {
         "action": exports.port.node_union;
-        "inputs": (imports.module.Port, none, none);
-        "outputs": none;
+        "inputs": (imports.module.Port, {"attrs": {"id": "counter"}; "inner": ["old"]}, {"attrs": {"class": "value"}; "inner": ["new"]});
+        "outputs": {"attrs": {"id": "counter"; "class": "value"}; "inner": ["new"]};
         "assert": @received == @expected;
-        "note": "Presentation Port espone node_union come hook astratto";
+        "note": "Presentation Port unisce attributi e contenuto del descrittore DSL";
     },
     {
         "action": exports.port.node_get;
@@ -69,5 +69,19 @@ tuple:test_suite := (
         "outputs": none;
         "assert": @received == @expected;
         "note": "Presentation Port espone rebuild come hook astratto";
+    },
+    {
+        "action": exports.port.normalize_route_path;
+        "inputs": "/users/{$id}";
+        "outputs": "/users/{id}";
+        "assert": @received == @expected;
+        "note": "Presentation Port normalizza i placeholder delle route";
+    },
+    {
+        "action": exports.port.parse_reactive_event;
+        "inputs": {"type": "event"; "name": "counter:increment"};
+        "outputs": {"alias": "counter"; "name": "increment"; "file": "src/application/controller/counter.dsl"};
+        "assert": @received == @expected;
+        "note": "Presentation Port interpreta gli eventi reactive senza dipendere dal trasporto";
     }
 );

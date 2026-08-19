@@ -586,16 +586,9 @@ class Adapter(presentation.Port):
     }
 
     def __init__(self, loader: Loader, defender: Defender, presenter: Presenter, messenger: Messenger, **constants):
-        self.config = constants
-        self.messenger = messenger
-        self.defender = defender
-        self.presenter = presenter
-        self.loader = loader
-        self.executor = constants.get('executor')
-        self.views = dict({})
+        super().__init__(loader, defender, presenter, messenger, **constants)
         self.ssh = {}
         cwd = os.getcwd()
-        self.initialize()
         self.routes_static=[
             Mount('/static', app=StaticFiles(directory=f'{cwd}/public/'), name="static"),
             Mount('/framework', app=StaticFiles(directory=f'{cwd}/src/framework'), name="y"),
@@ -613,7 +606,7 @@ class Adapter(presentation.Port):
             #Middleware(CSRFMiddleware, secret=self.config['project']['key']),
         ]
         self.active_websockets = {} # sid -> [websocket]
-        self.DOM = {}
+        self.validate_adapter()
 
     async def http_exception_handler(self,request, exc):
         #html = await self.mount_view("/"+str(exc.status_code),identifier = request.cookies.get('session_identifier', secrets.token_urlsafe(16)))
@@ -754,41 +747,18 @@ class Adapter(presentation.Port):
         return RedirectResponse(request.session.get("url_precedente", "/"), status_code=303)
 
     async def action(self, request, **constants):
-        #print(request.cookies.get('user'))
         match request.method:
             case 'GET':
-                query = dict(request.query_params)
-                #await messenger.post(identifier=id,name=request.url.path[1:],value=dict(query))
-                #data = await messenger.get(identifier=id,name=request.url.path[1:],value=dict(query))
-                #import application.action.gather as gather
-                
-                data = await gather.gather(messenger,storekeeper,model=query['model'],payload=query)
-                return JSONResponse(data)
+                return JSONResponse(dict(request.query_params))
                 
             case 'POST':
                 form = await request.form()
                 data = dict(form)
-                
                 request.scope["user"] = data
-                #await messenger.post(name=request.url.path[1:],value={'model':data['model'],'value':data})
                 return RedirectResponse('/', status_code=303)
 
-    async def render_template(self, runtime_session=None, text=None, file=None, controllers=None, **constants):
-        if text is None and file is None:
-            raise Exception("No text or file provided")
-        if text is None:
-            text = await self.loader.resource(file)
-
-        template = self.env.from_string(text)
-        data = {}
-        for controller in controllers or []:
-            data[controller] = await runtime_session.run(controller, {'sid': runtime_session})
-
-        content = template.render(
-            constants | {'sid': runtime_session} | data | {'manager': self.loader.get_managers()}
-        )
-        xml = ET.fromstring(content)
-        return await self.render_node(text, xml, constants)
+            case _:
+                return JSONResponse({"error": "Metodo non supportato"}, status_code=405)
 
     async def render_view(self,request):
         request.session["url_precedente"] = str(request.url)
@@ -822,17 +792,15 @@ class Adapter(presentation.Port):
         try:
             while True:
                 data = await websocket.receive_json()
-                #print(f"Data: {data}")
-                if data['type'] == 'event':
-                    event_full_name = data['name']
+                event = self.parse_reactive_event(data)
+                if event:
+                    dsl_alias = event['alias']
+                    event_name = event['name']
+                    file_path = event['file']
                     #print(f"Event: {event_full_name}")
                     #print(f"Data: {data['name']}")
                     
                     # Estrazione file e trigger name (es. counter:logic.increment)
-                    if ":" in event_full_name:
-                        dsl_alias, event_name = event_full_name.split(":", 1)
-                        file_path = f"src/application/controller/{dsl_alias}.dsl"
-                    
                     # Il file e la sessione sono già inizializzati da mount_view al page load.
                     # Qui aggiungiamo il file solo se per qualche motivo non fosse ancora caricato
                     # (es. controller specificato via WS prima del page load HTTP).
