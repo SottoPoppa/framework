@@ -1,9 +1,12 @@
 {
     selected: "src/infrastructure/presentation/console.py";
     select(deps:false,default:selected,entry:false) -> select;
-    dependencies: loader.file_dependencies(selected);
+    //dependencies: loader.file_dependencies(selected);
+    dependencies: [];
     
-    files: storekeeper.overview(sid, repository: "file",filter: {"startswith":{"relative_path": "/src"};"eq": {"type": "file"}});
+    //files: storekeeper.overview(sid, repository: "file",filter: {"startswith":{"relative_path": "/src"};"eq": {"type": "file"}});
+    files: {};
+
 
     editor: {
         application:storekeeper.gather(sid, repository: "file",filter: {"eq": {"filename": get(dependencies,"0")}});

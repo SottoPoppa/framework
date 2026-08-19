@@ -1,6 +1,0 @@
-{% extends "mono.xml" %}
-{% block bar %}
-{% endblock %}
-{% block content %}
-<IDE />
-{% endblock %}

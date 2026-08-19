@@ -28,6 +28,11 @@ name = "broker"
 #[[presentation.console]]
 #name = "tui"
 
+[[presentation.starlette]]
+name = "web"
+host = "127.0.0.1"
+port = 8000
+
 [[persistence.filesystem]]
 name = "log"
 

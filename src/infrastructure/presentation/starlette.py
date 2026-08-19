@@ -9,6 +9,12 @@ import xml.etree.ElementTree as ET
 import htpy
 from markupsafe import Markup
 
+import framework.port.presentation as presentation
+from framework.manager.defender import Manager as Defender
+from framework.manager.presenter import Manager as Presenter
+from framework.manager.messenger import Manager as Messenger
+from framework.manager.loader import Loader
+
 try:
     from starlette.applications import Starlette
     from starlette.requests import Request
@@ -87,7 +93,7 @@ class DefenderMiddleware(BaseHTTPMiddleware):
         if path.startswith("/static/"):
             return await call_next(request)
         
-        data = self.defender.resolve(self.routes, path, method)
+        data = self.defender.resolve_route(self.routes, path, method)
 
         if not data:
             # Rifiutiamo la richiesta con un 403 Forbidden o 404
@@ -363,7 +369,7 @@ def attrs(tag_key, input_data, classe=None):
         **{k: v for k, v in raw_attrs.items() if k != "class"}
     }
 
-class Adapter(presentation.port):
+class Adapter(presentation.Port):
     # --- Configurazione Tag ---
     tags = {
         presentation.Tag.WINDOW.value: {
@@ -579,10 +585,12 @@ class Adapter(presentation.port):
         presentation.Tag.PATTERN.value: {"pattern": lambda x: htpy.Element("pattern")(**attrs(presentation.Tag.PATTERN.value, x))[[Markup(i) for i in x['inner']]]},
     }
 
-    def __init__(self,**constants):
+    def __init__(self, loader: Loader, defender: Defender, presenter: Presenter, messenger: Messenger, **constants):
         self.config = constants
-        self.messenger = constants.get('messenger')
-        self.defender = constants.get('defender')
+        self.messenger = messenger
+        self.defender = defender
+        self.presenter = presenter
+        self.loader = loader
         self.executor = constants.get('executor')
         self.views = dict({})
         self.ssh = {}
@@ -612,7 +620,8 @@ class Adapter(presentation.port):
         return JSONResponse({"errore": exc.detail}, status_code=exc.status_code)
         #return HTMLResponse(content=html, status_code=exc.status_code)
         
-    async def start(self):
+    async def start(self, session):
+        self.session = session
         loop = asyncio.get_event_loop()
         await self.parse_route()
         self.routes_static += [
@@ -764,6 +773,23 @@ class Adapter(presentation.port):
                 #await messenger.post(name=request.url.path[1:],value={'model':data['model'],'value':data})
                 return RedirectResponse('/', status_code=303)
 
+    async def render_template(self, runtime_session=None, text=None, file=None, controllers=None, **constants):
+        if text is None and file is None:
+            raise Exception("No text or file provided")
+        if text is None:
+            text = await self.loader.resource(file)
+
+        template = self.env.from_string(text)
+        data = {}
+        for controller in controllers or []:
+            data[controller] = await runtime_session.run(controller, {'sid': runtime_session})
+
+        content = template.render(
+            constants | {'sid': runtime_session} | data | {'manager': self.loader.get_managers()}
+        )
+        xml = ET.fromstring(content)
+        return await self.render_node(text, xml, constants)
+
     async def render_view(self,request):
         request.session["url_precedente"] = str(request.url)
         html = await self.mount_view(url=request.state.url, metadata=request.state.metadata, session=request.session)
@@ -773,37 +799,16 @@ class Adapter(presentation.port):
     async def mount_view(self, url, metadata, session):
         view = metadata.get('view')
         controller = metadata.get('controller')
-        sid = session.get('id')
+        xml_view = await self.presenter.get_view(view)
+        controllers = [controller] if controller else []
 
-        full_ctx = {}
-
-        if sid:
-            await self.executor.create_session(sid, {'messenger': self.messenger, 'presenter': self.config.get('presenter'), 'sid': sid, 'current_view': view})
-            # Se la rotta ha un controller, eseguiamolo
-            #print(f"Controller: {matched_route}")
-            if controller:
-                # Assicuriamoci che il file sia caricato
-                ppppname = "src/application/controller/" + controller + ".dsl"
-                controller_data = await presentation.loader.resource(ppppname)
-                await self.executor.add_file(ppppname, controller_data)
-
-                #print("---------------------@@@>",self.executor.interpreter.runner.get_file_context(sid, ppppname))
-                    
-                
-                # Inizializziamo il controller (o recuperiamo lo stato di sessione)
-                #resultato = await self.executor.run_session(sid, ppppname, {})
-                
-                
-                # Passiamo l'intero contesto della sessione al template Jinja
-                resultato = self.executor.interpreter.runner.context(sid)
-
-                resultato |= self.executor.interpreter.runner.get_file_context(sid, ppppname)
-                
-                if resultato:
-                    full_ctx.setdefault(controller,{})
-                    full_ctx[controller].update(resultato)
-        # Ora renderizziamo l'HTML *con* il contesto del controller e lo stato salvato!
-        rendered_html = await self.render_template(file=view,**full_ctx|{'session':session.copy()})
+        runtime_session = await self.defender.session_create(session)
+        rendered_html = await self.render_template(
+            runtime_session,
+            controllers=controllers,
+            text=xml_view,
+            session=session.copy(),
+        )
 
         return rendered_html
 
@@ -833,7 +838,7 @@ class Adapter(presentation.port):
                     # (es. controller specificato via WS prima del page load HTTP).
                     if file_path not in self.executor.interpreter.runner.nodes:
                         try:
-                            content = await presentation.loader.resource(file_path)
+                            content = await self.loader.resource(file_path)
                             await self.executor.add_file(file_path, content)
                         except Exception as e:
                             print(f"Errore caricamento file {file_path}: {e}")
@@ -898,7 +903,7 @@ class Adapter(presentation.port):
 
                 # Determina l'endpoint
                 if typee == 'model':
-                    endpoint = self.model
+                    endpoint = self.action
                 elif typee == 'view':
                     endpoint = self.render_view
                 elif typee == 'action':

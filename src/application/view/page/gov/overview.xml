@@ -1,9 +1,0 @@
-{% extends "sidebar.xml" %}
-{% block title %}Overview{% endblock %}
-{% block subtitle %}Keep track of your company{% endblock %}
-{% block bar %}
-<SideBar from="{{url.path[0]}}" selected="{{'/'.join(url.path)}}" />
-{% endblock %}
-{% block content %}
-
-{% endblock %}

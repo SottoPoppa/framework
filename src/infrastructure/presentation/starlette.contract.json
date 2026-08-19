@@ -4,7 +4,9 @@
     "starlette",
     "uvicorn",
     "beautifulsoup4",
-    "paramiko"
+    "paramiko",
+    "itsdangerous",
+    "websockets"
   ],
   "scheme": {
     "action": {
@@ -48,6 +50,69 @@
           "type": "dict",
           "required": false
         }
+      }
+    }
+  },
+  "hashes": {
+    "DefenderMiddleware": {
+      "dispatch": {
+        "production": "fdb650af75013e3936316ebc5218786d5d57356ac76cae3513525932816131c1"
+      }
+    },
+    "attrs": {
+      "production": "7b8a18ebbb3de013858dcaad2bf36e6ea26a7059ed16b93ce3aa617c247c5cfc"
+    },
+    "Adapter": {
+      "http_exception_handler": {
+        "production": "09c556eeef2b4987d1f845eae47286c4dcadbb4549d4a864dfce3f33317ccddb"
+      },
+      "start": {
+        "production": "ff88517367b8038bc7fc37a09e7c6261c165a7932f4d4b4fe201caafe9192377"
+      },
+      "signout": {
+        "production": "383eda5a0d1ebe74c1835abd168614a8d30c8cf4c02fb6e0a496ff2432f279c8"
+      },
+      "signin": {
+        "production": "021849c4c8a26c80b469eceb1ee68431a1c648563869088cc6c87d2e4c3132a7"
+      },
+      "signup": {
+        "production": "2559e8f9306dc402922d473f17596c31d802b39fd1a03da8defd80e1154de97b"
+      },
+      "signaid": {
+        "production": "975a9332366d7037214d42b81cc6e34ba725cce06d3e3cefa629f7c1c1c21a14"
+      },
+      "action": {
+        "production": "db08fff419cb84d7488b17726cd2d937ac0a12a8459d2e9d7ad55b0bd750434b"
+      },
+      "render_view": {
+        "production": "161dcd7b8ac32f6556141e524866abc5450398beeb7d8f5fabe7ca17bf639498"
+      },
+      "mount_view": {
+        "production": "30c9d90bd2a3f6cfdea7b160357b3739966cf55673c902f68430d8e7a93bf9a9"
+      },
+      "render_reactive": {
+        "production": "e17fb6e63ee2c29cba516b5f53b4fe428e09a701922c8d42873b32812e47c7c1"
+      },
+      "rebuild": {
+        "production": "af04e0dfa14101c71778bfc550243d370b3d4f6fa2b720972a51453f9d1c39e4"
+      },
+      "mount_route": {
+        "production": "dc109fee8d8c2566d4ae30291ed5b84340c0c2e42ca86803f71d7de4f55d3f72"
+      },
+      "mount_css": {
+        "production": "bb4d44496fb38851aa54f9e524472b288f3b42f48eaee9896997e44798562f82"
+      },
+      "node_create": {
+        "production": "a8c40fdb94127f1db0dace291f019cbeca2bd89c31205f342792ca0b433b1919"
+      },
+      "node_union": {
+        "production": "4ab98b7605f0e3254e28c088599264c5317103b58f2e30fc80bab143ce3838eb"
+      },
+      "node_update": {
+        "production": "87a5e90178266aea61257a407224b39f80e9c5c869318b24aa93c8884b4799df"
+      },
+      "render_template": {
+        "production": "fb025fdc211163ce72571fb09498dc3e0776003b8f60f328af4e878c10c3a517"
       }
     }
   }
