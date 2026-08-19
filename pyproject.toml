@@ -1,6 +1,7 @@
 [project]
 name = "cloud.colosso"
 version = "0.1.0"
+key = "replace-this-development-key"
 description = "Un'app di esempio con OmniPort"  
 readme = "README.md"
 dependencies = [
@@ -32,6 +33,8 @@ name = "broker"
 name = "web"
 host = "127.0.0.1"
 port = 8000
+cors_origins = []
+cors_credentials = false
 
 [[persistence.filesystem]]
 name = "log"

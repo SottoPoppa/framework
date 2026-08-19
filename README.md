@@ -12,7 +12,7 @@ Un framework Python ad architettura esagonale (ports & adapters), pensato per es
 
 OmniPort separa nettamente tre livelli:
 
-- **`application/`** — la logica di dominio: modelli, azioni (DSL), viste (XML), policy. È l'unica zona pensata per essere toccata di continuo, anche da un agente AI.
+- **`application/`** — la logica di dominio: modelli, controller (DSL), viste (XML), policy. È l'unica zona pensata per essere toccata di continuo, anche da un agente AI.
 - **`framework/`** — il kernel: caricamento dinamico dei moduli, container di dependency injection, orchestrazione. Non va modificato.
 - **`infrastructure/`** — gli adapter concreti (persistenza, presentazione web/console, autenticazione, messaggistica, sensori/attuatori...). Intercambiabili senza toccare la logica di dominio.
 
@@ -32,7 +32,7 @@ Il tutto orchestrato da un unico file di configurazione dichiarativa (`pyproject
 
 ### 3. Stessa logica di dominio esposta su più canali
 **Problema tipico:** vuoi la stessa business logic accessibile sia da dashboard web sia da CLI/TUI interna per l'ops team, senza duplicare codice.
-**Come lo risolvi:** ci sono adapter di presentazione sia web (`starlette`) sia console/TUI — la logica in `application/action/` resta unica, cambia solo l'adapter di presentazione montato.
+**Come lo risolvi:** ci sono adapter di presentazione sia web (`starlette`) sia console/TUI — la logica in `application/controller/` resta unica, cambia solo l'adapter di presentazione montato.
 
 ### 4. Dashboard/pannelli reattivi senza build pipeline JS
 **Problema tipico:** per avere UI che si aggiorna in tempo reale di solito serve un frontend SPA (React/Vue) + API separata + gestione dello stato lato client — tanta complessità per un pannello interno o un monitor.
@@ -88,7 +88,7 @@ Il tutto orchestrato da un unico file di configurazione dichiarativa (`pyproject
 └── pyproject.toml               # configurazione dichiarativa del progetto
 ```
 
-**Pattern architetturale:** Hexagonal Architecture (Ports & Adapters) con una variante del classico MVC chiamata **MVA — Model / View / Action**, dove le Action sostituiscono i controller come unità indipendenti caricate dinamicamente.
+**Pattern architetturale:** Hexagonal Architecture (Ports & Adapters) basata sul classico **MVC — Model / View / Controller**, con controller DSL caricati dinamicamente.
 
 **Dependency Injection:** container custom con registrazione esplicita dei provider, risoluzione lazy, supporto a singleton/factory, e ordine di inizializzazione calcolato automaticamente via `graphlib.TopologicalSorter` sulle dipendenze dichiarate nei contract.
 
@@ -126,7 +126,10 @@ In alternativa, se hai già fatto `pip install -e .` a mano, puoi limitarti a:
 python3 public/main.py --install
 ```
 
-### 4. Avvia l'applicazione
+### 4. Configura la sicurezza e avvia l'applicazione
+
+Per l'adapter Starlette, `project.key` è obbligatoria per firmare la sessione. Sostituisci il valore di esempio con una chiave segreta non versionata in un ambiente reale. Le origini CORS sono vuote per default e devono essere configurate esplicitamente quando servono.
+
 ```bash
 python3 public/main.py
 ```

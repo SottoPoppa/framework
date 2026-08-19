@@ -6,7 +6,7 @@ Questo documento istruisce qualunque LLM (agente app-builder o assistente per lo
 
 ## 🏗️ Principi Architetturali
 
-OmniPort segue una **Hexagonal Architecture** (Ports & Adapters): la logica di business è isolata dall'infrastruttura, secondo il pattern **MVA — Model / View / Action** (evoluzione dell'MVC dove le Action sostituiscono i controller come unità indipendenti e caricate dinamicamente).
+OmniPort segue una **Hexagonal Architecture** (Ports & Adapters): la logica di business è isolata dall'infrastruttura, secondo il pattern **MVC — Model / View / Controller**, con i controller DSL caricati dinamicamente.
 
 1. **Core (`src/application/`)**: logica di dominio pura, definizioni UI, modelli dati. Zona di modifica primaria.
 2. **Infrastructure (`src/infrastructure/`)**: implementazioni concrete (adapter web, persistenza, sensori, autenticazione...). Modificabile solo per aggiungere/correggere un adapter specifico, mai per cambiare il contratto della Port che implementa.
@@ -66,7 +66,7 @@ Questi pattern sono stati trovati nel codice esistente durante una review e sono
 
 ## 🔁 Metodo operativo di sviluppo (per sessioni di lavoro con un LLM)
 
-1. **Un solo target per sessione.** Un manager, un adapter, una action — mai "sistema un po' di cose sparse".
+1. **Un solo target per sessione.** Un manager, un adapter, un controller — mai "sistema un po' di cose sparse".
 2. **Contesto minimo e mirato:** fornisci all'LLM solo il file target, il suo `*.test.dsl` (se esiste) e i moduli da cui dipende direttamente (import diretti). Non l'intero repo.
 3. **Se esiste un contract JSON accanto al file**, forniscilo come contesto: mostra all'LLM quali componenti sono già certificati, così non li tocca per sbaglio mentre lavora sul resto.
 4. **Passata separate per tipo di modifica:** bugfix, rename/refactor e nuova feature sono tre passate diverse, non un unico prompt onnicomprensivo. Diff piccoli e a scopo singolo sono più facili da revisionare e da far passare nel gate dei test.
@@ -129,6 +129,8 @@ Qualunque elemento XML può reagire a cambi di stato del DSL senza JavaScript tr
 
 **Regola obbligatoria:** ogni elemento con `bind=` deve avere un `id="..."` esplicito, altrimenti il framework va in crash intenzionalmente per prevenire memory leak nel DAG.
 
+Gli alias reactive cercano esclusivamente `src/application/controller/<alias>.dsl`. I controller applicativi devono risiedere nella directory `controller/`.
+
 ---
 
 ## ⚙️ Configurazione `pyproject.toml`
@@ -144,6 +146,10 @@ presentation = "web.toml"  # → src/application/policy/presentation/web.toml
 [presentation.backend]
 adapter = "starlette"
 port = "5000"
+
+# CORS deny-by-default: configurare solo le origini necessarie.
+cors_origins = []
+cors_credentials = false
 ```
 
 Ogni blocco (`persistence`, `presentation`, `message`, `manager`, ...) attiva un adapter corrispondente in `src/infrastructure/`. Il `Loader` fa discovery solo degli adapter effettivamente presenti nel file — installa via `--install`/`--setup` solo le dipendenze dichiarate nei loro contract, non un requirements.txt monolitico.

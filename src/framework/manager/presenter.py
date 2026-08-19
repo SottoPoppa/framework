@@ -151,9 +151,8 @@ class Manager:
             return None
 
         try:
-            # Usiamo 'html.parser' che è SEMPRE presente in Python.
-            # È meno schizzinoso di 'xml' e non richiede lxml.
-            soup = BeautifulSoup(xml_string, "lxml-xml")
+            # Usiamo il parser standard di BeautifulSoup per non richiedere lxml.
+            soup = BeautifulSoup(xml_string, "html.parser")
             
             # Cerchiamo l'elemento con l'id specifico
             elemento = soup.find(attrs={"id": target_id})

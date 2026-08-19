@@ -683,6 +683,10 @@ class Adapter(presentation.Port):
         await self.parse_route()
         return self.app.run_async()
 
+    async def shutdown(self):
+        if self.app:
+            self.app.exit()
+
     def mount_css(self, css_content: str) -> None:
         """Inietta lo stile nell'applicazione."""
         if self.app:
@@ -762,7 +766,9 @@ class Adapter(presentation.Port):
         except Exception:
             return None
 
-    def node_create(self, tag, attrs={}, inner=[]):
+    def node_create(self, tag, attrs=None, inner=None):
+        attrs = attrs or {}
+        inner = inner or []
         """
         Chiamato da mount_tag() come: self.node_create(elemento, new_attrs, inner)
         dove `elemento` è il lambda selezionato da self.tags[tag][tipo].

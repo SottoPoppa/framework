@@ -21,7 +21,7 @@ try:
     from starlette.responses import JSONResponse,HTMLResponse,RedirectResponse
     from starlette.routing import Route,Mount,WebSocketRoute
     from starlette.middleware import Middleware
-    from starlette.websockets import WebSocket
+    from starlette.websockets import WebSocket, WebSocketDisconnect
     from starlette.middleware.sessions import SessionMiddleware
     from starlette.middleware.cors import CORSMiddleware
     #from starlette.middleware.csrf import CSRFMiddleware
@@ -599,14 +599,33 @@ class Adapter(presentation.Port):
         ]
         
         self.middleware_static = [
-            Middleware(SessionMiddleware, session_cookie="session_state",secret_key=self.config.get('project',{}).get('key', 'default_key')),
-            Middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'], allow_credentials=True),
+            Middleware(SessionMiddleware, session_cookie="session_state", secret_key=self._session_secret()),
+            Middleware(
+                CORSMiddleware,
+                allow_origins=self.config.get('cors_origins', []),
+                allow_methods=self.config.get('cors_methods', ['GET', 'POST', 'OPTIONS']),
+                allow_headers=self.config.get('cors_headers', ['Content-Type']),
+                allow_credentials=bool(self.config.get('cors_credentials', False)),
+            ),
             Middleware(DefenderMiddleware, defender=self.defender,routes=self.routes),
             #Middleware(NoCacheMiddleware),
             #Middleware(CSRFMiddleware, secret=self.config['project']['key']),
         ]
         self.active_websockets = {} # sid -> [websocket]
         self.validate_adapter()
+
+    def _session_secret(self):
+        project = self.config.get('project', {})
+        secret = project.get('key') if isinstance(project, dict) else None
+        secret = secret or self.config.get('session_key')
+        if not secret:
+            project = getattr(getattr(self, 'loader', None), 'current_config', {}).get('project', {})
+            secret = project.get('key') if isinstance(project, dict) else None
+        if not secret:
+            if self.config.get('dev'):
+                return secrets.token_urlsafe(32)
+            raise RuntimeError("Configurare project.key o session_key per l'adapter Starlette")
+        return secret
 
     async def http_exception_handler(self,request, exc):
         #html = await self.mount_view("/"+str(exc.status_code),identifier = request.cookies.get('session_identifier', secrets.token_urlsafe(16)))
@@ -651,17 +670,17 @@ class Adapter(presentation.Port):
 
         # Costruisci l'URL
         self.url = f"http{'s' if 'ssl_certfile' in self.config else ''}://{uvicorn_config_params['host']}{port_str}"
-        try:
-            # Crea e avvia il server Uvicorn come task asyncio
-            config = Config(**uvicorn_config_params)
-            self.server = Server(config)
-            # Restituiamo il loop di Starlette al Loader per l'avvio centralizzato
-            return self.server.serve()
-            #await messenger.post(domain='debug', message=f"Server avviato su {uvicorn_config_params['host']}:{uvicorn_config_params['port']}")
-        except Exception as e:
-            # Logga errori critici all'avvio del server
-            #await messenger.post(domain='error', message=f"Errore critico durante l'avvio del server Uvicorn: {e}")
-            pass
+        config = Config(**uvicorn_config_params)
+        self.server = Server(config)
+        return self.server.serve()
+
+    async def shutdown(self):
+        if hasattr(self, 'server'):
+            self.server.should_exit = True
+        sockets = [socket for group in self.active_websockets.values() for socket in group]
+        for websocket in sockets:
+            await websocket.close()
+        self.active_websockets.clear()
         
     async def signout(self,request) -> None:
         # Determina le credenziali in base al metodo HTTP
@@ -818,7 +837,7 @@ class Adapter(presentation.Port):
                     except Exception as e:
                          print(f"Errore durante l'emissione dell'evento: {e}")
                              
-        except Exception:
+        except WebSocketDisconnect:
             pass
         finally:
             if sid in self.active_websockets:
@@ -895,7 +914,9 @@ class Adapter(presentation.Port):
     def mount_css(self, node, context):
         pass
 
-    def node_create(self, tag, attrs={}, inner=[]):
+    def node_create(self, tag, attrs=None, inner=None):
+        attrs = attrs or {}
+        inner = inner or []
         # Se tag è una funzione (es. un componente funzionale/lambda)
         if callable(tag) and type(tag).__name__ == "function":
             return str(tag({"inner": inner, "attrs": attrs}))

@@ -16,6 +16,8 @@ import os
 import pathlib
 
 import framework.service.flow as flow
+from framework.service.route import compile_pattern, match, normalize_path, register, register_many
+from framework.service.template import render
 
 class Tag(Enum):
     WINDOW = "window"
@@ -292,6 +294,8 @@ class Port(ABC):
         self.initialize()
 
     def initialize(self):
+        if isinstance(self, type):
+            return None
         self.components = {}
         self.DOM = {}
         self.data = {}
@@ -382,6 +386,8 @@ class Port(ABC):
 
     def node_get(self, id: str):
         """Restituisce il widget DSL corrispondente a un id, se presente nel DOM."""
+        if isinstance(self, type):
+            return None
         if id and id in self.DOM:
             return self.DOM[id]
         return None
@@ -419,43 +425,17 @@ class Port(ABC):
  
     @staticmethod
     def normalize_route_path(path):
-        if not isinstance(path, str) or not path.strip():
-            raise ValueError("Il path della route deve essere una stringa non vuota")
-        path = path.strip()
-        if not path.startswith("/"):
-            path = f"/{path}"
-        return re.sub(r'\{\$([a-zA-Z0-9_]+)\}', r'{\1}', path)
+        return normalize_path(path)
 
     @staticmethod
     def compile_route_pattern(path):
-        pattern = re.sub(r'\{([a-zA-Z0-9_]+)\}', r'(?P<\1>[^/]+)', path)
-        return re.compile(f"^{pattern}$")
+        return compile_pattern(path)
 
     def register_route(self, route):
-        view = f"application/view/page/{route['view']}" if route.get('view') else None
-        path = self.normalize_route_path(route.get('path') or (view.replace('.xml', '') if view else ''))
-        method = route.get('method', 'GET').upper()
-        if method not in {'GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'}:
-            raise ValueError(f"Metodo HTTP non supportato: {method}")
-        entry = {
-            **{key: route.get(key) for key in ['method', 'type', 'layout', 'controller', 'path']},
-            'view': view,
-            'pattern': self.compile_route_pattern(path),
-        }
-        self.routes.setdefault(path, {})[method] = entry
-        return path, method, entry
+        return register(self.routes, route)
 
     def match_route(self, path, method='GET'):
-        path = self.normalize_route_path(path)
-        method = method.upper()
-        for route_path, methods in self.routes.items():
-            entry = methods.get(method)
-            if entry is None:
-                continue
-            match = entry['pattern'].match(path)
-            if match:
-                return entry, match.groupdict()
-        return None, {}
+        return match(self.routes, path, method)
 
     @staticmethod
     def parse_reactive_event(payload=None, **fields):
@@ -474,63 +454,36 @@ class Port(ABC):
         return {
             'alias': alias,
             'name': name,
-            'file': f"src/application/controller/{alias}.dsl",
+            'file': Port.resolve_controller_file(alias),
         }
+
+    @staticmethod
+    def resolve_controller_file(alias):
+        if not isinstance(alias, str) or not alias.strip():
+            raise ValueError("L'alias DSL deve essere una stringa non vuota")
+        alias = alias.strip()
+        return f"src/application/controller/{alias}.dsl"
+
+    @staticmethod
+    async def shutdown():
+        return None
 
     async def parse_route(self):
         routes_cfg = self.defender.get_policy('presentation').get('routes', {}).values()
         self.routes.clear()
-        for route in routes_cfg:
-            view = f"application/view/page/{route['view']}" if route.get('view') else None
-            path = self.normalize_route_path(route.get('path') or (view.replace('.xml', '') if view else ''))
-            matches = list(re.finditer(r'\{([a-zA-Z0-9_|]+)\}', path))
-            option_sets = [match.group(1).split('|') for match in matches if '|' in match.group(1)]
-            placeholders = [match.group(0) for match in matches if '|' in match.group(1)]
-            combinations = itertools.product(*option_sets) if option_sets else [()]
-            for combination in combinations:
-                expanded = path
-                for placeholder, value in zip(placeholders, combination):
-                    expanded = expanded.replace(placeholder, value, 1)
-                self.register_route({**route, 'path': expanded})
+        register_many(self.routes, routes_cfg)
         return self.routes
 
     async def render_template(self, runtime_session, text=None, file=None, controllers=None, **constants):
-        if text is None and file is None:
-            raise ValueError("No text or file provided")
-        if text is None:
-            text = await self.loader.resource(file)
-
-        template = self.env.from_string(text)
-
-        data = {}
-
-        for controller in controllers or []:
-            data[controller] = await runtime_session.run(
-                controller,
-                {"sid": runtime_session},
-            )
-
-        managers = self.loader.get_managers()
-
-        #await self.messenger.post(session, domain="console:info", message=data)
-
-        try:
-            #content = template.render(constants|{'tris':data})
-            content = template.render(
-                constants | {"sid": runtime_session} | data | {"manager": managers}
-            )
-            xml = ET.fromstring(content)
-            view = await self.render_node(
-                text,
-                xml,
-                constants,
-                runtime_session=runtime_session,
-            )
-            return view
-        except Exception as e:
-            print(f"Si è verificato un errore durante il rendering del template: {e}",f"file: {file}")
-            raise e
-            #raise Exception(f"Si è verificato un errore durante il rendering del template: {e}",f"file: {file}")
+        return await render(
+            self.loader,
+            runtime_session,
+            self.render_node,
+            text=text,
+            file=file,
+            controllers=controllers,
+            **constants,
+        )
 
     async def render_node(self, parent, node, context, runtime_session=None):
         """Trasforma ricorsivamente i nodi XML in oggetti del Driver"""

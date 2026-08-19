@@ -83,5 +83,12 @@ tuple:test_suite := (
         "outputs": {"alias": "counter"; "name": "increment"; "file": "src/application/controller/counter.dsl"};
         "assert": @received == @expected;
         "note": "Presentation Port interpreta gli eventi reactive senza dipendere dal trasporto";
+    },
+    {
+        "action": exports.port.shutdown;
+        "inputs": ();
+        "outputs": none;
+        "assert": @received == @expected;
+        "note": "Presentation Port espone un lifecycle di chiusura comune";
     }
 );

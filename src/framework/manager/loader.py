@@ -493,6 +493,8 @@ class Loader:
         "container": "src/framework/service/container.py",
         "introspection": "src/framework/service/introspection.py",
         "contract": "src/framework/service/contract.py",
+        "route": "src/framework/service/route.py",
+        "template": "src/framework/service/template.py",
         "diagnostic": "src/framework/service/diagnostic.py",
     }
 
