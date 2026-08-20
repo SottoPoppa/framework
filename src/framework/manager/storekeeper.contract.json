@@ -1,0 +1,38 @@
+{
+  "contract_version": 2,
+  "tested_at": "2026-08-20T15:30:09.769782+00:00",
+  "git_commit": "99c2259",
+  "exports": {
+    "manager": [
+      "Manager.change",
+      "Manager.gather",
+      "Manager.overview",
+      "Manager.remove",
+      "Manager.store"
+    ]
+  },
+  "hashes": {
+    "Manager": {
+      "overview": {
+        "test": "7da604d2ad5dd472453d60b7cb7af38d4c4ea1e9c551094b5984af201df52ecb",
+        "production": "7da604d2ad5dd472453d60b7cb7af38d4c4ea1e9c551094b5984af201df52ecb"
+      },
+      "change": {
+        "test": "19f57b0795d11cfca9b3b9f514a2f47f2eadc9a64d8129f2b106114276ae6cf5",
+        "production": "19f57b0795d11cfca9b3b9f514a2f47f2eadc9a64d8129f2b106114276ae6cf5"
+      },
+      "gather": {
+        "test": "8254de6bbff8cae3b2e771458ecfc27f817bad17166cf6fff46610c6c981e092",
+        "production": "8254de6bbff8cae3b2e771458ecfc27f817bad17166cf6fff46610c6c981e092"
+      },
+      "remove": {
+        "test": "a16815dbdd94e6189afa61bdfc20fe42c2af38bc40dfc07ed81f6ef932ba2e6e",
+        "production": "a16815dbdd94e6189afa61bdfc20fe42c2af38bc40dfc07ed81f6ef932ba2e6e"
+      },
+      "store": {
+        "test": "deabd6d06b05302e5198b99538f29b8bb27ae7aab4c87da8a85d73cd4cd01485",
+        "production": "deabd6d06b05302e5198b99538f29b8bb27ae7aab4c87da8a85d73cd4cd01485"
+      }
+    }
+  }
+}

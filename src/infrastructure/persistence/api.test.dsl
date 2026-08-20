@@ -6,6 +6,11 @@ any:adapter := imports.module.Adapter(
     provider:"jsonplaceholder",
     url:"https://jsonplaceholder.typicode.com"
 );
+any:token_adapter := imports.module.Adapter(
+    url:"https://example.test/api",
+    token:"secret",
+    authorization:"Token"
+);
 
 session:session := {
     "id": "00000000-0000-0000-0000-000000000001";
@@ -14,7 +19,8 @@ session:session := {
 };
 
 exports: {
-    "adapter": adapter
+    "adapter": adapter;
+    "token_adapter": token_adapter
 };
 
 tuple:test_suite := (
@@ -31,6 +37,13 @@ tuple:test_suite := (
         "outputs": {"Accept": "application/json"; "Content-Type": "application/json"; "X-Test": "api"};
         "assert": @received == @expected;
         "note": "Adapter._headers combina gli header predefiniti con quelli della richiesta";
+    },
+    {
+        "action": exports.token_adapter._headers;
+        "inputs": {};
+        "outputs": "Token secret";
+        "assert": @received.Authorization == @expected;
+        "note": "Adapter costruisce l'header Authorization usando token e schema configurati";
     },
     {
         "action": adapter.request;

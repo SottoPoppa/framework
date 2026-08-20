@@ -1,7 +1,7 @@
 {
   "contract_version": 2,
-  "tested_at": "2026-08-16T15:40:27.060846+00:00",
-  "git_commit": "16b2a06",
+  "tested_at": "2026-08-20T15:30:09.634010+00:00",
+  "git_commit": "99c2259",
   "exports": {
     "messenger": [
       "Manager._split_domain",

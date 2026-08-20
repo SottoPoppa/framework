@@ -11,6 +11,8 @@ from jinja2 import Environment, meta
 from cerberus import Validator
 from collections.abc import Mapping
 
+jinja_env = Environment()
+
 mappa = {
     (str,dict,''): lambda v: v if isinstance(v, dict) else {},
     (dict,dict,''): lambda v: v,

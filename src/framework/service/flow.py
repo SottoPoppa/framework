@@ -179,7 +179,7 @@ def result(inputs=None, outputs=None, safe_kwargs=False):
 
         async def nkwargs(kwargs):
             if isinstance(inputs, tuple |list):
-                return {k: v for k, v in kwargs.items() if k in keys_models}
+                return {k: v for k, v in kwargs.items() if k in inputs}
             if inputs in scheme.schemes :
                 ooo = await scheme.normalize(kwargs, scheme.schemes[inputs])
                 if ooo.get("errors"):

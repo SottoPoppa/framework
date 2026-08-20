@@ -11,12 +11,19 @@ from framework.manager.defender import Manager as Defender
 
 class Manager:
 
-    def __init__(self,providers: list[persistence.Port], defender: Defender, orchestrator:Orchestrator, messenger: Messenger,**constants):
+    def __init__(
+        self,
+        providers: list[persistence.Port],
+        defender: Defender,
+        orchestrator: Orchestrator,
+        messenger: Messenger,
+        **constants,
+    ):
         self.orchestrator = orchestrator
         self.defender = defender
         self.persistences = providers
-        self.repositories = {}
-        self.maked = {}
+        self.repositories = constants.get("repositories", {})
+        self.maked = constants.get("maked", {})
         self.messenger = messenger
 
     async def startup(self, session):
@@ -75,7 +82,10 @@ class Manager:
                             print(f"Il metodo '{operation}' non è disponibile per il provider {profile}.")
                             continue
 
-                        task = asyncio.create_task(method(**task_args), name=profile)
+                        task = asyncio.create_task(
+                            method(session=session, storekeeper=task_args),
+                            name=profile,
+                        )
                         task.parameters = task_args
                         operations.append(task)
                     else:
@@ -102,7 +112,6 @@ class Manager:
         return await self.orchestrator.first_completed(operations=operations,success=repository.results)
 
     # store/create/put
-    @flow.result(inputs='storekeeper')
     async def store(self, session, **constants):
 
         state = await self.preparation(session,constants|{'operation':'create'})
@@ -113,10 +122,12 @@ class Manager:
     
     # remove/delete/delete
     async def remove(self, session, **constants):
-        repository,operations = await self.preparation(constants|{'operation':'delete'})
+        state = await self.preparation(session, constants|{'operation':'delete'})
+        repository,operations = flow.output(state)
         return await self.orchestrator.first_completed(operations=operations,success=repository.results)
     
     # change/update/patch
     async def change(self, session, **constants):
-        repository,operations = await self.preparation(**constants|{'operation':'update'})
-        return await self.executor.first_completed(operations=operations,success=repository.results)
+        state = await self.preparation(session, constants|{'operation':'update'})
+        repository,operations = flow.output(state)
+        return await self.orchestrator.first_completed(operations=operations,success=repository.results)

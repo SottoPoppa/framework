@@ -3,8 +3,8 @@
     "aiohttp"
   ],
   "contract_version": 2,
-  "tested_at": "2026-08-17T21:27:22.354936+00:00",
-  "git_commit": "29c627c",
+  "tested_at": "2026-08-20T15:30:10.516791+00:00",
+  "git_commit": "99c2259",
   "exports": {
     "adapter": [
       "Adapter._headers",
@@ -16,13 +16,20 @@
       "Adapter.request",
       "Adapter.update",
       "Adapter.view"
+    ],
+    "token_adapter": [
+      "Adapter._headers"
     ]
   },
   "hashes": {
     "Adapter": {
-      "read": {
-        "test": "6a61ad6e0ae84810b0cb16b6a3e5dd72195730a19e1a18c111293aa9311cbf71",
-        "production": "6a61ad6e0ae84810b0cb16b6a3e5dd72195730a19e1a18c111293aa9311cbf71"
+      "delete": {
+        "test": "2c39faff2f15a8ed9d69f40c97226b5232a3bbdfa917e16a988613e275d3a2b9",
+        "production": "2c39faff2f15a8ed9d69f40c97226b5232a3bbdfa917e16a988613e275d3a2b9"
+      },
+      "request": {
+        "test": "4dc02a4b83aa249c7bf32dd7f5531246cb53454aeb67551ae0e12cb1ddbfbe2b",
+        "production": "4dc02a4b83aa249c7bf32dd7f5531246cb53454aeb67551ae0e12cb1ddbfbe2b"
       },
       "query": {
         "test": "2a8c72944034742fda36b9f88016d9c245738374c29dd60c619f4f9c977dcf6f",
@@ -32,29 +39,25 @@
         "test": "8d6e5360e6e0e154496ca328dd03b5b3f8d88368c2c4b377d759d380134da8df",
         "production": "8d6e5360e6e0e154496ca328dd03b5b3f8d88368c2c4b377d759d380134da8df"
       },
-      "update": {
-        "test": "c225f86f9eeb9c896088929d11c37cf54fcffe4a501d9c5d5ad8073ef27a4c0a",
-        "production": "c225f86f9eeb9c896088929d11c37cf54fcffe4a501d9c5d5ad8073ef27a4c0a"
-      },
-      "delete": {
-        "test": "2c39faff2f15a8ed9d69f40c97226b5232a3bbdfa917e16a988613e275d3a2b9",
-        "production": "2c39faff2f15a8ed9d69f40c97226b5232a3bbdfa917e16a988613e275d3a2b9"
-      },
-      "request": {
-        "test": "4dc02a4b83aa249c7bf32dd7f5531246cb53454aeb67551ae0e12cb1ddbfbe2b",
-        "production": "4dc02a4b83aa249c7bf32dd7f5531246cb53454aeb67551ae0e12cb1ddbfbe2b"
+      "read": {
+        "test": "6a61ad6e0ae84810b0cb16b6a3e5dd72195730a19e1a18c111293aa9311cbf71",
+        "production": "6a61ad6e0ae84810b0cb16b6a3e5dd72195730a19e1a18c111293aa9311cbf71"
       },
       "create": {
         "test": "654d69401c6c5f6d5f098bc19678855228bc27b67d5356da6450fb9a5c44f567",
         "production": "654d69401c6c5f6d5f098bc19678855228bc27b67d5356da6450fb9a5c44f567"
       },
-      "view": {
-        "test": "e98514c5774a592a43cc58e75ed4a4a9f15bad6e7835dfd7d59c2ab3494a4f08",
-        "production": "e98514c5774a592a43cc58e75ed4a4a9f15bad6e7835dfd7d59c2ab3494a4f08"
-      },
       "_headers": {
         "test": "4ca63cb3faa7dc5b6ec5528296618f35c33270a0035b8767e27136e66adbef9a",
         "production": "4ca63cb3faa7dc5b6ec5528296618f35c33270a0035b8767e27136e66adbef9a"
+      },
+      "update": {
+        "test": "c225f86f9eeb9c896088929d11c37cf54fcffe4a501d9c5d5ad8073ef27a4c0a",
+        "production": "c225f86f9eeb9c896088929d11c37cf54fcffe4a501d9c5d5ad8073ef27a4c0a"
+      },
+      "view": {
+        "test": "e98514c5774a592a43cc58e75ed4a4a9f15bad6e7835dfd7d59c2ab3494a4f08",
+        "production": "e98514c5774a592a43cc58e75ed4a4a9f15bad6e7835dfd7d59c2ab3494a4f08"
       }
     }
   }

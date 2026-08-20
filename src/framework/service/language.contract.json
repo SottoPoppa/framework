@@ -3,8 +3,8 @@
     "lark"
   ],
   "contract_version": 2,
-  "tested_at": "2026-08-16T15:40:27.256239+00:00",
-  "git_commit": "16b2a06",
+  "tested_at": "2026-08-20T15:30:10.005328+00:00",
+  "git_commit": "99c2259",
   "exports": {
     "parse_only": [
       "Interpreter.parse_only"
