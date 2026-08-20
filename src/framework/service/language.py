@@ -154,110 +154,84 @@ DSL_FUNCTIONS: Dict[str, Any] = {
 } | TYPE_MAP | {'extension': 'py'}
 
 
-def test_case(case: Mapping, action: Any, adapter: Any) -> dict:
-    """Build one executable test from a declarative composition case."""
-    return {
-        "action": case.get("action", action),
-        "inputs": case.get(
-            "inputs",
-            (adapter, case.get("xml"), case.get("node"), {}),
-        ),
-        "outputs": case.get("expected"),
-        "assert": case.get("assert"),
-        "note": case.get("note", "Composizione XML"),
-    }
+def transform_record(record: Any, updates: Any = None, **fields) -> Any:
+    """Return a record with generic field updates applied."""
+    if not isinstance(record, Mapping):
+        return record
+    result = dict(record)
+    if isinstance(updates, Mapping):
+        result.update(updates)
+    result.update(fields)
+    return result
 
 
-def test_cases(
-    cases: Any,
-    action: Any = None,
-    adapter: Any = None,
-    assertion: Any = None,
-) -> list:
-    """Build individual tests from XML/HTML cases for DSL pipelines."""
-    if not isinstance(cases, (list, tuple)):
+def bind_input(record: Any, value: Any) -> Any:
+    """Bind the first value of a tuple stored in a record's inputs."""
+    if not isinstance(record, Mapping):
+        return record
+    inputs = record.get("inputs")
+    if not isinstance(inputs, tuple) or not inputs:
+        return record
+    return transform_record(record, inputs=(value, *inputs[1:]))
+
+
+def map_records(records: Any, builder: Any, *args, **kwargs) -> list:
+    """Apply a pure builder to every mapping in a sequence."""
+    if not isinstance(records, (list, tuple)) or not callable(builder):
         return []
+    return [builder(record, *args, **kwargs)
+            for record in records if isinstance(record, Mapping)]
+
+
+def variants(tags: Any) -> list:
+    """Expand a mapping of collections into generic key/value records."""
+    if not isinstance(tags, Mapping):
+        return []
+    records = []
+    for key, values in tags.items():
+        values = list(values.keys()) if isinstance(values, Mapping) else values
+        if not isinstance(values, (list, tuple, set)):
+            continue
+        for value in values:
+            records.append({
+                "key": key,
+                "value": value,
+            })
+    return records
+
+
+def tag_variants(tags: Any) -> list:
+    """Adapt presentation tag variants into renderer input records."""
     return [
         {
-            **test_case(case, action, adapter),
-            "assert": case.get("assert", assertion),
+            "inputs": (
+                None,
+                record["key"],
+                {} if record["value"] == record["key"] else {"type": record["value"]},
+                ["fixture"],
+            ),
+            "note": f"Composizione {record['key']}:{record['value']}",
         }
-        for case in cases
-        if isinstance(case, Mapping)
+        for record in variants(tags)
     ]
 
 
-def test_variants(
-    tags: Any,
-    action: Any = None,
-    adapter: Any = None,
-    assertion: Any = None,
-) -> list:
-    """Build individual tests for every tag variant."""
-    if not isinstance(tags, Mapping):
-        return []
-    tests = []
-    for tag, variants in tags.items():
-        variants = list(variants.keys()) if isinstance(variants, Mapping) else variants
-        if not isinstance(variants, (list, tuple, set)):
-            continue
-        for variant in variants:
-            tests.append({
-                "action": action,
-                "inputs": (adapter, tag, {} if variant == tag else {"type": variant}, ["fixture"]),
-                "outputs": None,
-                "assert": assertion,
-                "note": f"Composizione {tag}:{variant}",
-            })
-    return tests
-
-
-def expand_test_suite(test_suite: Any) -> list:
-    """Expand declarative test matrices into individual executable tests."""
-    if isinstance(test_suite, Mapping):
-        test_suite = [test_suite]
-    if not isinstance(test_suite, (list, tuple)):
-        return []
-
-    expanded = []
-    for test in test_suite:
-        if isinstance(test, (list, tuple)):
-            expanded.extend(expand_test_suite(test))
-            continue
-        matrix = test.get("matrix") if isinstance(test, Mapping) else None
-        if not isinstance(matrix, Mapping):
-            expanded.append(test)
-            continue
-
-        cases = matrix.get("cases")
-        if isinstance(cases, (list, tuple)):
-            expanded.extend(test_cases(
-                cases,
-                action=matrix.get("action"),
-                adapter=matrix.get("adapter"),
-                assertion=matrix.get("assert"),
-            ))
-            continue
-
-        tags = matrix.get("tags")
-        if isinstance(tags, Mapping):
-            expanded.extend(test_variants(
-                tags,
-                action=matrix.get("action"),
-                adapter=matrix.get("adapter"),
-                assertion=matrix.get("assert"),
-            ))
-            continue
-
-        expanded.append(test)
-    return expanded
+def flatten_records(value: Any) -> list:
+    """Flatten nested sequences while preserving individual data records."""
+    if not isinstance(value, (list, tuple)):
+        return [value]
+    flattened = []
+    for item in value:
+        flattened.extend(flatten_records(item))
+    return flattened
 
 
 DSL_FUNCTIONS.update({
-    "test_case": test_case,
-    "test_cases": test_cases,
-    "test_variants": test_variants,
-    "expand_tests": expand_test_suite,
+    "transform_record": transform_record,
+    "bind_input": bind_input,
+    "map_records": map_records,
+    "variants": variants,
+    "tag_variants": tag_variants,
 })
 
 

@@ -31,19 +31,19 @@ tuple:html_cases := (
     {
         "action": exports.mount_tag;
         "inputs": (adapter, "text", {"id": "title"}, ["Hello"]);
-        "expected": '<span class="text-xs " id="title">Hello</span>';
+        "outputs": '<span class="text-xs " id="title">Hello</span>';
         "note": "Il renderer produce esattamente l'HTML del tag text";
     },
     {
         "action": exports.node_create;
         "inputs": (adapter, imports.module.htpy.div, {}, ["Hello"]);
-        "expected": "<div>Hello</div>";
+        "outputs": "<div>Hello</div>";
         "note": "Il renderer mantiene tag e contenuto nel markup HTML";
     },
     {
         "action": exports.mount_tag;
         "inputs": (adapter, "action", {"type": "link"; "href": "/target"}, ["Go"]);
-        "expected": '<a class="btn link " href="/target">Go</a>';
+        "outputs": '<a class="btn link " href="/target">Go</a>';
         "note": "Action link produce un anchor con href e contenuto";
     }
 );
@@ -204,14 +204,18 @@ tuple:test_suite := (
         "note": "Starlette chiude il lifecycle senza server attivo";
     },
     html_cases
-    |> test_cases(
-        adapter: adapter,
-        assertion: @received == @expected,
+    |> map_records(
+        transform_record,
+        updates: {"assert": @received == @expected},
     ),
     imports.module.Adapter.tags
-    |> test_variants(
-        action: exports.mount_tag,
-        adapter: adapter,
-        assertion: @received != none,
+    |> tag_variants
+    |> map_records(bind_input, adapter)
+    |> map_records(
+        transform_record,
+        updates: {
+            "action": exports.mount_tag;
+            "assert": @received != none;
+        },
     )
 );
