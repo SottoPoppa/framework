@@ -153,7 +153,7 @@ def action(custom_filename: str = __file__, app_context=None, **constants):
 
 import inspect, functools, time, asyncio
 
-def result(inputs=None, outputs=None, safe_kwargs=False, ensure_flow=False):
+def result(inputs=None, outputs=None, safe_kwargs=False):
     def decorator(func):
         sig = inspect.signature(func)
         is_async = asyncio.iscoroutinefunction(func)
@@ -210,15 +210,10 @@ def result(inputs=None, outputs=None, safe_kwargs=False, ensure_flow=False):
                 #print(f"Received args: {args}, kwargs: {kwargs}")
                 res = await func(*args, **new_kwargs) if is_async else func(*args, **new_kwargs)
                 result = await rett(res)
-                if ensure_flow and not is_result(result):
-                    return success(result, t0)
-                return result
+                return result if is_result(result) else success(result, t0)
             except Exception as e:
-                if ensure_flow:
-                    return error(str(e), t0)
                 print(f"❌ Exception in {func.__name__}: {traceback.format_exc()}")
-                raise e
-                return error(traceback.format_exc(), t0) | action
+                return error(str(e), t0) | action
 
         return wrapper
     return decorator

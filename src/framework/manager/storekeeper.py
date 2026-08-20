@@ -26,7 +26,7 @@ class Manager:
         self.maked = constants.get("maked", {})
         self.messenger = messenger
 
-    @flow.result(ensure_flow=True)
+    @flow.result()
     async def startup(self, session):
         await self.messenger.send(session, message="Storekeeper avviato.", domain="console:info")
         for provider in self.persistences:
@@ -35,19 +35,20 @@ class Manager:
                 await start(session)
         return flow.success(None)
 
-    @flow.result(ensure_flow=True)
+    @flow.result()
     async def shutdown(self, session):
         await self.messenger.send(session, message="Storekeeper arrestato.", domain="console:info")
         return flow.success(None)
 
-    @flow.result(ensure_flow=True)
+    @flow.result()
     async def _load_repository(self, repository_name: str):
         """Carica e mette in cache il repository DSL richiesto."""
         if repository_name not in self.maked:
             path = f'src/application/repository/{repository_name}.dsl'
             code = await self.defender.loader.resource(path)
             await self.defender.interpreter.load_file(path, code)
-            async with await self.defender.session_create() as repository_session:
+            session_result = await self.defender.session_create()
+            async with flow.output(session_result) as repository_session:
                 self.repositories[repository_name] = await repository_session.run(path)
             self.maked[repository_name] = Repository(
                 **self.repositories[repository_name]['repository']
@@ -59,7 +60,7 @@ class Manager:
             )
         return flow.success(repository)
 
-    @flow.result(ensure_flow=True)
+    @flow.result()
     async def _prepare_provider(self, provider, repository, storekeeper, session):
         """Prepara il task di un provider compatibile, se disponibile."""
         configured_profile = provider.config.get('name')
@@ -96,7 +97,7 @@ class Manager:
         task.parameters = task_args
         return flow.success(task)
 
-    @flow.result(ensure_flow=True)
+    @flow.result()
     async def _prepare_operations(self, repository, storekeeper, session):
         """Crea i task per tutti i provider compatibili con il repository."""
         tasks = []
@@ -124,7 +125,7 @@ class Manager:
             )
         return flow.success(tasks)
 
-    @flow.result(ensure_flow=True)
+    @flow.result()
     async def preparation(self, session, storekeeper):
         repository_name = storekeeper.get('repository')
         if not repository_name:
@@ -140,7 +141,7 @@ class Manager:
             return preparation
         return flow.success((repository, flow.output(preparation)))
     
-    @flow.result(ensure_flow=True)
+    @flow.result()
     async def _execute(self, operation, session, constants):
         state = await self.preparation(session, constants | {'operation': operation})
         if not state.get('success'):
@@ -153,26 +154,26 @@ class Manager:
         )
 
     # overview/view/get
-    @flow.result(ensure_flow=True)
+    @flow.result()
     async def overview(self, session, **constants):
         return await self._execute('view', session, constants)
 
     # gather/read/get
-    @flow.result(ensure_flow=True)
+    @flow.result()
     async def gather(self, session, **constants):
         return await self._execute('read', session, constants)
 
     # store/create/put
-    @flow.result(ensure_flow=True)
+    @flow.result()
     async def store(self, session, **constants):
         return await self._execute('create', session, constants)
 
     # remove/delete
-    @flow.result(ensure_flow=True)
+    @flow.result()
     async def remove(self, session, **constants):
         return await self._execute('delete', session, constants)
 
     # change/update/patch
-    @flow.result(ensure_flow=True)
+    @flow.result()
     async def change(self, session, **constants):
         return await self._execute('update', session, constants)

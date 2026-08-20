@@ -117,6 +117,7 @@ class Infrastructure:
                 except json.JSONDecodeError as exc:
                     print(f"[!] JSON {json_file.name}: {exc}")
 
+
         cache: dict[str, Any] = {}
 
         def resolve(name: str) -> Any:
@@ -822,6 +823,8 @@ class Loader:
         config, mgr_resources = await self._discover_components(config_toml_path)
 
         # Risoluzione dinamica di Container dopo il caricamento del core.
+        import framework.service.flow as flow
+
         container_mod = sys.modules.get("framework.service.container")
         if not container_mod or not hasattr(container_mod, "Container"):
             raise RuntimeError(
@@ -849,7 +852,7 @@ class Loader:
             if hasattr(defender, "startup"):
                 await defender.startup()
             if hasattr(defender, "session_create"):
-                session = await defender.session_create()
+                session = flow.output(await defender.session_create())
                 print(f"[*] Sessione creata: {session}")
 
         app = Application(self, managers, session)

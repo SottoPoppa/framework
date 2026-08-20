@@ -28,37 +28,37 @@
   },
   "hashes": {
     "Manager": {
-      "store": {
-        "test": "cd9d6d274680b2345a9f9373a8239c4db262cf4a900f902cdc4f8763818835d2",
-        "production": "cd9d6d274680b2345a9f9373a8239c4db262cf4a900f902cdc4f8763818835d2"
+      "change": {
+        "test": "b61128f790cf560ba7d8773edd184b4ed7485f6d9efb3cb532f4de2c807e3e4f",
+        "production": "b61128f790cf560ba7d8773edd184b4ed7485f6d9efb3cb532f4de2c807e3e4f"
       },
       "shutdown": {
-        "test": "d7bf721a8aec3cf5ba57085955009aad71ca9e6c3b85cdd7addd880f9ad26227",
-        "production": "d7bf721a8aec3cf5ba57085955009aad71ca9e6c3b85cdd7addd880f9ad26227"
-      },
-      "change": {
-        "test": "ce887ac76e5c8afe66cc5ab6dcac8b0ce3d4e7713c0e5c5aca0895bd08766966",
-        "production": "ce887ac76e5c8afe66cc5ab6dcac8b0ce3d4e7713c0e5c5aca0895bd08766966"
-      },
-      "remove": {
-        "test": "d017c659126150e0bc0f464f78aa090015e64245ae6c21219e45a8ee982c8c5c",
-        "production": "d017c659126150e0bc0f464f78aa090015e64245ae6c21219e45a8ee982c8c5c"
-      },
-      "preparation": {
-        "test": "4961afed72cfab58507d82b666c7f054994d0416503dedac62f3c9825bdbbdfa",
-        "production": "4961afed72cfab58507d82b666c7f054994d0416503dedac62f3c9825bdbbdfa"
-      },
-      "overview": {
-        "test": "391c96c3ff033c970915dd6f99633dcb0cb78e4952ec2ea5c15ca72cb593fa50",
-        "production": "391c96c3ff033c970915dd6f99633dcb0cb78e4952ec2ea5c15ca72cb593fa50"
+        "test": "8452373de93bbd87f0b8573ed20faf27a116f20846bc4d6341198448b710744d",
+        "production": "8452373de93bbd87f0b8573ed20faf27a116f20846bc4d6341198448b710744d"
       },
       "gather": {
-        "test": "cef2a667698d6f03f6a6606198deb978910752f298105a878e0725d32b684c50",
-        "production": "cef2a667698d6f03f6a6606198deb978910752f298105a878e0725d32b684c50"
+        "test": "4870b271d775b04d96d85b29e4718f481c9492a7d7bb823bfdca33763884621b",
+        "production": "4870b271d775b04d96d85b29e4718f481c9492a7d7bb823bfdca33763884621b"
+      },
+      "overview": {
+        "test": "43717900ce5bed5058a3de3597bb23db0d60d517083cdeb6213d310abdc9593f",
+        "production": "43717900ce5bed5058a3de3597bb23db0d60d517083cdeb6213d310abdc9593f"
+      },
+      "store": {
+        "test": "7a37f7674aa4c1e11f2bc59ba32a038b4e3fa1d697957bbb8c488a95d1c27300",
+        "production": "7a37f7674aa4c1e11f2bc59ba32a038b4e3fa1d697957bbb8c488a95d1c27300"
+      },
+      "remove": {
+        "test": "0db22083eb52704f1bba9be8b7ba42cee975ce0ab3ec79f3cca303928b4d7411",
+        "production": "0db22083eb52704f1bba9be8b7ba42cee975ce0ab3ec79f3cca303928b4d7411"
       },
       "startup": {
-        "test": "2781acffb77f87ec0c0612470e40d0e3583e105368b0513d56527fc3eb410fe4",
-        "production": "2781acffb77f87ec0c0612470e40d0e3583e105368b0513d56527fc3eb410fe4"
+        "test": "a97fdd10454da4b3c895908b0ec13db534a6143bf149033e238b93f52b35d8f0",
+        "production": "a97fdd10454da4b3c895908b0ec13db534a6143bf149033e238b93f52b35d8f0"
+      },
+      "preparation": {
+        "test": "d18ef7037412d139d2f640600e5adbccce638682cd2b21e1414c377231b61386",
+        "production": "d18ef7037412d139d2f640600e5adbccce638682cd2b21e1414c377231b61386"
       }
     }
   }

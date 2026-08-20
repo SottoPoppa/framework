@@ -58,7 +58,8 @@ class Manager:
             code = await self.loader.resource(path)
             await self.interpreter.load_file(path, code)
             #await self.load_file(name, source)
-            async with await self.session_create() as session:
+            session_result = await self.session_create()
+            async with flow.output(session_result) as session:
                 self.policies[policy] = await session.run(path)
             print(f"[+] Policy: {policy}/{filename}")
 
