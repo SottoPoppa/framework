@@ -238,9 +238,7 @@ class Manager:
             )
             return {"success": False, "data": {"error": str(e)}}
 
-        test_suite = ctx.get('test_suite', []) or []
-        if isinstance(test_suite, dict):
-            test_suite = [test_suite]
+        test_suite = language.expand_test_suite(ctx.get('test_suite', []))
 
         exports = ctx.get('exports', {}) or {}
         exported_targets = {

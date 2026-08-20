@@ -44,6 +44,7 @@ import operator
 import random
 import uuid
 from collections import ChainMap
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -151,6 +152,114 @@ DSL_FUNCTIONS: Dict[str, Any] = {
     'pass':      lambda *inputs: inputs,
     'exit':      lambda *inputs: exit(inputs),
 } | TYPE_MAP | {'extension': 'py'}
+
+
+def test_case(case: Mapping, action: Any, adapter: Any) -> dict:
+    """Build one executable test from a declarative composition case."""
+    return {
+        "action": case.get("action", action),
+        "inputs": case.get(
+            "inputs",
+            (adapter, case.get("xml"), case.get("node"), {}),
+        ),
+        "outputs": case.get("expected"),
+        "assert": case.get("assert"),
+        "note": case.get("note", "Composizione XML"),
+    }
+
+
+def test_cases(
+    cases: Any,
+    action: Any = None,
+    adapter: Any = None,
+    assertion: Any = None,
+) -> list:
+    """Build individual tests from XML/HTML cases for DSL pipelines."""
+    if not isinstance(cases, (list, tuple)):
+        return []
+    return [
+        {
+            **test_case(case, action, adapter),
+            "assert": case.get("assert", assertion),
+        }
+        for case in cases
+        if isinstance(case, Mapping)
+    ]
+
+
+def test_variants(
+    tags: Any,
+    action: Any = None,
+    adapter: Any = None,
+    assertion: Any = None,
+) -> list:
+    """Build individual tests for every tag variant."""
+    if not isinstance(tags, Mapping):
+        return []
+    tests = []
+    for tag, variants in tags.items():
+        variants = list(variants.keys()) if isinstance(variants, Mapping) else variants
+        if not isinstance(variants, (list, tuple, set)):
+            continue
+        for variant in variants:
+            tests.append({
+                "action": action,
+                "inputs": (adapter, tag, {} if variant == tag else {"type": variant}, ["fixture"]),
+                "outputs": None,
+                "assert": assertion,
+                "note": f"Composizione {tag}:{variant}",
+            })
+    return tests
+
+
+def expand_test_suite(test_suite: Any) -> list:
+    """Expand declarative test matrices into individual executable tests."""
+    if isinstance(test_suite, Mapping):
+        test_suite = [test_suite]
+    if not isinstance(test_suite, (list, tuple)):
+        return []
+
+    expanded = []
+    for test in test_suite:
+        if isinstance(test, (list, tuple)):
+            expanded.extend(expand_test_suite(test))
+            continue
+        matrix = test.get("matrix") if isinstance(test, Mapping) else None
+        if not isinstance(matrix, Mapping):
+            expanded.append(test)
+            continue
+
+        cases = matrix.get("cases")
+        if isinstance(cases, (list, tuple)):
+            expanded.extend(test_cases(
+                cases,
+                action=matrix.get("action"),
+                adapter=matrix.get("adapter"),
+                assertion=matrix.get("assert"),
+            ))
+            continue
+
+        tags = matrix.get("tags")
+        if isinstance(tags, Mapping):
+            expanded.extend(test_variants(
+                tags,
+                action=matrix.get("action"),
+                adapter=matrix.get("adapter"),
+                assertion=matrix.get("assert"),
+            ))
+            continue
+
+        expanded.append(test)
+    return expanded
+
+
+DSL_FUNCTIONS.update({
+    "test_case": test_case,
+    "test_cases": test_cases,
+    "test_variants": test_variants,
+    "expand_tests": expand_test_suite,
+})
+
 
 OPS = {
     '+': operator.add,  '-': operator.sub,   '*': operator.mul,

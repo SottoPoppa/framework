@@ -222,7 +222,7 @@ _ATTRIBUTES_SCHEMA = {
     Tag.NAVIGATION.value: _IDENTITY | _LOCATION | _LAYOUT | _STYLE,
     Tag.TEXT.value: _TYPOGRAPHY | _STYLE, 
     Tag.INPUT.value: _EVENTS | _FIELD | _LAYOUT | _STYLE | {Attribute.LANGUAGE.value:"language"}, 
-    Tag.ACTION.value: _EVENTS | {Attribute.ROUTE.value:"action", Attribute.ACT.value:"method"} | _LAYOUT | _STYLE | {Attribute.POINTER.value:"pointer"}, 
+    Tag.ACTION.value: _EVENTS | {Attribute.ROUTE.value:"action", Attribute.ACT.value:"method", Attribute.HREF.value:"href"} | _LAYOUT | _STYLE | {Attribute.POINTER.value:"pointer"}, 
     Tag.CONTAINER.value: _LAYOUT_STATIC | _LOCATION | _STYLE, 
     Tag.ROW.value: _LAYOUT | _LOCATION | _STYLE, 
     Tag.COLUMN.value: _LAYOUT | _LOCATION | _STYLE, 
