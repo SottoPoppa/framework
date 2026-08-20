@@ -8,114 +8,26 @@
     "itsdangerous",
     "websockets"
   ],
-  "scheme": {
-    "action": {
-      "type": "string",
-      "required": true,
-      "allowed": [
-        "GET",
-        "POST",
-        "PUT",
-        "PATCH",
-        "DELETE",
-        "HEAD",
-        "OPTIONS"
-      ]
-    },
-    "resource": {
-      "type": "string",
-      "required": true,
-      "allowed": [
-        "view",
-        "controller"
-      ]
-    },
-    "location": {
-      "type": "string",
-      "required": true
-    },
-    "context": {
-      "type": "dict",
-      "required": false,
-      "scheme": {
-        "user": {
-          "type": "string",
-          "required": false
-        },
-        "ip": {
-          "type": "string",
-          "required": false
-        },
-        "params": {
-          "type": "dict",
-          "required": false
-        }
-      }
-    }
+  "contract_version": 2,
+  "tested_at": "2026-08-20T08:45:58.617834+00:00",
+  "git_commit": "be5ba0d",
+  "exports": {
+    "attrs": [
+      "attrs"
+    ],
+    "node_create": [
+      "Adapter.node_create"
+    ]
   },
   "hashes": {
-    "DefenderMiddleware": {
-      "dispatch": {
-        "production": "fdb650af75013e3936316ebc5218786d5d57356ac76cae3513525932816131c1"
-      }
-    },
     "attrs": {
+      "test": "7b8a18ebbb3de013858dcaad2bf36e6ea26a7059ed16b93ce3aa617c247c5cfc",
       "production": "7b8a18ebbb3de013858dcaad2bf36e6ea26a7059ed16b93ce3aa617c247c5cfc"
     },
     "Adapter": {
-      "http_exception_handler": {
-        "production": "09c556eeef2b4987d1f845eae47286c4dcadbb4549d4a864dfce3f33317ccddb"
-      },
-      "start": {
-        "production": "9ae484a03a16e55337c8e2569b68449f1b41271fee4a5a8a98a1ef0ab606d4cb"
-      },
-      "signout": {
-        "production": "383eda5a0d1ebe74c1835abd168614a8d30c8cf4c02fb6e0a496ff2432f279c8"
-      },
-      "signin": {
-        "production": "021849c4c8a26c80b469eceb1ee68431a1c648563869088cc6c87d2e4c3132a7"
-      },
-      "signup": {
-        "production": "2559e8f9306dc402922d473f17596c31d802b39fd1a03da8defd80e1154de97b"
-      },
-      "signaid": {
-        "production": "975a9332366d7037214d42b81cc6e34ba725cce06d3e3cefa629f7c1c1c21a14"
-      },
-      "action": {
-        "production": "a500358f046c68b42dcf2ba498bcae66381e75643268bbcbd5940c0ac25538d5"
-      },
-      "render_view": {
-        "production": "161dcd7b8ac32f6556141e524866abc5450398beeb7d8f5fabe7ca17bf639498"
-      },
-      "mount_view": {
-        "production": "30c9d90bd2a3f6cfdea7b160357b3739966cf55673c902f68430d8e7a93bf9a9"
-      },
-      "render_reactive": {
-        "production": "9a8320ca730d4dae8c9db3bd7a10bdb091d7d86daff1814e08c802cd953d9ccd"
-      },
-      "rebuild": {
-        "production": "af04e0dfa14101c71778bfc550243d370b3d4f6fa2b720972a51453f9d1c39e4"
-      },
-      "mount_route": {
-        "production": "dc109fee8d8c2566d4ae30291ed5b84340c0c2e42ca86803f71d7de4f55d3f72"
-      },
-      "mount_css": {
-        "production": "bb4d44496fb38851aa54f9e524472b288f3b42f48eaee9896997e44798562f82"
-      },
       "node_create": {
+        "test": "9070c97ea0cb97a832ab7617faab99b67fa6e36a2a9527dabe15cddd2fad631c",
         "production": "9070c97ea0cb97a832ab7617faab99b67fa6e36a2a9527dabe15cddd2fad631c"
-      },
-      "node_union": {
-        "production": "4ab98b7605f0e3254e28c088599264c5317103b58f2e30fc80bab143ce3838eb"
-      },
-      "node_update": {
-        "production": "87a5e90178266aea61257a407224b39f80e9c5c869318b24aa93c8884b4799df"
-      },
-      "render_template": {
-        "production": "fb025fdc211163ce72571fb09498dc3e0776003b8f60f328af4e878c10c3a517"
-      },
-      "shutdown": {
-        "production": "c3fe52e0cf500d1d8c6f80fadc2d8b68e9911ac3ffb8e36d1569b5dbbab2bd32"
       }
     }
   }
