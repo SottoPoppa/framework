@@ -1,4 +1,5 @@
 import aiohttp
+import framework.service.flow as flow
 
 class adapter:
     def __init__(self, **constants):
@@ -6,6 +7,7 @@ class adapter:
         self.url = self.config.get('url')
 
     
+    @flow.result(safe_kwargs=True)
     async def whoami(self, **data):
         """
         Recupera le informazioni del profilo utente da GitHub utilizzando l'access_token.
@@ -38,9 +40,11 @@ class adapter:
                     print(f"Errore durante whoami: {response.status} - {await response.text()}")
                     return None
     
+    @flow.result(safe_kwargs=True)
     async def logout(self,**data):
         pass
 
+    @flow.result(safe_kwargs=True)
     async def registration(self,**data):
         pass
 
@@ -61,6 +65,7 @@ class adapter:
                 else:
                     return None'''
     
+    @flow.result(safe_kwargs=True)
     async def authenticate(self, **data):
         """
         Esegue l'autenticazione con GitHub (OAuth) e restituisce una sessione normalizzata.

@@ -169,6 +169,34 @@ name = "tui"
 
 Ogni blocco (`persistence`, `presentation`, `message`, `manager`, ...) attiva un adapter corrispondente in `src/infrastructure/`. Il `Loader` fa discovery automatico solo degli adapter effettivamente presenti nel file.
 
+## Risultati Flow
+
+I metodi pubblici dei Manager e le API degli Adapter usano un contratto comune
+basato su `framework.service.flow`. Una chiamata restituisce un dizionario con
+esito, payload ed eventuali errori:
+
+```python
+result = await manager.operation(session, **constants)
+
+if result["success"]:
+	value = flow.output(result)
+else:
+	errors = result["errors"]
+```
+
+Il payload non va letto direttamente dal risultato: usa sempre
+`flow.output(result)`. I metodi pubblici sono normalmente marcati con
+`@flow.result()`. I Port possono applicare automaticamente lo stesso
+decorator agli Adapter concreti tramite `__init_subclass__`.
+
+Il risultato può includere metadati di tracciamento come `action`, `component`,
+`pipeline`, `node` e `history`. Questi dati permettono di ricostruire quale
+metodo e quale componente hanno prodotto un risultato senza annidare più
+risultati Flow.
+
+Gli helper privati e le funzioni pure non devono essere decorati senza motivo:
+il contratto Flow va applicato ai confini pubblici tra componenti.
+
 ---
 
 ## Stato del progetto

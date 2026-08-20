@@ -40,6 +40,34 @@ def is_result(v):        return isinstance(v, dict) and v.get("success") is not 
 def flux(v): return success(output(v)) if v.get("success") is not None else error(v.get("errors"))
 def check(v): return v.get("success") is not None
 
+def trace(result, *, action=None, component=None, pipeline=None, node=None):
+    """Aggiunge la provenienza a un risultato Flow senza annidarlo."""
+    if not is_result(result):
+        return result
+
+    if action is not None:
+        result["action"] = action
+    if component is not None:
+        result["component"] = component
+    if pipeline is not None:
+        result["pipeline"] = pipeline
+    if node is not None:
+        result["node"] = node
+
+    history = result.setdefault("history", [])
+    history.append({
+        key: value
+        for key, value in {
+            "action": action,
+            "component": component,
+            "pipeline": pipeline,
+            "node": node,
+            "success": result.get("success"),
+        }.items()
+        if value is not None
+    })
+    return result
+
 # ─────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────
@@ -210,10 +238,20 @@ def result(inputs=None, outputs=None, safe_kwargs=False):
                 #print(f"Received args: {args}, kwargs: {kwargs}")
                 res = await func(*args, **new_kwargs) if is_async else func(*args, **new_kwargs)
                 result = await rett(res)
-                return result if is_result(result) else success(result, t0)
+                if not is_result(result):
+                    result = success(result, t0)
+                return trace(
+                    result,
+                    action=func.__name__,
+                    component=func.__module__,
+                )
             except Exception as e:
-                print(f"❌ Exception in {func.__name__}: {traceback.format_exc()}")
-                return error(str(e), t0) | action
+                result = error(str(e), t0)
+                return trace(
+                    result,
+                    action=func.__name__,
+                    component=func.__module__,
+                )
 
         return wrapper
     return decorator
@@ -631,6 +669,11 @@ class DagRunner:
                 await asyncio.sleep(delay)
 
         d["result"] = last_result
+        trace(
+            last_result,
+            pipeline=fname,
+            node=nd["name"],
+        )
         return success(d)
 
     @action()

@@ -28,37 +28,37 @@
   },
   "hashes": {
     "Manager": {
-      "change": {
-        "test": "b61128f790cf560ba7d8773edd184b4ed7485f6d9efb3cb532f4de2c807e3e4f",
-        "production": "b61128f790cf560ba7d8773edd184b4ed7485f6d9efb3cb532f4de2c807e3e4f"
-      },
-      "shutdown": {
-        "test": "8452373de93bbd87f0b8573ed20faf27a116f20846bc4d6341198448b710744d",
-        "production": "8452373de93bbd87f0b8573ed20faf27a116f20846bc4d6341198448b710744d"
-      },
-      "gather": {
-        "test": "4870b271d775b04d96d85b29e4718f481c9492a7d7bb823bfdca33763884621b",
-        "production": "4870b271d775b04d96d85b29e4718f481c9492a7d7bb823bfdca33763884621b"
+      "preparation": {
+        "test": "d18ef7037412d139d2f640600e5adbccce638682cd2b21e1414c377231b61386",
+        "production": "d18ef7037412d139d2f640600e5adbccce638682cd2b21e1414c377231b61386"
       },
       "overview": {
         "test": "43717900ce5bed5058a3de3597bb23db0d60d517083cdeb6213d310abdc9593f",
         "production": "43717900ce5bed5058a3de3597bb23db0d60d517083cdeb6213d310abdc9593f"
       },
+      "gather": {
+        "test": "4870b271d775b04d96d85b29e4718f481c9492a7d7bb823bfdca33763884621b",
+        "production": "4870b271d775b04d96d85b29e4718f481c9492a7d7bb823bfdca33763884621b"
+      },
+      "shutdown": {
+        "test": "8452373de93bbd87f0b8573ed20faf27a116f20846bc4d6341198448b710744d",
+        "production": "8452373de93bbd87f0b8573ed20faf27a116f20846bc4d6341198448b710744d"
+      },
       "store": {
         "test": "7a37f7674aa4c1e11f2bc59ba32a038b4e3fa1d697957bbb8c488a95d1c27300",
         "production": "7a37f7674aa4c1e11f2bc59ba32a038b4e3fa1d697957bbb8c488a95d1c27300"
       },
-      "remove": {
-        "test": "0db22083eb52704f1bba9be8b7ba42cee975ce0ab3ec79f3cca303928b4d7411",
-        "production": "0db22083eb52704f1bba9be8b7ba42cee975ce0ab3ec79f3cca303928b4d7411"
+      "change": {
+        "test": "b61128f790cf560ba7d8773edd184b4ed7485f6d9efb3cb532f4de2c807e3e4f",
+        "production": "b61128f790cf560ba7d8773edd184b4ed7485f6d9efb3cb532f4de2c807e3e4f"
       },
       "startup": {
         "test": "a97fdd10454da4b3c895908b0ec13db534a6143bf149033e238b93f52b35d8f0",
         "production": "a97fdd10454da4b3c895908b0ec13db534a6143bf149033e238b93f52b35d8f0"
       },
-      "preparation": {
-        "test": "d18ef7037412d139d2f640600e5adbccce638682cd2b21e1414c377231b61386",
-        "production": "d18ef7037412d139d2f640600e5adbccce638682cd2b21e1414c377231b61386"
+      "remove": {
+        "test": "0db22083eb52704f1bba9be8b7ba42cee975ce0ab3ec79f3cca303928b4d7411",
+        "production": "0db22083eb52704f1bba9be8b7ba42cee975ce0ab3ec79f3cca303928b4d7411"
       }
     }
   }

@@ -4,7 +4,7 @@ imports: {
 
 exports: {
     'reset': imports.flow.reset;
-    'switch': imports.flow.switch;
+    'switch': imports.flow.switch
 };
 
 tuple:test_suite := (

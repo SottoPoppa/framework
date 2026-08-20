@@ -86,6 +86,7 @@ class Manager:
 
         await self._dispatch(session, controller, domain, **dispatch_constants)
 
+    @flow.result()
     async def receive(self, session, **constants):
         """
         Riceve il primo risultato disponibile dai provider.

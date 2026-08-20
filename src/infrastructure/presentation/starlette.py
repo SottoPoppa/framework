@@ -10,6 +10,7 @@ import htpy
 from markupsafe import Markup
 
 import framework.port.presentation as presentation
+import framework.service.flow as flow
 from framework.service.route import split_url
 from framework.manager.defender import Manager as Defender
 from framework.manager.presenter import Manager as Presenter
@@ -794,7 +795,8 @@ class Adapter(presentation.Port):
         xml_view = await self.presenter.get_view(view)
         controllers = [controller] if controller else []
 
-        runtime_session = await self.defender.session_create(**session)
+        session_result = await self.defender.session_create(**session)
+        runtime_session = flow.output(session_result)
         rendered_html = await self.render_template(
             runtime_session,
             controllers=controllers,

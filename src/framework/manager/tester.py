@@ -116,12 +116,15 @@ class Manager:
 
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
+    @flow.result()
     async def startup(self, session=None):
         pass
 
+    @flow.result()
     async def shutdown(self, session=None):
         pass
 
+    @flow.result(safe_kwargs=True)
     async def run(self, **constants):
         """Esegue la suite di test DSL filtrata secondo il prefisso configurato."""
         filter_raw = constants.get('filter', self.filter_raw)

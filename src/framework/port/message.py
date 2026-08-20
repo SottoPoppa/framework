@@ -1,7 +1,21 @@
 from typing import Protocol, Any, runtime_checkable
+import framework.service.flow as flow
 
 @runtime_checkable
 class Port(Protocol):
+
+    _method_decorators = {
+        "read": flow.result(safe_kwargs=True),
+        "post": flow.result(safe_kwargs=True),
+        "can": flow.result(safe_kwargs=True),
+    }
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        for method_name, decorator in Port._method_decorators.items():
+            original = cls.__dict__.get(method_name)
+            if original is not None:
+                setattr(cls, method_name, decorator(original))
 
     def loader(self, config: dict[str, Any]) -> None:
         """Inizializza o configura l'adapter con i dati passati dal framework."""

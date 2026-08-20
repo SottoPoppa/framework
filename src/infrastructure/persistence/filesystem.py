@@ -59,11 +59,13 @@ class Adapter(persistence.Port):
         self.watch = constants.get('watch', False)
         self.observer = None
 
+    @flow.result()
     async def start(self, session=None):
         if self.watch:
             main_loop = asyncio.get_running_loop()
             self._start_watcher(session, main_loop)
 
+    @flow.result()
     async def stop(self, session=None):
         self.stop_watcher()
 
@@ -74,6 +76,7 @@ class Adapter(persistence.Port):
         self.observer.schedule(event_handler, path=self.path, recursive=True)
         self.observer.start()
 
+    @flow.result()
     async def handle_watcher_event(self, session, event_type, filepath):
         await self.messenger.send(
             session,
@@ -131,7 +134,7 @@ class Adapter(persistence.Port):
     async def delete(self, **constants): return await self.request(**{'method': 'DELETE'} | constants)
     async def update(self, **constants): return await self.request(**{'method': 'PUT'} | constants)
     async def read(self, **constants): return await self.request(**{'method': 'GET'} | constants)
-    #@flow.result()
+    @flow.result()
     async def view(self, **constants): return await self.request(**{'method': 'VIEW'} | constants)
     # --- Operazioni Infrastrutturali (View & Query) ---
 

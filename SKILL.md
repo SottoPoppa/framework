@@ -44,9 +44,48 @@ Il framework ha già il meccanismo per impedire che codice non verificato arrivi
    python3 public/main.py --test managers/<nome_manager>
    ```
    (filtri disponibili: `managers`, `ports`, `services`, `infrastructure`, oppure un path diretto)
-4. Se tutti gli export dichiarati sono testati con successo, `Contract.record_tested` rigenera il contract JSON accanto al file. Il contract contiene API dichiarata, hash di test/produzione, versione, timestamp e commit Git — questi dati permettono il boot in modalità strict.
+4. Se tutti gli export dichiarati sono testati con successo, `Contract.record_tested` rigenera il contract JSON accanto al file. Il contract contiene l'API dichiarata e gli hash di test/produzione; non aggiungere metadati variabili come timestamp o commit Git, perché producono diff inutili a ogni generazione.
 5. **Non usare mai `--skip-verify` come soluzione a un test che fallisce.** È un flag di emergenza per l'umano, non un modo per far "sparire" un errore che hai introdotto. Se un test fallisce dopo una tua modifica, il problema è nella modifica, non nel test.
 6. **Un manager modificato = un commit = un contract aggiornato.** Non accumulare modifiche a più componenti in un solo commit: rende impossibile capire quale hash corrisponde a quale comportamento verificato.
+
+### Contratto Flow per Manager e Adapter
+
+I metodi pubblici che attraversano un confine tra Manager, Port e Adapter devono
+restituire sempre un risultato Flow. Il formato comune è:
+
+```python
+{
+    "success": True | False,
+    "outputs": valore | None,
+    "errors": [],
+    "action": "nome_metodo",
+    "component": "modulo.python",
+    "history": []
+}
+```
+
+Regole operative:
+
+1. Usa `@flow.result()` sui metodi pubblici dei Manager e sulle API pubbliche degli Adapter.
+2. Se un Port definisce una mappa `_method_decorators`, applicala automaticamente in `__init_subclass__` agli override degli Adapter concreti.
+3. Usa `flow.output(result)` per estrarre il valore contenuto in `outputs`; non accedere direttamente al valore come se il risultato fosse già il payload.
+4. Propaga un risultato fallito senza trasformarlo in un valore normale: `if not result.get("success"): return result`.
+5. Non decorare automaticamente ogni helper privato o funzione pura. Gli helper asincroni interni vanno decorati solo se rappresentano davvero un confine di pipeline.
+6. Non annidare risultati Flow. Se un metodo decorato riceve o restituisce già un Flow, deve mantenerne il contenuto e aggiungere soltanto la traccia.
+7. Per aggiungere provenienza usa `flow.trace(...)`, che aggiorna `action`, `component`, `pipeline`, `node` e `history` senza creare un secondo risultato.
+
+Esempio di chiamata corretta:
+
+```python
+result = await manager.operation(session, **constants)
+if not result["success"]:
+    return result
+value = flow.output(result)
+```
+
+Quando si aggiunge `@flow.result()` a un metodo esistente, cerca e aggiorna
+anche tutti i chiamanti che usavano direttamente il valore restituito. Questa
+verifica è obbligatoria per lifecycle, sessioni e operazioni di I/O.
 
 ---
 
@@ -224,8 +263,6 @@ Il contract generato ha questa forma:
 ```json
 {
     "contract_version": 2,
-    "tested_at": "2026-08-16T12:16:04+00:00",
-    "git_commit": "f7c5099",
     "exports": {
         "messenger": [
             "Manager._split_domain",
@@ -243,6 +280,9 @@ Il contract generato ha questa forma:
     }
 }
 ```
+
+I campi `tested_at` e `git_commit` non fanno parte del formato generato: sono
+metadati variabili e non devono essere reintrodotti nei contract versionati.
 
 La scrittura del contract è atomica e la certificazione ricostruisce gli hash, quindi gli export rimossi non lasciano componenti obsoleti. I contract legacy privi di `exports` restano leggibili e vengono verificati con la reflection pubblica storica.
 

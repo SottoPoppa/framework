@@ -18,8 +18,8 @@
         "production": "2b632fc87075424d6b2a34f87914f9a611b19fc55ea0daba5e0d54a9c48c00ff"
       },
       "receive": {
-        "test": "c5921d4323332b1bf3f62b40a46e4a6bfc27e29fa4f45e9d25dc8431c021d023",
-        "production": "c5921d4323332b1bf3f62b40a46e4a6bfc27e29fa4f45e9d25dc8431c021d023"
+        "test": "22bef44ab4bada077cda27a1bf4342323cb8f02ebb885c0106dad948cb0eca0b",
+        "production": "22bef44ab4bada077cda27a1bf4342323cb8f02ebb885c0106dad948cb0eca0b"
       }
     }
   }

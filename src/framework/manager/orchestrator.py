@@ -147,6 +147,7 @@ class Manager:
             #await messenger.post(domain='debug',message=error_msg)
             return flow.error(error_msg)
 
+    @flow.result(safe_kwargs=True)
     async def all_completed(self, **constants) -> Dict[str, Any]:
         tasks: List[asyncio.Future] = constants.get('tasks', [])
     
@@ -179,6 +180,7 @@ class Manager:
         
         return {"success": True, "results": results}
 
+    @flow.result(safe_kwargs=True)
     async def chain_completed(self, **constants) -> Dict[str, Any]:
         """Esegue i task in sequenza, aspettando il completamento di ciascuno prima di passare al successivo."""
         tasks = constants.get('tasks', [])
@@ -203,6 +205,7 @@ class Manager:
             #await messenger.post(domain='debug', message=error_msg)
             return {"state": False, "result": None, "error": error_msg}
 
+    @flow.result(safe_kwargs=True)
     async def together_completed(self, **constants) -> Dict[str, Any]:
         """Esegue tutti i task contemporaneamente senza attendere il completamento di tutti."""
         tasks = constants.get('tasks', [])

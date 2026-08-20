@@ -1,4 +1,5 @@
 import asyncio
+import framework.service.flow as flow
 import uuid
 import json
 import os
@@ -679,7 +680,8 @@ class Adapter(presentation.Port):
 
     async def start(self, session):
         """Avvia l'applicazione TUI (equivalente di Starlette server.serve())."""
-        self.session = await self.defender.session_create()
+        session_result = await self.defender.session_create()
+        self.session = flow.output(session_result)
         await self.parse_route()
         return self.app.run_async()
 

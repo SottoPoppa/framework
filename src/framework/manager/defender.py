@@ -40,9 +40,11 @@ class Manager:
         # Policy caricate e valutate dall'interprete, indicizzate per nome.
         self.policies = {}
 
+    @flow.result()
     async def shutdown(self, session):
         await self.interpreter.stop()
     
+    @flow.result()
     async def startup(self, session=None):
         if session is not None:
             return None

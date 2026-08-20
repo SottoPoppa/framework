@@ -417,6 +417,8 @@ class Application:
 
     async def _message_consumer_worker(self):
         """Worker in background per la gestione degli eventi di reload."""
+        import framework.service.flow as flow
+
         try:
             while not self._stop_event.is_set():
                 messenger = self._loader.get_managers().get("messenger")
@@ -424,7 +426,12 @@ class Application:
                     await asyncio.sleep(0.2)
                     continue
 
-                message = await messenger.receive(self._session, domain="event")
+                message_result = await messenger.receive(self._session, domain="event")
+                if not flow.is_result(message_result):
+                    continue
+                if not message_result.get("success"):
+                    continue
+                message = flow.output(message_result)
                 for name, mgr in list(self._loader.get_managers().items()):
                     if hasattr(mgr, "reload"):
                         try:
@@ -436,6 +443,8 @@ class Application:
 
     async def startup(self):
         """Avvia l'applicazione e gestisce i segnali di arresto."""
+        import framework.service.flow as flow
+
         print("[*] Avvio dei manager del framework...")
         if self._loader.kwargs.get("dev"):
             self._running_tasks.append(
@@ -453,6 +462,10 @@ class Application:
             if not hasattr(manager, "startup"):
                 continue
             result = await manager.startup(self._session)
+            if flow.is_result(result):
+                if not result.get("success"):
+                    continue
+                result = flow.output(result)
             if not result:
                 continue
 
@@ -466,10 +479,14 @@ class Application:
 
     async def shutdown(self):
         """Esegue il graceful shutdown di tutti i componenti registrati."""
+        import framework.service.flow as flow
+
         print("\n[*] Spegnimento controllato dei servizi...")
         for manager in reversed(self._managers):
             if hasattr(manager, "shutdown"):
-                await manager.shutdown(self._session)
+                result = await manager.shutdown(self._session)
+                if flow.is_result(result) and not result.get("success"):
+                    print(f"[!] Shutdown fallito per {manager}: {result.get('errors')}")
 
         for task in self._running_tasks:
             if not task.done():
@@ -850,7 +867,9 @@ class Loader:
 
         if defender:
             if hasattr(defender, "startup"):
-                await defender.startup()
+                startup_result = await defender.startup()
+                if flow.is_result(startup_result) and not startup_result.get("success"):
+                    raise RuntimeError(startup_result.get("errors"))
             if hasattr(defender, "session_create"):
                 session = flow.output(await defender.session_create())
                 print(f"[*] Sessione creata: {session}")
@@ -871,7 +890,10 @@ class Loader:
             return False
         
         # Passa il filtro come constant al metodo run()
-        return await tester.run(filter=filter_value)
+        import framework.service.flow as flow
+
+        result = await tester.run(filter=filter_value)
+        return flow.output(result) if flow.is_result(result) else result
 
     async def verify_contracts(self, config_toml_path: Any) -> bool:
         """Verifica i contract senza costruire o avviare l'applicazione."""

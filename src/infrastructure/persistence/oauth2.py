@@ -5,6 +5,7 @@ from typing import Any
 import aiohttp
 
 from infrastructure.persistence.api import Adapter as APIAdapter
+import framework.service.flow as flow
 
 
 class Adapter(APIAdapter):
@@ -121,6 +122,7 @@ class Adapter(APIAdapter):
                 await self._get_token()
         return str(self.token)
 
+    @flow.result(safe_kwargs=True)
     async def request(self, session=None, storekeeper=None, **constants):
         await self._ensure_token()
         return await super().request(

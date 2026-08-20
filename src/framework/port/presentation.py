@@ -283,6 +283,23 @@ _ATTRIBUTES_SCHEMA |= {
 class Port(ABC):
     tags = {}
 
+    _method_decorators = {
+        "start": flow.result(safe_kwargs=True),
+        "stop": flow.result(safe_kwargs=True),
+        "shutdown": flow.result(safe_kwargs=True),
+        "mount_view": flow.result(safe_kwargs=True),
+        "mount_route": flow.result(safe_kwargs=True),
+        "mount_css": flow.result(safe_kwargs=True),
+        "node_update": flow.result(safe_kwargs=True),
+    }
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        for method_name, decorator in Port._method_decorators.items():
+            original = cls.__dict__.get(method_name)
+            if original is not None:
+                setattr(cls, method_name, decorator(original))
+
     def __init__(self, loader, defender, presenter, messenger, **constants):
         self.config = constants
         self.loader = loader

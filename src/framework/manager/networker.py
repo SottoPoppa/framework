@@ -1,4 +1,5 @@
 import framework.port.network as network
+import framework.service.flow as flow
 
 class Manager:
     def __init__(self, networks: list[network.Port], **constants):
@@ -36,6 +37,7 @@ class Manager:
 
         return best
 
+    @flow.result(inputs='intent')
     async def provision(self, intent: dict):
         requirements = intent.get('requirements', {})
         provider = self._select_provider(requirements)
@@ -43,12 +45,14 @@ class Manager:
             return flow.error(f"Nessun provider SD-WAN disponibile per i requisiti: {requirements}")
         return await provider.provision(intent=intent)
 
+    @flow.result(inputs=('application', 'requirements'))
     async def route(self, application: dict, requirements: dict):
         provider = self._select_provider(requirements)
         if provider is None:
             return flow.error(f"Nessun provider SD-WAN selezionato per i requisiti: {requirements}")
         return await provider.route(application=application, requirements=requirements)
 
+    @flow.result()
     async def compute(self):
         results = []
         for provider in self.networks:
@@ -57,6 +61,7 @@ class Manager:
         print("Results from all providers:", results)
         return results
 
+    @flow.result()
     async def monitor(self):
         statuses = []
         for provider in self.networks:
@@ -64,6 +69,7 @@ class Manager:
                 statuses.append(await provider.monitor())
         return flow.success({"networks": statuses})
 
+    @flow.result()
     async def status(self):
         network_status = {}
         for provider in self.networks:
