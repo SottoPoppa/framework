@@ -1,6 +1,4 @@
 import os
-import subprocess
-from datetime import datetime, timezone
 from pathlib import Path
 import json
 
@@ -141,8 +139,6 @@ class Contract:
             }
             contract.update({
                 "contract_version": Contract.VERSION,
-                "tested_at": datetime.now(timezone.utc).isoformat(),
-                "git_commit": Contract._git_commit(),
                 "exports": exports,
                 "hashes": {},
             })

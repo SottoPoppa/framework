@@ -1,7 +1,5 @@
 {
   "contract_version": 2,
-  "tested_at": "2026-08-20T15:30:09.769782+00:00",
-  "git_commit": "99c2259",
   "exports": {
     "manager": [
       "Manager.change",

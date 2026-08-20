@@ -1,7 +1,5 @@
 {
   "contract_version": 2,
-  "tested_at": "2026-08-16T15:18:41.837667+00:00",
-  "git_commit": "b91df00",
   "exports": {
     "resolve_filter": [
       "resolve_filter"
