@@ -1,35 +1,64 @@
 {
   "contract_version": 2,
   "exports": {
-    "manager": [
-      "Manager.change",
-      "Manager.gather",
-      "Manager.overview",
-      "Manager.remove",
+    "startup": [
+      "Manager.startup"
+    ],
+    "shutdown": [
+      "Manager.shutdown"
+    ],
+    "preparation": [
+      "Manager.preparation"
+    ],
+    "overview": [
+      "Manager.overview"
+    ],
+    "gather": [
+      "Manager.gather"
+    ],
+    "store": [
       "Manager.store"
+    ],
+    "remove": [
+      "Manager.remove"
+    ],
+    "change": [
+      "Manager.change"
     ]
   },
   "hashes": {
     "Manager": {
-      "overview": {
-        "test": "7da604d2ad5dd472453d60b7cb7af38d4c4ea1e9c551094b5984af201df52ecb",
-        "production": "7da604d2ad5dd472453d60b7cb7af38d4c4ea1e9c551094b5984af201df52ecb"
+      "store": {
+        "test": "cd9d6d274680b2345a9f9373a8239c4db262cf4a900f902cdc4f8763818835d2",
+        "production": "cd9d6d274680b2345a9f9373a8239c4db262cf4a900f902cdc4f8763818835d2"
+      },
+      "shutdown": {
+        "test": "d7bf721a8aec3cf5ba57085955009aad71ca9e6c3b85cdd7addd880f9ad26227",
+        "production": "d7bf721a8aec3cf5ba57085955009aad71ca9e6c3b85cdd7addd880f9ad26227"
       },
       "change": {
-        "test": "19f57b0795d11cfca9b3b9f514a2f47f2eadc9a64d8129f2b106114276ae6cf5",
-        "production": "19f57b0795d11cfca9b3b9f514a2f47f2eadc9a64d8129f2b106114276ae6cf5"
-      },
-      "gather": {
-        "test": "8254de6bbff8cae3b2e771458ecfc27f817bad17166cf6fff46610c6c981e092",
-        "production": "8254de6bbff8cae3b2e771458ecfc27f817bad17166cf6fff46610c6c981e092"
+        "test": "ce887ac76e5c8afe66cc5ab6dcac8b0ce3d4e7713c0e5c5aca0895bd08766966",
+        "production": "ce887ac76e5c8afe66cc5ab6dcac8b0ce3d4e7713c0e5c5aca0895bd08766966"
       },
       "remove": {
-        "test": "a16815dbdd94e6189afa61bdfc20fe42c2af38bc40dfc07ed81f6ef932ba2e6e",
-        "production": "a16815dbdd94e6189afa61bdfc20fe42c2af38bc40dfc07ed81f6ef932ba2e6e"
+        "test": "d017c659126150e0bc0f464f78aa090015e64245ae6c21219e45a8ee982c8c5c",
+        "production": "d017c659126150e0bc0f464f78aa090015e64245ae6c21219e45a8ee982c8c5c"
       },
-      "store": {
-        "test": "deabd6d06b05302e5198b99538f29b8bb27ae7aab4c87da8a85d73cd4cd01485",
-        "production": "deabd6d06b05302e5198b99538f29b8bb27ae7aab4c87da8a85d73cd4cd01485"
+      "preparation": {
+        "test": "4961afed72cfab58507d82b666c7f054994d0416503dedac62f3c9825bdbbdfa",
+        "production": "4961afed72cfab58507d82b666c7f054994d0416503dedac62f3c9825bdbbdfa"
+      },
+      "overview": {
+        "test": "391c96c3ff033c970915dd6f99633dcb0cb78e4952ec2ea5c15ca72cb593fa50",
+        "production": "391c96c3ff033c970915dd6f99633dcb0cb78e4952ec2ea5c15ca72cb593fa50"
+      },
+      "gather": {
+        "test": "cef2a667698d6f03f6a6606198deb978910752f298105a878e0725d32b684c50",
+        "production": "cef2a667698d6f03f6a6606198deb978910752f298105a878e0725d32b684c50"
+      },
+      "startup": {
+        "test": "2781acffb77f87ec0c0612470e40d0e3583e105368b0513d56527fc3eb410fe4",
+        "production": "2781acffb77f87ec0c0612470e40d0e3583e105368b0513d56527fc3eb410fe4"
       }
     }
   }

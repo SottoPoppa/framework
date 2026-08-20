@@ -12,13 +12,13 @@
     ]
   },
   "hashes": {
-    "switch": {
-      "test": "eebf5c5efe090b8ec6ae6134781481d8eb0792c5a3e3b78ff1568f806a8444fb",
-      "production": "eebf5c5efe090b8ec6ae6134781481d8eb0792c5a3e3b78ff1568f806a8444fb"
-    },
     "reset": {
       "test": "efabe157fb368873be24c5dce2710178c1df694ecde6a4782b4006066b944660",
       "production": "efabe157fb368873be24c5dce2710178c1df694ecde6a4782b4006066b944660"
+    },
+    "switch": {
+      "test": "eebf5c5efe090b8ec6ae6134781481d8eb0792c5a3e3b78ff1568f806a8444fb",
+      "production": "eebf5c5efe090b8ec6ae6134781481d8eb0792c5a3e3b78ff1568f806a8444fb"
     }
   }
 }

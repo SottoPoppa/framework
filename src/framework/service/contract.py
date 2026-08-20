@@ -77,20 +77,6 @@ class Contract:
         temporary.replace(target)
 
     @staticmethod
-    def _git_commit() -> str | None:
-        try:
-            result = subprocess.run(
-                ["git", "rev-parse", "--short", "HEAD"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            commit = result.stdout.strip()
-            return commit or None
-        except OSError:
-            return None
-
-    @staticmethod
     def _export_names(exports) -> list[str] | None:
         if exports is None:
             return None

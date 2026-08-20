@@ -1,5 +1,4 @@
 import asyncio
-import importlib
 
 import framework.port.persistence as persistence
 import framework.service.flow as flow
@@ -8,6 +7,7 @@ from framework.service.factory import Repository
 from framework.manager.messenger import Manager as Messenger
 from framework.manager.orchestrator import Manager as Orchestrator
 from framework.manager.defender import Manager as Defender
+
 
 class Manager:
 
@@ -26,108 +26,153 @@ class Manager:
         self.maked = constants.get("maked", {})
         self.messenger = messenger
 
+    @flow.result(ensure_flow=True)
     async def startup(self, session):
-        '''for repository in self.repositories:
-            self.maked[repository] = Repository(**self.repositories[repository])'''
         await self.messenger.send(session, message="Storekeeper avviato.", domain="console:info")
         for provider in self.persistences:
-            if hasattr(provider, 'start'):
-                await provider.start(session)
-        
+            start = getattr(provider, 'start', None)
+            if callable(start):
+                await start(session)
+        return flow.success(None)
 
+    @flow.result(ensure_flow=True)
     async def shutdown(self, session):
         await self.messenger.send(session, message="Storekeeper arrestato.", domain="console:info")
+        return flow.success(None)
 
-    #@flow.result(inputs=("session",))
-    async def preparation(self, session, storekeeper):
-        repository_name = storekeeper.get('repository')
+    @flow.result(ensure_flow=True)
+    async def _load_repository(self, repository_name: str):
+        """Carica e mette in cache il repository DSL richiesto."""
         if repository_name not in self.maked:
             path = f'src/application/repository/{repository_name}.dsl'
             code = await self.defender.loader.resource(path)
             await self.defender.interpreter.load_file(path, code)
-            async with await self.defender.session_create() as session:
-                 self.repositories[repository_name] = await session.run(path)
-            self.maked[repository_name] = Repository(**self.repositories[repository_name]['repository'])
-        
+            async with await self.defender.session_create() as repository_session:
+                self.repositories[repository_name] = await repository_session.run(path)
+            self.maked[repository_name] = Repository(
+                **self.repositories[repository_name]['repository']
+            )
         repository = self.maked.get(repository_name)
-        operations = []
-        #print(repo_data)
-        if repository:
-            #print(repository.location)
-            #print("##############",self.persistences)
-            for provider in self.persistences:
-                #print(provider)
-                profile = provider.config.get('name')
-                #print(profile)
-                try:
-                    
-                    if not profile:
-                        #language.framework_log("WARNING", f"Provider {provider} non ha un profilo configurato.", emoji="⚠️")
-                        print(f"Provider {provider} non ha un profilo configurato.")
-                        continue
-                    #print("okkkkkkkkkkkkkkkk",repository)
-                    if profile in [x.lower() for x in repository.location.keys()]:
-                        try:
-                            operation = storekeeper.get('operation')
-                            task_args = await repository.parameters(**storekeeper|{'provider':profile})
-                        except Exception as e:
-                            #language.framework_log("ERROR", f"Errore durante l'ottenimento dei parametri per {profile}: {e}", emoji="❌")
-                            print(f"Errore durante l'ottenimento dei parametri per {profile}: {e}")
-                            continue
+        if repository is None:
+            return flow.error(
+                f"Repository '{repository_name}' non trovato o dati non disponibili."
+            )
+        return flow.success(repository)
 
-                        # Controllo che il metodo esista nel provider
-                        method = getattr(provider, operation, None)
-                        if not callable(method):
-                            #language.framework_log("WARNING", f"Il metodo '{operation}' non è disponibile per il provider {profile}.", emoji="🚫")
-                            print(f"Il metodo '{operation}' non è disponibile per il provider {profile}.")
-                            continue
+    @flow.result(ensure_flow=True)
+    async def _prepare_provider(self, provider, repository, storekeeper, session):
+        """Prepara il task di un provider compatibile, se disponibile."""
+        configured_profile = provider.config.get('name')
+        if not configured_profile:
+            return flow.error(f"Provider {provider} non ha un profilo configurato.")
+        profile = str(configured_profile).lower()
 
-                        task = asyncio.create_task(
-                            method(session=session, storekeeper=task_args),
-                            name=profile,
-                        )
-                        task.parameters = task_args
-                        operations.append(task)
-                    else:
-                        #language.framework_log("DEBUG", f"Provider {provider} non ha un profilo trovato.", emoji="🔍")
-                        print(f"Provider {provider} repository_name {repository_name} profile {profile} non ha un profilo trovato.")
-                except Exception as e:
-                    #language.framework_log("ERROR", f"Errore imprevisto durante la preparazione per il provider {provider}: {e}", emoji="🤯")
-                    return flow.error(f"Errore imprevisto durante la preparazione per il provider {provider}: {e}")
-            return flow.success((repository, operations))
-        else:
-            return flow.error(f"Repository '{repository}' non trovato o dati non disponibili.")
+        if profile not in repository.location:
+            return flow.error(
+                f"Provider {provider} repository_name {storekeeper.get('repository')} "
+                f"profile {profile} non ha un profilo trovato."
+            )
+
+        operation = storekeeper.get('operation')
+        try:
+            task_args = await repository.parameters(
+                **storekeeper | {'provider': profile}
+            )
+        except Exception as error:
+            return flow.error(
+                f"Errore durante l'ottenimento dei parametri per {profile}: {error}"
+            )
+
+        method = getattr(provider, operation, None)
+        if not callable(method):
+            return flow.error(
+                f"Il metodo '{operation}' non è disponibile per il provider {profile}."
+            )
+
+        task = asyncio.create_task(
+            method(session=session, storekeeper=task_args),
+            name=profile,
+        )
+        task.parameters = task_args
+        return flow.success(task)
+
+    @flow.result(ensure_flow=True)
+    async def _prepare_operations(self, repository, storekeeper, session):
+        """Crea i task per tutti i provider compatibili con il repository."""
+        tasks = []
+        for provider in self.persistences:
+            try:
+                task = await self._prepare_provider(
+                    provider, repository, storekeeper, session
+                )
+                if not task.get('success'):
+                    for pending in tasks:
+                        pending.cancel()
+                    return task
+                tasks.append(flow.output(task))
+            except Exception as error:
+                for task in tasks:
+                    task.cancel()
+                return flow.error(
+                    f"Errore imprevisto durante la preparazione per il provider "
+                    f"{provider}: {error}"
+                )
+        if not tasks:
+            return flow.error(
+                f"Nessun provider compatibile per il repository "
+                f"'{storekeeper.get('repository')}'."
+            )
+        return flow.success(tasks)
+
+    @flow.result(ensure_flow=True)
+    async def preparation(self, session, storekeeper):
+        repository_name = storekeeper.get('repository')
+        if not repository_name:
+            return flow.error("Nome del repository non specificato.")
+
+        repository_result = await self._load_repository(repository_name)
+        if not repository_result.get('success'):
+            return repository_result
+        repository = flow.output(repository_result)
+
+        preparation = await self._prepare_operations(repository, storekeeper, session)
+        if not preparation.get('success'):
+            return preparation
+        return flow.success((repository, flow.output(preparation)))
     
+    @flow.result(ensure_flow=True)
+    async def _execute(self, operation, session, constants):
+        state = await self.preparation(session, constants | {'operation': operation})
+        if not state.get('success'):
+            return state
+
+        repository, operations = flow.output(state)
+        return await self.orchestrator.first_completed(
+            operations=operations,
+            success=repository.results,
+        )
+
     # overview/view/get
+    @flow.result(ensure_flow=True)
     async def overview(self, session, **constants):
-        state = await self.preparation(session,constants|{'operation':'view'})
-        repository,operations = flow.output(state)
-        #print(repository,operations)
-        return await self.orchestrator.first_completed(operations=operations,success=repository.results)
+        return await self._execute('view', session, constants)
 
     # gather/read/get
-    async def gather(self, session,**constants):
-        state = await self.preparation(session,constants|{'operation':'read'})
-        repository,operations = flow.output(state)
-        return await self.orchestrator.first_completed(operations=operations,success=repository.results)
+    @flow.result(ensure_flow=True)
+    async def gather(self, session, **constants):
+        return await self._execute('read', session, constants)
 
     # store/create/put
+    @flow.result(ensure_flow=True)
     async def store(self, session, **constants):
+        return await self._execute('create', session, constants)
 
-        state = await self.preparation(session,constants|{'operation':'create'})
-        repository,operations = flow.output(state)
-        #print(repository,operations)
-        return await self.orchestrator.first_completed(operations=operations,success=repository.results)
-        
-    
-    # remove/delete/delete
+    # remove/delete
+    @flow.result(ensure_flow=True)
     async def remove(self, session, **constants):
-        state = await self.preparation(session, constants|{'operation':'delete'})
-        repository,operations = flow.output(state)
-        return await self.orchestrator.first_completed(operations=operations,success=repository.results)
-    
+        return await self._execute('delete', session, constants)
+
     # change/update/patch
+    @flow.result(ensure_flow=True)
     async def change(self, session, **constants):
-        state = await self.preparation(session, constants|{'operation':'update'})
-        repository,operations = flow.output(state)
-        return await self.orchestrator.first_completed(operations=operations,success=repository.results)
+        return await self._execute('update', session, constants)
