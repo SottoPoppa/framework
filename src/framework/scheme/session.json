@@ -19,6 +19,62 @@
         "type": "string",
         "required": false
     },
+    "current_url": {
+        "type": "dict",
+        "required": false,
+        "default": {},
+        "schema": {
+            "full": {
+                "type": "string",
+                "required": true
+            },
+            "scheme": {
+                "type": "string",
+                "required": false
+            },
+            "netloc": {
+                "type": "string",
+                "required": false
+            },
+            "path": {
+                "type": "list",
+                "schema": {
+                    "type": "string"
+                },
+                "required": true
+            },
+            "query": {
+                "type": "dict",
+                "required": false,
+                "keysrules": {
+                    "type": "string"
+                },
+                "valuesrules": {
+                    "type": "list",
+                    "schema": {
+                        "type": "string"
+                    }
+                }
+            },
+            "fragment": {
+                "type": "dict",
+                "required": false,
+                "keysrules": {
+                    "type": "string"
+                },
+                "valuesrules": {
+                    "type": "list",
+                    "schema": {
+                        "type": "string"
+                    }
+                }
+            }
+        }
+    },
+    "previous_url": {
+        "type": "string",
+        "required": false
+    },
     "user": {
         "type": "dict",
         "schema": "{{ user }}",

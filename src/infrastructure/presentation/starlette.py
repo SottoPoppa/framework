@@ -4,12 +4,13 @@ from html import escape
 import re
 import json
 from datetime import datetime
-from urllib.parse import urlparse, urlunparse, ParseResult,parse_qs
+from urllib.parse import urlunparse, ParseResult,parse_qs
 import xml.etree.ElementTree as ET
 import htpy
 from markupsafe import Markup
 
 import framework.port.presentation as presentation
+from framework.service.route import split_url
 from framework.manager.defender import Manager as Defender
 from framework.manager.presenter import Manager as Presenter
 from framework.manager.messenger import Manager as Messenger
@@ -701,7 +702,7 @@ class Adapter(presentation.Port):
             request.session["errors"] = session['errors']
 
         # Crea la risposta di reindirizzamento
-        return RedirectResponse(request.session.get("url_precedente", "/"), status_code=303)
+        return RedirectResponse(request.session.get("previous_url", "/"), status_code=303)
 
     async def signin(self, request):
         # Determina le credenziali in base al metodo HTTP
@@ -721,7 +722,7 @@ class Adapter(presentation.Port):
             request.session["errors"] = session['errors']
 
         # Crea la risposta di reindirizzamento
-        return RedirectResponse(request.session.get("url_precedente", "/"), status_code=303)
+        return RedirectResponse(request.session.get("previous_url", "/"), status_code=303)
     
     async def signup(self, request):
         # Determina le credenziali in base al metodo HTTP
@@ -742,7 +743,7 @@ class Adapter(presentation.Port):
             request.session["errors"] = session['errors']
 
         # Crea la risposta di reindirizzamento
-        return RedirectResponse(request.session.get("url_precedente", "/"), status_code=303)
+        return RedirectResponse(request.session.get("previous_url", "/"), status_code=303)
 
     async def signaid(self, request):
         # Determina le credenziali in base al metodo HTTP
@@ -763,7 +764,7 @@ class Adapter(presentation.Port):
             request.session["errors"] = session['errors']
 
         # Crea la risposta di reindirizzamento
-        return RedirectResponse(request.session.get("url_precedente", "/"), status_code=303)
+        return RedirectResponse(request.session.get("previous_url", "/"), status_code=303)
 
     async def action(self, request, **constants):
         match request.method:
@@ -780,7 +781,9 @@ class Adapter(presentation.Port):
                 return JSONResponse({"error": "Metodo non supportato"}, status_code=405)
 
     async def render_view(self,request):
-        request.session["url_precedente"] = str(request.url)
+        current_url = str(request.url)
+        request.session["current_url"] = split_url(current_url)
+        request.session["previous_url"] = current_url
         html = await self.mount_view(url=request.state.url, metadata=request.state.metadata, session=request.session)
         request.session["errors"] = []
         return HTMLResponse(html)

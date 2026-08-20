@@ -1,5 +1,6 @@
 import itertools
 import re
+from urllib.parse import parse_qs, urlparse
 
 
 ROUTE_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"}
@@ -12,6 +13,24 @@ def normalize_path(path):
     if not path.startswith("/"):
         path = f"/{path}"
     return re.sub(r"\{\$([a-zA-Z0-9_]+)\}", r"{\1}", path)
+
+
+def split_url(url):
+    """Restituisce i componenti dell'URL in una forma facilmente ricercabile."""
+    full_url = str(url)
+    parsed_url = urlparse(full_url)
+    path = [part for part in parsed_url.path.split("/") if part]
+    query = parse_qs(parsed_url.query, keep_blank_values=True)
+    fragment = parse_qs(parsed_url.fragment, keep_blank_values=True)
+
+    return {
+        "full": full_url,
+        "scheme": parsed_url.scheme,
+        "netloc": parsed_url.netloc,
+        "path": path,
+        "query": query,
+        "fragment": fragment,
+    }
 
 
 def compile_pattern(path):
