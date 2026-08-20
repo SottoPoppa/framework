@@ -29,24 +29,51 @@ exports: {
 
 tuple:html_cases := (
     {
+        "id": "text-title";
         "action": exports.mount_tag;
         "inputs": (adapter, "text", {"id": "title"}, ["Hello"]);
-        "outputs": '<span class="text-xs " id="title">Hello</span>';
         "note": "Il renderer produce esattamente l'HTML del tag text";
     },
     {
+        "id": "div-content";
         "action": exports.node_create;
         "inputs": (adapter, imports.module.htpy.div, {}, ["Hello"]);
-        "outputs": "<div>Hello</div>";
         "note": "Il renderer mantiene tag e contenuto nel markup HTML";
     },
     {
+        "id": "action-link";
         "action": exports.mount_tag;
         "inputs": (adapter, "action", {"type": "link"; "href": "/target"}, ["Go"]);
-        "outputs": '<a class="btn link " href="/target">Go</a>';
         "note": "Action link produce un anchor con href e contenuto";
+    },
+    {
+        "id": "text-plain";
+        "action": exports.mount_tag;
+        "inputs": (adapter, "text", {}, ["Content"]);
+        "note": "Text senza attributi mantiene tag e contenuto";
+    },
+    {
+        "id": "action-button";
+        "action": exports.mount_tag;
+        "inputs": (adapter, "action", {"type": "button"}, ["Click"]);
+        "note": "Action button produce un elemento button";
+    },
+    {
+        "id": "row-content";
+        "action": exports.mount_tag;
+        "inputs": (adapter, "row", {}, ["Content"]);
+        "note": "Row produce un contenitore flex";
     }
 );
+
+dict:expected_html := {
+    "text-title": '<span class="text-xs " id="title">Hello</span>';
+    "div-content": "<div>Hello</div>";
+    "action-link": '<a class="btn link " href="/target">Go</a>';
+    "text-plain": '<span class="text-xs ">Content</span>';
+    "action-button": '<button class="px-4 py-2 hover:opacity-80 transition-opacity ">Click</button>';
+    "row-content": '<div class="flex-row  flex">Content</div>';
+};
 
 tuple:test_suite := (
     {
@@ -204,6 +231,7 @@ tuple:test_suite := (
         "note": "Starlette chiude il lifecycle senza server attivo";
     },
     html_cases
+    |> map_records(add_expected, expected_html)
     |> map_records(
         transform_record,
         updates: {"assert": @received == @expected},

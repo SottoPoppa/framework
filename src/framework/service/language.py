@@ -175,6 +175,16 @@ def bind_input(record: Any, value: Any) -> Any:
     return transform_record(record, inputs=(value, *inputs[1:]))
 
 
+def add_expected(record: Any, expected: Any) -> Any:
+    """Add a declared expected value to a record when its key is present."""
+    if not isinstance(record, Mapping) or not isinstance(expected, Mapping):
+        return record
+    key = record.get("id")
+    if key not in expected:
+        return record
+    return transform_record(record, outputs=expected[key])
+
+
 def map_records(records: Any, builder: Any, *args, **kwargs) -> list:
     """Apply a pure builder to every mapping in a sequence."""
     if not isinstance(records, (list, tuple)) or not callable(builder):
@@ -229,6 +239,7 @@ def flatten_records(value: Any) -> list:
 DSL_FUNCTIONS.update({
     "transform_record": transform_record,
     "bind_input": bind_input,
+    "add_expected": add_expected,
     "map_records": map_records,
     "variants": variants,
     "tag_variants": tag_variants,
