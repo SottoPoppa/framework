@@ -12,6 +12,8 @@ class Adapter(APIAdapter):
 
     def __init__(self, **constants: Any):
         super().__init__(**constants)
+        self.config = constants
+        self.name = constants.get("name", self.name)
         self.token_url = (
             constants.get("token_url")
             or constants.get("oauth2_token_url")
@@ -22,6 +24,12 @@ class Adapter(APIAdapter):
         self.scope = constants.get("scope")
         self.audience = constants.get("audience")
         self.auth_style = constants.get("auth_style", "basic")
+        self.grant_type = constants.get("grant_type", "client_credentials")
+        self.authorization_code = constants.get("authorization_code")
+        self.redirect_uri = constants.get("redirect_uri")
+        self.refresh_token = constants.get("refresh_token")
+        self.username = constants.get("username")
+        self.password = constants.get("password")
         self._token_expires_at = 0.0
         self._token_lock = asyncio.Lock()
 
@@ -29,7 +37,29 @@ class Adapter(APIAdapter):
         return bool(self.token) and time.monotonic() < self._token_expires_at
 
     def _token_payload(self) -> dict[str, str]:
-        payload = {"grant_type": "client_credentials"}
+        payload = {"grant_type": str(self.grant_type)}
+        if self.grant_type == "authorization_code":
+            if not self.authorization_code:
+                raise ValueError("OAuth2 authorization_code non configurato")
+            if not self.redirect_uri:
+                raise ValueError("OAuth2 redirect_uri non configurato")
+            payload["code"] = str(self.authorization_code)
+            payload["redirect_uri"] = str(self.redirect_uri)
+        elif self.grant_type == "refresh_token":
+            if not self.refresh_token:
+                raise ValueError("OAuth2 refresh_token non configurato")
+            payload["refresh_token"] = str(self.refresh_token)
+        elif self.grant_type == "password":
+            if not self.username or not self.password:
+                raise ValueError("OAuth2 username e password sono obbligatori")
+            payload["username"] = str(self.username)
+            payload["password"] = str(self.password)
+        elif self.grant_type != "client_credentials":
+            raise ValueError(
+                "OAuth2 grant_type deve essere "
+                "'password', 'client_credentials', 'authorization_code' "
+                "o 'refresh_token'"
+            )
         if self.scope:
             payload["scope"] = str(self.scope)
         if self.audience:
@@ -48,6 +78,7 @@ class Adapter(APIAdapter):
         request_kwargs: dict[str, Any] = {
             "data": self._token_payload(),
             "timeout": aiohttp.ClientTimeout(total=self.timeout),
+            "ssl": self.verify_ssl,
         }
         if self.auth_style == "basic":
             request_kwargs["auth"] = aiohttp.BasicAuth(
@@ -74,6 +105,8 @@ class Adapter(APIAdapter):
 
                 expires_in = float(data.get("expires_in", 3600))
                 self.token = str(data["access_token"])
+                if data.get("refresh_token"):
+                    self.refresh_token = str(data["refresh_token"])
                 self._token_expires_at = time.monotonic() + max(
                     expires_in - 30,
                     0,

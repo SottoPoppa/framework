@@ -1,0 +1,67 @@
+{
+  "id": {
+    "type": "integer",
+    "required": false
+  },
+  "name": {
+    "type": "string",
+    "required": false,
+    "nullable": true
+  },
+  "content": {
+    "type": "string",
+    "required": false,
+    "nullable": true
+  },
+  "status": {
+    "type": "dict",
+    "schema": {
+      "id": {
+        "type": "integer",
+        "required": false
+      },
+      "name": {
+        "type": "string",
+        "required": false
+      }
+    },
+    "allow_unknown": true,
+    "required": false,
+    "nullable": true
+  },
+  "priority": {
+    "type": "integer",
+    "required": false,
+    "nullable": true
+  },
+  "date_creation": {
+    "type": "string",
+    "required": false,
+    "nullable": true
+  },
+  "date_mod": {
+    "type": "string",
+    "required": false,
+    "nullable": true
+  },
+  "entity": {
+    "type": "dict",
+    "schema": {
+      "id": {
+        "type": "integer",
+        "required": false
+      },
+      "name": {
+        "type": "string",
+        "required": false
+      },
+      "completename": {
+        "type": "string",
+        "required": false
+      }
+    },
+    "allow_unknown": true,
+    "required": false,
+    "nullable": true
+  }
+}

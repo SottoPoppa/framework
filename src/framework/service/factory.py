@@ -5,6 +5,7 @@ import asyncio
 import signal
 
 import framework.service.scheme as scheme
+import framework.service.flow as flow
 
 class Repository:
     def __init__(self, **constants):
@@ -99,7 +100,22 @@ class Repository:
 
     async def results(self, transaction, profile):
         """Hook opzionale per post-processing."""
-        return transaction
+        if not self.schema:
+            return transaction
+
+        data = flow.output(transaction) if flow.is_result(transaction) else transaction
+        model = (
+            scheme.schemes.get(self.schema)
+            if isinstance(self.schema, str)
+            else self.schema
+        )
+        if not model:
+            return transaction
+
+        normalized = await scheme.normalize(data, model)
+        if normalized["errors"]:
+            return flow.error(normalized["errors"])
+        return flow.success(normalized["data"])
 
     async def parameters(self, **inputs):
         """Prepara i parametri della rotta risolvendo il template tramite Scheme."""
