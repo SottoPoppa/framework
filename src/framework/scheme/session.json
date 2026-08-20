@@ -26,7 +26,7 @@
         "schema": {
             "full": {
                 "type": "string",
-                "required": true
+                "required": false
             },
             "scheme": {
                 "type": "string",
@@ -41,7 +41,7 @@
                 "schema": {
                     "type": "string"
                 },
-                "required": true
+                "required": false
             },
             "query": {
                 "type": "dict",

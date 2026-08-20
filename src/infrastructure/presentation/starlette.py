@@ -794,7 +794,7 @@ class Adapter(presentation.Port):
         xml_view = await self.presenter.get_view(view)
         controllers = [controller] if controller else []
 
-        runtime_session = await self.defender.session_create(session)
+        runtime_session = await self.defender.session_create(**session)
         rendered_html = await self.render_template(
             runtime_session,
             controllers=controllers,
