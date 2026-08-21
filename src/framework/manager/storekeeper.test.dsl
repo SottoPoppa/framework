@@ -4,15 +4,45 @@ imports: {
     'factory': import("framework.service.factory");
     'orchestrator': import("framework.manager.orchestrator");
     'messenger_module': import("framework.manager.messenger");
-    'defender_module': import("framework.manager.defender")
+    'defender_module': import("framework.manager.defender");
+    'message': import("infrastructure.message.mock")
 };
 
+// Provider di persistenza mock usato dal ciclo CRUD.
 any:provider := imports.persistence.Adapter(name:"test");
 any:preparation_provider := imports.persistence.Adapter(name:"test");
-any:repository := imports.factory.Repository(location: {"test": ["items/{{id}}"]});
+// Il repository traduce il payload del provider nel modello canonico "file".
+any:repository := imports.factory.Repository(
+    location: {"test": ["items/{{id}}"]},
+    model: {
+        "path": {"type": "string"; "required": true; "empty": false};
+        "name": {"type": "string"; "required": true; "empty": false};
+        "extension": {"type": "string"; "required": true; "empty": false};
+        "mime_type": {"type": "string"; "default": "application/octet-stream"};
+        "size": {"type": "integer"; "default": 0};
+        "encoding": {"type": "string"; "default": "utf-8"};
+        "content": {"type": "string"; "default": ""};
+        "metadata": {"type": "dict"; "default": {}};
+        "permissions": {"type": "string"; "default": ""};
+        "owner": {"type": "string"; "default": ""};
+        "created_at": {"type": "datetime"; "nullable": true; "default": none};
+        "modified_at": {"type": "datetime"; "nullable": true; "default": none};
+        "accessed_at": {"type": "datetime"; "nullable": true; "default": none}
+    },
+    mapper: {
+        "path": {"test": "provider_path"};
+        "name": {"test": "provider_name"};
+        "extension": {"test": "provider_extension"}
+    }
+);
 any:orchestrator := imports.orchestrator.Manager(none);
 any:messenger_defender := imports.defender_module.Manager(none, []);
-any:messenger := imports.messenger_module.Manager(messages: [], defender: messenger_defender);
+// Provider message mock per verificare startup/shutdown end-to-end.
+any:message_provider := imports.message.Adapter(name: "console");
+any:messenger := imports.messenger_module.Manager(
+    messages: [message_provider],
+    defender: messenger_defender
+);
 any:preparation_manager := imports.module.Manager(
     providers: [preparation_provider],
     defender: none,
@@ -28,9 +58,11 @@ any:manager := imports.module.Manager(
     maked: {"items": repository}
 );
 
+// Le API del manager e la ricezione dei messaggi sono le operazioni esportate.
 exports: {
     'startup': manager.startup;
     'shutdown': manager.shutdown;
+    'receive_message': messenger.receive;
     'preparation': imports.module.Manager.preparation;
     'overview': manager.overview;
     'gather': manager.gather;
@@ -40,26 +72,75 @@ exports: {
 };
 
 session:session := {"id": "storekeeper-test"};
+// Input provider-specifico: il mapper lo converte nei campi del modello file.
 any:base := {
     "repository": "items";
     "provider": "test";
     "id": "1";
-    "payload": {"name": "created"}
+    "payload": {
+        "provider_path": "/tmp/created.txt";
+        "provider_name": "created";
+        "provider_extension": "txt";
+        "content": "created"
+    }
 };
 any:updated := {
     "repository": "items";
     "provider": "test";
     "id": "1";
-    "payload": {"name": "updated"}
+    "payload": {
+        "provider_path": "/tmp/updated.txt";
+        "provider_name": "updated";
+        "provider_extension": "txt";
+        "content": "updated"
+    }
 };
+// Input minimo usato per verificare preparation e costruzione del task.
 any:preparation_input := {
     "repository": "items";
     "provider": "test";
     "operation": "create";
     "id": "1";
-    "payload": {"name": "created"}
+    "payload": {
+        "provider_path": "/tmp/created.txt";
+        "provider_name": "created";
+        "provider_extension": "txt";
+        "content": "created"
+    }
+};
+// Output atteso dopo mapper e normalizzazione del modello file, inclusi i default.
+any:created_model := {
+    "path": "/tmp/created.txt";
+    "name": "created";
+    "extension": "txt";
+    "mime_type": "application/octet-stream";
+    "size": 0;
+    "encoding": "utf-8";
+    "content": "created";
+    "metadata": {};
+    "permissions": "";
+    "owner": "";
+    "created_at": none;
+    "modified_at": none;
+    "accessed_at": none
+};
+any:updated_model := {
+    "path": "/tmp/updated.txt";
+    "name": "updated";
+    "extension": "txt";
+    "mime_type": "application/octet-stream";
+    "size": 0;
+    "encoding": "utf-8";
+    "content": "updated";
+    "metadata": {};
+    "permissions": "";
+    "owner": "";
+    "created_at": none;
+    "modified_at": none;
+    "accessed_at": none
 };
 
+// Il flusso verifica startup, shutdown, preparation e CRUD nello stesso repository.
 tuple:test_suite := (
     {
         "action": exports.startup;
@@ -69,11 +150,37 @@ tuple:test_suite := (
         "note": "startup invia il messaggio di avvio senza richiedere provider start";
     },
     {
+        "action": exports.receive_message;
+        "inputs": {
+            "args": [session];
+            "kwargs": {"domain": "console:info"}
+        };
+        "outputs": {
+            "message": "Storekeeper avviato.";
+            "domain": "info"
+        };
+        "assert": @received.message == @expected.message & @received.domain == @expected.domain;
+        "note": "il messaggio di startup attraversa Messenger e viene ricevuto dal provider mock";
+    },
+    {
         "action": exports.shutdown;
         "inputs": [session];
         "outputs": none;
         "assert": @received == @expected;
         "note": "shutdown invia il messaggio di arresto";
+    },
+    {
+        "action": exports.receive_message;
+        "inputs": {
+            "args": [session];
+            "kwargs": {"domain": "console:info"}
+        };
+        "outputs": {
+            "message": "Storekeeper arrestato.";
+            "domain": "info"
+        };
+        "assert": @received.message == @expected.message & @received.domain == @expected.domain;
+        "note": "il messaggio di shutdown attraversa Messenger e viene ricevuto dal provider mock";
     },
     {
         "action": exports.preparation;
@@ -90,9 +197,9 @@ tuple:test_suite := (
             "args": [session];
             "kwargs": base
         };
-        "outputs": "created";
-        "assert": @received.name == @expected;
-        "note": "Storekeeper.store inoltra create al provider configurato";
+        "outputs": created_model;
+        "assert": @received == @expected;
+        "note": "Storekeeper.store inoltra create, applica la mappa provider e normalizza il modello file";
     },
     {
         "action": exports.gather;
@@ -100,9 +207,9 @@ tuple:test_suite := (
             "args": [session];
             "kwargs": base
         };
-        "outputs": "created";
-        "assert": @received.name == @expected;
-        "note": "Storekeeper.gather inoltra read al provider configurato";
+        "outputs": created_model;
+        "assert": @received == @expected;
+        "note": "Storekeeper.gather inoltra read e restituisce il modello file normalizzato";
     },
     {
         "action": exports.overview;
@@ -110,9 +217,9 @@ tuple:test_suite := (
             "args": [session];
             "kwargs": base
         };
-        "outputs": "created";
-        "assert": @received.name == @expected;
-        "note": "Storekeeper.overview inoltra view al provider configurato";
+        "outputs": created_model;
+        "assert": @received == @expected;
+        "note": "Storekeeper.overview inoltra view e restituisce il modello file normalizzato";
     },
     {
         "action": exports.change;
@@ -120,9 +227,9 @@ tuple:test_suite := (
             "args": [session];
             "kwargs": updated
         };
-        "outputs": "updated";
-        "assert": @received.name == @expected;
-        "note": "Storekeeper.change inoltra update al provider configurato";
+        "outputs": updated_model;
+        "assert": @received == @expected;
+        "note": "Storekeeper.change inoltra update e riapplica mappa e modello";
     },
     {
         "action": exports.remove;
@@ -130,8 +237,8 @@ tuple:test_suite := (
             "args": [session];
             "kwargs": base
         };
-        "outputs": {};
+        "outputs": none;
         "assert": @received == @expected;
-        "note": "Storekeeper.remove inoltra delete al provider configurato";
+        "note": "Storekeeper.remove inoltra delete al provider configurato; il modello non normalizza una risposta vuota";
     }
 );
