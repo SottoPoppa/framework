@@ -4,6 +4,7 @@ import importlib
 import importlib.util
 import inspect
 import json
+import os
 import signal
 import subprocess
 import sys
@@ -109,7 +110,14 @@ class Infrastructure:
             return target
         if "{{" not in target and "{%" not in target and "{#" not in target:
             return target
-        payload = context or {}
+        payload = {
+            "env": {
+                key: value
+                for key, value in os.environ.items()
+                if key.startswith("GLPI_")
+            },
+            **(context or {}),
+        }
         return self.jinja_env.from_string(target).render(**payload)
 
     def load_toml_config(self, config_file: str | Path, context: Optional[dict] = None) -> dict:
@@ -601,11 +609,18 @@ class Loader:
 
             for adapter_name, adapter_cfg in enabled.items():
                 configs = adapter_cfg if isinstance(adapter_cfg, list) else [adapter_cfg]
+                normalized_configs = []
+                for cfg in configs:
+                    cfg = dict(cfg) if isinstance(cfg, dict) else {}
+                    for key in ("name", "auth"):
+                        if isinstance(cfg.get(key), str):
+                            cfg[key] = cfg[key].casefold()
+                    normalized_configs.append(cfg)
                 resource = Resource(
                     name=f"framework.adapter.{port_key}.{adapter_name}",
                     path=f"src/infrastructure/{port_key}/{adapter_name}.py",
                     kind="ADAPTER",
-                    config=configs,
+                    config=normalized_configs,
                 )
                 await self.framework.load(resource)
 

@@ -48,11 +48,25 @@ path = "src/"
 watch = true
 message = "broker"
 
+[[authentication.oauth]]
+name = "glpi-oauth"
+token_url = '{{ env.get("GLPI_TOKEN_URL", "https://37.99.229.247/api.php/token") }}'
+grant_type = '{{ env.get("GLPI_GRANT_TYPE", "password") }}'
+client_id = '{{ env["GLPI_CLIENT_ID"] }}'
+client_secret = '{{ env["GLPI_CLIENT_SECRET"] }}'
+auth_style = '{{ env.get("GLPI_AUTH_STYLE", "body") }}'
+username = '{{ env["GLPI_USERNAME"] }}'
+password = '{{ env["GLPI_PASSWORD"] }}'
+scope = '{{ env.get("GLPI_SCOPE", "api") }}'
+verify_ssl = '{{ env.get("GLPI_VERIFY_SSL", "false") }}'
+
 [[persistence.api]]
-name = "source"
-path = "src/"
-watch = true
-message = "broker"
+name = "GLPI"
+url = '{{ env.get("GLPI_API_URL", "https://37.99.229.247/") }}'
+auth = '{{ env.get("GLPI_AUTH_NAME", "glpi-oauth") }}'
+app_token = '{{ env["GLPI_APP_TOKEN"] }}'
+timeout = '{{ env.get("GLPI_TIMEOUT", "30") }}'
+verify_ssl = '{{ env.get("GLPI_VERIFY_SSL", "false") }}'
 
 #[[network.neural]]
 #name = "decoder"

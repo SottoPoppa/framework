@@ -22,7 +22,7 @@ import framework.service.scheme as scheme
 # ─────────────────────────────────────────────
 
 def _res(ok, value=None, errors=None, t0=None):
-    return {
+    result = {
         "action":     None,
         "success":    ok,
         "outputs":    value if ok else None,
@@ -33,12 +33,25 @@ def _res(ok, value=None, errors=None, t0=None):
         "duration":   0,
     }
 
+    if isinstance(errors, BaseException):
+        result["exception"] = type(errors).__name__
+        result["traceback"] = "".join(
+            traceback.format_exception(type(errors), errors, errors.__traceback__)
+        )
+
+    return result
+
 def success(v, t0=None): return _res(True,  v,    None, t0)
-def error(e,   t0=None): return _res(False, None, e,    t0)
+def error(e,   t0=None):
+    result = _res(False, None, e, t0)
+    print(f"[FLOW ERROR] {result['errors']}")
+    if result.get("traceback"):
+        print(result["traceback"], end="")
+    return result
 def output(v):           return v.get("outputs") if isinstance(v, dict) and v.get("success") is not None else v
 def is_result(v):        return isinstance(v, dict) and v.get("success") is not None
 def flux(v): return success(output(v)) if v.get("success") is not None else error(v.get("errors"))
-def check(v): return v.get("success") is not None
+def check(v): return isinstance(v, dict) and v.get("success") is True
 
 def trace(result, *, action=None, component=None, pipeline=None, node=None):
     """Aggiunge la provenienza a un risultato Flow senza annidarlo."""
@@ -196,7 +209,6 @@ def result(inputs=None, outputs=None, safe_kwargs=False):
             return collapse(res["data"]), None
 
         
-        keys_models = scheme.schemes.keys()
         args_names = [
             name for name, param in sig.parameters.items() 
             if param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
@@ -208,8 +220,9 @@ def result(inputs=None, outputs=None, safe_kwargs=False):
         async def nkwargs(kwargs):
             if isinstance(inputs, tuple |list):
                 return {k: v for k, v in kwargs.items() if k in inputs}
-            if inputs in scheme.schemes :
-                ooo = await scheme.normalize(kwargs, scheme.schemes[inputs])
+            models = getattr(scheme, "schemes", {})
+            if inputs in models:
+                ooo = await scheme.normalize(kwargs, models[inputs])
                 if ooo.get("errors"):
                     raise ValueError(f"Validation errors: {ooo['errors']}")
                 return ooo["data"]
@@ -224,8 +237,8 @@ def result(inputs=None, outputs=None, safe_kwargs=False):
 
             if isinstance(outputs, tuple | list):
                 return {k: v for k, v in ok.items() if k in outputs}
-            else:
-                return await scheme.normalize(ok, scheme.schemes[outputs]) if outputs in scheme.schemes else ok
+            models = getattr(scheme, "schemes", {})
+            return await scheme.normalize(ok, models[outputs]) if outputs in models else ok
 
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
@@ -246,7 +259,7 @@ def result(inputs=None, outputs=None, safe_kwargs=False):
                     component=func.__module__,
                 )
             except Exception as e:
-                result = error(str(e), t0)
+                result = error(e, t0)
                 return trace(
                     result,
                     action=func.__name__,

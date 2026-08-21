@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Window type="page" title="Cartoleria Irpina | La Tua Carta ad Avellino" background="#fdfbf7,#f5f2eb" font="sans">
-    
+    <Text>{{counter}}</Text>
     <!-- Navbar -->
     <Navigation width="full" background="#1a365d" padding="15px,40px" shadow="medium">
         <Row justify="between" align="center">

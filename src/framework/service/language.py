@@ -940,7 +940,7 @@ class Interpreter:
         fn = scheme.get(env, str(name))
         res = await self._invoke(fn, all_args, all_kwargs, path=call_path)
         if not res["success"]:
-            raise DSLRuntimeError(f"Errore call '{name}': {res['errors']}", meta)
+            return res, env
         return res["outputs"], env
 
     async def _call_dsl_fn(self, fn_triple, args, kwargs, path=""):

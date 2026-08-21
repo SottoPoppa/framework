@@ -1,0 +1,27 @@
+{
+  "hashes": {
+    "Adapter": {
+      "sign_in": {
+        "production": "d54c635b0d09504ce441da4141a4b7b5669e12b4d579bb9c283700eff083f0c9"
+      },
+      "sign_up": {
+        "production": "3fd54595352a9a351bbada57c03418c8b1ca2745f99cffddf8460bf85110d09f"
+      },
+      "sign_out": {
+        "production": "f607f1bb887bdbdf808c845d934221580a3f685ff50b2c46f13d0a0c608cebb4"
+      },
+      "sign_aid": {
+        "production": "499a04e81eadeb38f40e62cfae2474383cd85d1c32be8421766c369b1b090ce7"
+      },
+      "get_user": {
+        "production": "f1c793574ed4d42e226dede5d12cbff51a9f87dd79b39fbc6bf35470ce16bfab"
+      },
+      "get_headers": {
+        "production": "90f285f6369688f9513bee5f10f4a91ab3f369336a340db1c800ab0617ea563c"
+      },
+      "refresh": {
+        "production": "1e4222e741800b85bef8246e22e70c514b56937547d0a5a023d86f8aa223fc5d"
+      }
+    }
+  }
+}

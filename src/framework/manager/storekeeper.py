@@ -67,7 +67,7 @@ class Manager(manager.Port):
         configured_profile = provider.config.get('name')
         if not configured_profile:
             return flow.error(f"Provider {provider} non ha un profilo configurato.")
-        profile = str(configured_profile).lower()
+        profile = str(configured_profile).casefold()
 
         if profile not in repository.location:
             return flow.error(
@@ -102,7 +102,11 @@ class Manager(manager.Port):
     async def _prepare_operations(self, repository, storekeeper, session):
         """Crea i task per tutti i provider compatibili con il repository."""
         tasks = []
+        repository_profiles = set(repository.location)
         for provider in self.persistences:
+            provider_profile = str(provider.config.get('name', '')).casefold()
+            if provider_profile not in repository_profiles:
+                continue
             try:
                 task = await self._prepare_provider(
                     provider, repository, storekeeper, session
@@ -122,7 +126,8 @@ class Manager(manager.Port):
         if not tasks:
             return flow.error(
                 f"Nessun provider compatibile per il repository "
-                f"'{storekeeper.get('repository')}'."
+                f"'{storekeeper.get('repository')}'. "
+                f"Profili richiesti: {sorted(repository_profiles)}."
             )
         return flow.success(tasks)
 

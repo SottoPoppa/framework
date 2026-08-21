@@ -9,10 +9,21 @@ import framework.service.flow as flow
 
 class Repository:
     def __init__(self, **constants):
-        self.location = {k.lower(): v for k, v in constants.get('location', {}).items()}
+        self.location = {
+            str(k).casefold(): v
+            for k, v in constants.get('location', {}).items()
+        }
         self.actions = constants.get('actions', {})
         self.schema = constants.get('model')
         self.mapper = constants.get('mapper', {})
+        self.envelope = constants.get('envelope')
+
+    def _unwrap_response(self, data):
+        if not self.envelope or not isinstance(data, dict):
+            return data
+
+        value = scheme.get(data, self.envelope)
+        return value if value is not None else data
 
     def _map_provider_data(self, data, profile):
         """Converte i nomi del provider nei nomi canonici del modello."""
@@ -130,6 +141,7 @@ class Repository:
             return transaction
 
         data = flow.output(transaction) if flow.is_result(transaction) else transaction
+        data = self._unwrap_response(data)
         data = self._map_provider_data(data, profile)
         model = (
             scheme.schemes.get(self.schema)

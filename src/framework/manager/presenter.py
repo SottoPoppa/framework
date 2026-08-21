@@ -7,7 +7,6 @@ import re
 import xml.etree.ElementTree as ET
 
 import asyncio
-from bs4 import BeautifulSoup
 
 class Manager(manager.Port):
     _session_exempt_methods = {
@@ -174,15 +173,17 @@ class Manager(manager.Port):
             return None
 
         try:
-            # Usiamo il parser standard di BeautifulSoup per non richiedere lxml.
-            soup = BeautifulSoup(xml_string, "html.parser")
+            root = ET.fromstring(xml_string)
+            elemento = root if root.get("id") == target_id else root.find(
+                f".//*[@id='{target_id}']"
+            )
             
-            # Cerchiamo l'elemento con l'id specifico
-            elemento = soup.find(attrs={"id": target_id})
-            
-            if elemento:
-                # Serializziamo il risultato
-                return str(elemento).strip()
+            if elemento is not None:
+                return ET.tostring(
+                    elemento,
+                    encoding="unicode",
+                    method="xml",
+                ).strip()
                 
         except Exception as e:
             print(f"Errore durante l'estrazione: {e}")

@@ -14,18 +14,7 @@
     "nullable": true
   },
   "status": {
-    "type": "dict",
-    "schema": {
-      "id": {
-        "type": "integer",
-        "required": false
-      },
-      "name": {
-        "type": "string",
-        "required": false
-      }
-    },
-    "allow_unknown": true,
+    "type": "integer",
     "required": false,
     "nullable": true
   },

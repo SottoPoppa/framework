@@ -128,6 +128,7 @@ class Manager(manager.Port):
     async def first_completed(self, session, **constants):
         """Attende il primo task completato e restituisce il suo risultato."""
         operations = constants.get('operations', [])
+        errors = []
         #await self.messenger.post(domain='debug',message="⏳ Attesa della prima operazione completata...")
 
         while operations:
@@ -143,9 +144,12 @@ class Manager(manager.Port):
                         task.cancel()
                     return flow.success(flow.output(transaction))
 
+                if flow.is_result(transaction):
+                    errors.extend(transaction.get('errors', []))
+
                 operations = unfinished
 
-            error_msg = "⚠️ Nessuna transazione valida completata"
+            error_msg = errors or "Nessuna transazione valida completata"
             #await messenger.post(domain='debug',message=error_msg)
             return flow.error(error_msg)
 

@@ -16,11 +16,14 @@ async def render(loader, runtime_session, render_node, text=None, file=None, con
     )
     template = environment.from_string(text)
     data = {}
+    managers = {"manager": loader.get_managers()}
     for controller in controllers or []:
         data[controller] = await runtime_session.run(
             controller,
-            {"sid": runtime_session},
+            {"session": runtime_session}|managers,
         )
+
+    #raise Exception(data)
 
     content = template.render(
         constants | {"sid": runtime_session} | data | {"manager": loader.get_managers()}

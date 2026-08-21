@@ -198,6 +198,38 @@ Il file TOML supporta anche il rendering tramite template Jinja2 prima del parsi
 name = "{{ uuid4() }}"
 ```
 
+Per i segreti e i parametri di connessione usare la variabile `env` e non
+inserire i valori direttamente nel repository:
+
+```toml
+client_id = '{{ env["GLPI_CLIENT_ID"] }}'
+client_secret = '{{ env["GLPI_CLIENT_SECRET"] }}'
+password = '{{ env["GLPI_PASSWORD"] }}'
+app_token = '{{ env["GLPI_APP_TOKEN"] }}'
+```
+
+Prima di avviare l'applicazione, esportare le variabili nell'ambiente del
+processo, per esempio:
+
+```bash
+export GLPI_TOKEN_URL="https://glpi.example.com/api.php/token"
+export GLPI_GRANT_TYPE="password"
+export GLPI_CLIENT_ID="..."
+export GLPI_CLIENT_SECRET="..."
+export GLPI_AUTH_STYLE="body"
+export GLPI_USERNAME="..."
+export GLPI_PASSWORD="..."
+export GLPI_SCOPE="api"
+export GLPI_VERIFY_SSL="false"
+export GLPI_API_URL="https://glpi.example.com/"
+export GLPI_AUTH_NAME="glpi-oauth"
+export GLPI_APP_TOKEN="..."
+export GLPI_TIMEOUT="30"
+```
+
+Il loader passa l'ambiente come dizionario Jinja; gli adapter convertono poi i
+valori numerici e booleani (`timeout` e `verify_ssl`) nel tipo necessario.
+
 ### Repository, modelli e mapping dei provider
 
 Un repository DSL definisce sia i percorsi dei provider sia il modello canonico

@@ -5,6 +5,7 @@ from collections.abc import Mapping
 import aiohttp
 
 import framework.port.persistence as persistence
+import framework.port.authentication as authentication
 import framework.service.flow as flow
 
 
@@ -28,10 +29,11 @@ class Adapter(persistence.Port):
         headers
     """
 
-    def __init__(self, **constants):
+    def __init__(self, authentications: list[authentication.Port], **constants):
         self.name = constants.get("provider", "api")
         self.config = constants
         self.auth_name = constants.get("auth")
+        self.authentications = authentications
 
         self.base_url = (
             constants.get("url")
@@ -40,6 +42,7 @@ class Adapter(persistence.Port):
         ).rstrip("/") + "/"
 
         self.token = constants.get("token")
+        self.app_token = constants.get("app_token")
         self.authorization = constants.get(
             "authorization",
             "Bearer"
@@ -113,6 +116,9 @@ class Adapter(persistence.Port):
             else:
                 result["Authorization"] = self.token
 
+        if self.app_token:
+            result["App-Token"] = self.app_token
+
         if headers:
             result.update(headers)
 
@@ -167,25 +173,49 @@ class Adapter(persistence.Port):
                 raise RuntimeError(
                     "Una sessione è necessaria per usare l'autenticazione OAuth."
                 )
-            provider = session.get("providers", {}).get(self.auth_name, {})
+            providers = session.get("providers", {})
+            provider = next(
+                (
+                    value
+                    for key, value in providers.items()
+                    if key == self.auth_name
+                ),
+                {},
+            )
             tokens = provider.get("tokens", {})
             access_token = tokens.get("access_token")
             expires_at = tokens.get("expires_at")
-            if not access_token:
-                raise RuntimeError(
-                    f"Token assente nella sessione per '{self.auth_name}'."
-                )
-            if expires_at is not None and time.time() >= float(expires_at):
-                raise RuntimeError(
-                    f"Token scaduto nella sessione per '{self.auth_name}'."
-                )
-            scheme = tokens.get("token_type", self.authorization)
-            auth_header = tokens.get("auth_header", "Authorization")
-            headers[auth_header] = (
-                f"{scheme} {access_token}"
-                if scheme
-                else access_token
+            auth_provider = next(
+                (
+                    candidate
+                    for candidate in self.authentications
+                    if getattr(candidate, "name", None) == self.auth_name
+                ),
+                None,
             )
+
+            if access_token and (
+                expires_at is None or time.time() < float(expires_at)
+            ):
+                scheme = tokens.get("token_type", self.authorization)
+                auth_header = tokens.get("auth_header", "Authorization")
+                headers[auth_header] = (
+                    f"{scheme} {access_token}"
+                    if scheme
+                    else access_token
+                )
+            elif auth_provider is not None:
+                headers.update(await auth_provider.get_headers())
+            elif not access_token:
+                raise RuntimeError(
+                    f"Token assente nella sessione per '{self.auth_name}' "
+                    "e provider OAuth non disponibile."
+                )
+            else:
+                raise RuntimeError(
+                    f"Token scaduto nella sessione per '{self.auth_name}' "
+                    "e provider OAuth non disponibile."
+                )
 
         if constants.get("headers"):
             headers.update(constants["headers"])
@@ -205,6 +235,15 @@ class Adapter(persistence.Port):
         )
 
         url = self._url(location)
+        request_kwargs = {
+            "method": method,
+            "url": url,
+            "headers": headers,
+            "params": params,
+            "ssl": verify_ssl,
+        }
+        if method not in {"GET", "HEAD"} and payload is not None:
+            request_kwargs["json"] = payload
 
         try:
             async with aiohttp.ClientSession(
@@ -212,12 +251,7 @@ class Adapter(persistence.Port):
             ) as session:
 
                 async with session.request(
-                    method=method,
-                    url=url,
-                    headers=headers,
-                    params=params,
-                    json=payload,
-                    ssl=verify_ssl,
+                    **request_kwargs,
                 ) as response:
 
                     status = response.status
