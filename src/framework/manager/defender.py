@@ -1,4 +1,3 @@
-import time
 from secrets import token_urlsafe
 from typing import Dict, Any
 from urllib.parse import urlparse, parse_qs, urljoin
@@ -162,56 +161,6 @@ class Manager:
                 pass'''
         return flow.success(session)
 
-    async def get_auth_headers(self, session, provider_name: str) -> dict:
-        """Esegue il login del provider e restituisce gli header per una API."""
-        provider = next(
-            (
-                candidate
-                for candidate in self.authentications
-                if getattr(candidate, "name", None) == provider_name
-            ),
-            None,
-        )
-        if provider is None:
-            raise RuntimeError(
-                f"Provider di autenticazione '{provider_name}' non trovato."
-            )
-
-        provider_session = session.setdefault("providers", {}).get(
-            provider_name,
-            {},
-        )
-        tokens = provider_session.get("tokens", {})
-        expires_at = tokens.get("expires_at")
-        token_expired = (
-            expires_at is not None
-            and time.time() >= float(expires_at)
-        )
-
-        if not tokens.get("access_token") or token_expired:
-            config = getattr(provider, "config", {})
-            username = config.get("username") or config.get("email")
-            password = config.get("password")
-            if not username or not password:
-                raise RuntimeError(
-                    f"Credenziali mancanti per il provider '{provider_name}'."
-                )
-
-            result = await provider.sign_in(username, password)
-            if not result.get("success"):
-                raise RuntimeError(str(result.get("errors", [])))
-
-            outputs = result.get("outputs", {})
-            session.setdefault("providers", {}).update(
-                outputs.get("providers", {})
-            )
-
-        get_headers = getattr(provider, "get_headers", None)
-        if not callable(get_headers):
-            raise RuntimeError(
-                f"Provider '{provider_name}' non supporta get_headers()."
-            )
-        return await get_headers(session)
 
     @flow.result(outputs=('session',))
     async def activate(self, session, **constants) -> Any:

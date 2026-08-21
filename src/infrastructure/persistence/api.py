@@ -1,8 +1,8 @@
+import time
 from urllib.parse import urljoin
 
 import aiohttp
 
-from framework.manager.defender import Manager as Defender
 import framework.port.persistence as persistence
 import framework.service.flow as flow
 
@@ -27,10 +27,9 @@ class Adapter(persistence.Port):
         headers
     """
 
-    def __init__(self, defender: Defender = None, **constants):
+    def __init__(self, **constants):
         self.name = constants.get("provider", "api")
         self.config = constants
-        self.defender = defender
         self.auth_name = constants.get("auth")
 
         self.base_url = (
@@ -118,20 +117,6 @@ class Adapter(persistence.Port):
 
         return result
 
-    async def _authentication_headers(self, session):
-        if not self.auth_name:
-            return {}
-        if self.defender is None:
-            raise RuntimeError(
-                f"Defender non disponibile per il provider '{self.auth_name}'."
-            )
-        if not isinstance(session, dict):
-            raise RuntimeError(
-                "Una sessione è necessaria per usare l'autenticazione OAuth."
-            )
-
-        return await self.defender.get_auth_headers(session, self.auth_name)
-
     # ------------------------------------------------------------------
     # Request
     # ------------------------------------------------------------------
@@ -176,7 +161,30 @@ class Adapter(persistence.Port):
         )
 
         headers = self._headers()
-        headers.update(await self._authentication_headers(session))
+        if self.auth_name:
+            if not isinstance(session, dict):
+                raise RuntimeError(
+                    "Una sessione è necessaria per usare l'autenticazione OAuth."
+                )
+            provider = session.get("providers", {}).get(self.auth_name, {})
+            tokens = provider.get("tokens", {})
+            access_token = tokens.get("access_token")
+            expires_at = tokens.get("expires_at")
+            if not access_token:
+                raise RuntimeError(
+                    f"Token assente nella sessione per '{self.auth_name}'."
+                )
+            if expires_at is not None and time.time() >= float(expires_at):
+                raise RuntimeError(
+                    f"Token scaduto nella sessione per '{self.auth_name}'."
+                )
+            scheme = tokens.get("token_type", self.authorization)
+            auth_header = tokens.get("auth_header", "Authorization")
+            headers[auth_header] = (
+                f"{scheme} {access_token}"
+                if scheme
+                else access_token
+            )
 
         if constants.get("headers"):
             headers.update(constants["headers"])

@@ -244,6 +244,7 @@ class Adapter(authentication.Port):
         tokens = {
             "access_token": str(data[self.token_field]),
             "token_type": data.get("token_type", self.auth_scheme),
+            "auth_header": self.auth_header,
             "expires_in": int(data.get(self.expires_field, 3600)),
         }
         tokens["expires_at"] = time.time() + max(
