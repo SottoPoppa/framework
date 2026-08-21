@@ -2,6 +2,7 @@ from urllib.parse import urljoin
 
 import aiohttp
 
+from framework.manager.defender import Manager as Defender
 import framework.port.persistence as persistence
 import framework.service.flow as flow
 
@@ -26,8 +27,11 @@ class Adapter(persistence.Port):
         headers
     """
 
-    def __init__(self, **constants):
+    def __init__(self, defender: Defender = None, **constants):
         self.name = constants.get("provider", "api")
+        self.config = constants
+        self.defender = defender
+        self.auth_name = constants.get("auth")
 
         self.base_url = (
             constants.get("url")
@@ -40,7 +44,6 @@ class Adapter(persistence.Port):
             "authorization",
             "Bearer"
         )
-
         self.accept = constants.get(
             "accept",
             "application/json"
@@ -115,6 +118,20 @@ class Adapter(persistence.Port):
 
         return result
 
+    async def _authentication_headers(self, session):
+        if not self.auth_name:
+            return {}
+        if self.defender is None:
+            raise RuntimeError(
+                f"Defender non disponibile per il provider '{self.auth_name}'."
+            )
+        if not isinstance(session, dict):
+            raise RuntimeError(
+                "Una sessione è necessaria per usare l'autenticazione OAuth."
+            )
+
+        return await self.defender.get_auth_headers(session, self.auth_name)
+
     # ------------------------------------------------------------------
     # Request
     # ------------------------------------------------------------------
@@ -158,9 +175,11 @@ class Adapter(persistence.Port):
             "params"
         )
 
-        headers = self._headers(
-            constants.get("headers")
-        )
+        headers = self._headers()
+        headers.update(await self._authentication_headers(session))
+
+        if constants.get("headers"):
+            headers.update(constants["headers"])
 
         timeout = aiohttp.ClientTimeout(
             total=float(

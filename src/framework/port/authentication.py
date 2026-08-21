@@ -6,11 +6,11 @@ class Port(ABC):
 
     # Mappa: nome_metodo -> decoratore da applicare automaticamente
     _method_decorators = {
-        "sign_in":      flow.result(inputs=("email", "password"), outputs=("session",)),
-        "sign_up":      flow.result(inputs=("user","password"), outputs=("session",)),
+        "sign_in":      flow.result(inputs=("email", "password")),
+        "sign_up":      flow.result(inputs=("user","password")),
         "sign_out":     flow.result(inputs=("session",),          outputs=("session",)),
-        "sign_aid":     flow.result(outputs=("session",), safe_kwargs=True),
-        "get_user": flow.result(inputs=("session",),          outputs=("user",)),
+        "sign_aid":     flow.result(safe_kwargs=True),
+        "get_user": flow.result(inputs=("session",)),
     }
 
     _seeds = []

@@ -1,10 +1,12 @@
+import asyncio
 import time
 import aiohttp
 
-import framework.port.persistence as persistence
+import framework.port.authentication as authentication
+import framework.service.flow as flow
 
 
-class Adapter(persistence.Port):
+class Adapter(authentication.Port):
     """
     Generic OAuth2 authentication adapter.
 
@@ -20,6 +22,7 @@ class Adapter(persistence.Port):
 
     def __init__(self, **constants):
         self.name = constants.get("provider", constants.get("name", "oauth"))
+        self.config = constants
 
         self.token_url = str(
             constants.get("token_url", "")
@@ -39,9 +42,13 @@ class Adapter(persistence.Port):
         self.scope = constants.get("scope")
 
         self.client_auth = constants.get(
-            "client_auth",
-            constants.get("token_auth_method", "basic"),
+            "auth_style",
+            constants.get(
+                "client_auth",
+                constants.get("token_auth_method", "basic"),
+            ),
         )
+        self.audience = constants.get("audience")
 
         self.token_field = constants.get(
             "token_field",
@@ -74,6 +81,7 @@ class Adapter(persistence.Port):
 
         self.access_token = None
         self.token_expires_at = 0
+        self._token_lock = asyncio.Lock()
 
     @staticmethod
     def _bool(value):
@@ -90,7 +98,11 @@ class Adapter(persistence.Port):
 
         return bool(value)
 
-    async def _authenticate(self):
+    async def _authenticate(self, username=None, password=None):
+        async with self._token_lock:
+            return await self._authenticate_unlocked(username, password)
+
+    async def _authenticate_unlocked(self, username=None, password=None):
         if not self.token_url:
             raise RuntimeError(
                 "OAuth token_url is not configured"
@@ -113,20 +125,24 @@ class Adapter(persistence.Port):
 
         if self.scope:
             payload["scope"] = self.scope
+        if self.audience:
+            payload["audience"] = self.audience
 
         if self.grant_type == "password":
-            if not self.username:
+            username = username or self.username
+            password = password or self.password
+            if not username:
                 raise RuntimeError(
                     "OAuth username is not configured"
                 )
 
-            if not self.password:
+            if not password:
                 raise RuntimeError(
                     "OAuth password is not configured"
                 )
 
-            payload["username"] = self.username
-            payload["password"] = self.password
+            payload["username"] = username
+            payload["password"] = password
 
         auth = None
 
@@ -211,22 +227,82 @@ class Adapter(persistence.Port):
                 expires_in = max(expires_in - 60, 1)
 
                 self.access_token = access_token
-                self.token_expires_at = (
-                    time.time() + expires_in
-                )
+                self.token_expires_at = time.monotonic() + expires_in
+                return data
 
-    async def get_headers(self):
-        if (
-            not self.access_token
-            or time.time() >= self.token_expires_at
-        ):
-            await self._authenticate()
+    async def sign_in(self, email, password):
+        if self.grant_type != "password":
+            return flow.error(
+                "Il provider OAuth configurato non supporta il login password."
+            )
+
+        try:
+            data = await self._authenticate(email, password)
+        except Exception as exc:
+            return flow.error(str(exc))
+
+        tokens = {
+            "access_token": str(data[self.token_field]),
+            "token_type": data.get("token_type", self.auth_scheme),
+            "expires_in": int(data.get(self.expires_field, 3600)),
+        }
+        tokens["expires_at"] = time.time() + max(
+            tokens["expires_in"] - 60,
+            1,
+        )
+        if data.get("refresh_token"):
+            tokens["refresh_token"] = str(data["refresh_token"])
+
+        return flow.success({
+            "providers": {
+                self.name: {
+                    "tokens": tokens,
+                    "user": {"email": email},
+                }
+            },
+            "user": {"email": email},
+        })
+
+    async def sign_up(self, email, password):
+        return flow.error("OAuth non supporta la registrazione tramite questo provider.")
+
+    async def sign_out(self, session):
+        session.get("providers", {}).pop(self.name, None)
+        return flow.success({"session": session})
+
+    async def sign_aid(self, **constants):
+        return flow.error("OAuth non supporta questa operazione.")
+
+    async def get_user(self, session):
+        provider = session.get("providers", {}).get(self.name)
+        if not provider:
+            return flow.error("Utente non autenticato.")
+        return flow.success(provider.get("user", {}))
+
+    async def get_headers(self, session=None):
+        if session is not None:
+            provider = session.get("providers", {}).get(self.name)
+            tokens = provider.get("tokens", {}) if provider else {}
+            access_token = tokens.get("access_token")
+            if not access_token:
+                raise RuntimeError(
+                    f"Token OAuth assente nella sessione per '{self.name}'."
+                )
+            auth_scheme = tokens.get("token_type", self.auth_scheme)
+        else:
+            if (
+                not self.access_token
+                or time.monotonic() >= self.token_expires_at
+            ):
+                await self._authenticate()
+            access_token = self.access_token
+            auth_scheme = self.auth_scheme
 
         return {
             self.auth_header: (
-                f"{self.auth_scheme} {self.access_token}"
-                if self.auth_scheme
-                else self.access_token
+                f"{auth_scheme} {access_token}"
+                if auth_scheme
+                else access_token
             )
         }
 

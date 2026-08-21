@@ -169,6 +169,28 @@ name = "tui"
 
 Ogni blocco (`persistence`, `presentation`, `message`, `manager`, ...) attiva un adapter corrispondente in `src/infrastructure/`. Il `Loader` fa discovery automatico solo degli adapter effettivamente presenti nel file.
 
+Un adapter API può usare un provider OAuth nominato nella stessa configurazione:
+
+```toml
+[[authentication.oauth]]
+name = "provider"
+token_url = "https://auth.example.com/oauth/token"
+grant_type = "password"
+client_id = "client-id"
+client_secret = "client-secret"
+username = "user@example.com"
+password = "password"
+
+[[persistence.api]]
+name = "external-api"
+url = "https://api.example.com"
+auth = "provider"
+```
+
+Prima di ogni richiesta, l'adapter API usa il `Defender Manager` per eseguire
+il login OAuth quando necessario e aggiunge il token alla richiesta. Il token
+viene mantenuto nella sessione e rinnovato quando scade.
+
 Il file TOML supporta anche il rendering tramite template Jinja2 prima del parsing.
 
 ```toml
