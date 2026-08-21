@@ -12,6 +12,32 @@ class Repository:
         self.location = {k.lower(): v for k, v in constants.get('location', {}).items()}
         self.actions = constants.get('actions', {})
         self.schema = constants.get('model')
+        self.mapper = constants.get('mapper', {})
+
+    def _map_provider_data(self, data, profile):
+        """Converte i nomi del provider nei nomi canonici del modello."""
+        if isinstance(data, list):
+            return [self._map_provider_data(item, profile) for item in data]
+        if not isinstance(data, dict) or not isinstance(self.mapper, dict):
+            return data
+
+        profile_key = str(profile).lower()
+        mapping = {}
+        for model_key, provider_keys in self.mapper.items():
+            if not isinstance(provider_keys, dict):
+                continue
+            mapping.update({
+                model_key: source
+                for name, source in provider_keys.items()
+                if str(name).lower() == profile_key
+            })
+
+        mapped = dict(data)
+        for model_key, provider_path in mapping.items():
+            value = scheme.get(data, provider_path)
+            if value is not None:
+                mapped = scheme.put(mapped, model_key, value)
+        return mapped
 
     def get_requirements(self, template_str):
         """
@@ -63,7 +89,7 @@ class Repository:
                     if p != p2 and p2.startswith(p + '.'):
                         final_paths.discard(p)
 
-            return list(final_paths)
+            return sorted(final_paths)
         except Exception:
             # Fallback
             return re.findall(r'\{(\w+)\}', template_str)
@@ -104,6 +130,7 @@ class Repository:
             return transaction
 
         data = flow.output(transaction) if flow.is_result(transaction) else transaction
+        data = self._map_provider_data(data, profile)
         model = (
             scheme.schemes.get(self.schema)
             if isinstance(self.schema, str)

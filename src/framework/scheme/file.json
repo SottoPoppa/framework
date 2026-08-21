@@ -25,7 +25,7 @@
     "comment": "Tipo MIME del file (es. text/plain, application/json, image/png)."
   },
   "size": {
-    "type": "int",
+    "type": "integer",
     "required": false,
     "default": 0,
     "min": 0,

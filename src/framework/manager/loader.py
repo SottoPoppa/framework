@@ -910,7 +910,8 @@ class Loader:
         # Passa il filtro come constant al metodo run()
         import framework.service.flow as flow
 
-        result = await tester.run(filter=filter_value)
+        session = getattr(self.app, "_session", None)
+        result = await tester.run(session, filter=filter_value)
         return flow.output(result) if flow.is_result(result) else result
 
     async def verify_contracts(self, config_toml_path: Any) -> bool:

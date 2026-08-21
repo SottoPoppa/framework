@@ -84,7 +84,6 @@ def resolve_export_alias(
 
 
 class Manager(manager.Port):
-    _session_exempt_methods = {"run"}
     def __init__(self, loader: loader_module.Loader, **constants):
         """Inizializza il Manager per l'esecuzione dei test DSL.
 

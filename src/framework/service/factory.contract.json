@@ -6,13 +6,30 @@
     ],
     "select": [
       "Repository.select"
+    ],
+    "parameters": [
+      "Repository.parameters"
+    ],
+    "results": [
+      "Repository.results"
+    ],
+    "mapped_results": [
+      "Repository.results"
     ]
   },
   "hashes": {
     "Repository": {
+      "parameters": {
+        "test": "acb1e2ebed0419c72b03e55720d892eccca188640d9bde62d15c044b4b12dd25",
+        "production": "acb1e2ebed0419c72b03e55720d892eccca188640d9bde62d15c044b4b12dd25"
+      },
+      "results": {
+        "test": "fdfc401490af66945f98e56bb2ecd27a3b36e217582dedd3d21df2a8b30f35ed",
+        "production": "fdfc401490af66945f98e56bb2ecd27a3b36e217582dedd3d21df2a8b30f35ed"
+      },
       "get_requirements": {
-        "test": "74b0e92d273e39c07ee33f0568ad555aeda7ed3130e6a2f2de1dc23fe5743c00",
-        "production": "74b0e92d273e39c07ee33f0568ad555aeda7ed3130e6a2f2de1dc23fe5743c00"
+        "test": "2a751756ac17d8b7c4683ce2a1be0d5053a5d3923a2e75c37f4e07ddf03d742e",
+        "production": "2a751756ac17d8b7c4683ce2a1be0d5053a5d3923a2e75c37f4e07ddf03d742e"
       },
       "select": {
         "test": "710bd4ece15f563addcd5b33e21998340930479873561d6ccd0f087edc9999cf",
