@@ -1,7 +1,6 @@
 [project]
 name = "cloud.colosso"
 version = "0.1.0"
-key = "replace-this-development-key"
 description = "Un'app di esempio con OmniPort"  
 readme = "README.md"
 dependencies = [
@@ -10,6 +9,7 @@ dependencies = [
 ]
 
 [manager.defender]
+key = "replace-this-development-key"
 soglia_tentativi = 5
 timeout_blocchi = 3600
 presentation = "demo.dsl"

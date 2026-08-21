@@ -611,22 +611,24 @@ class Adapter(presentation.Port):
             ),
             Middleware(DefenderMiddleware, defender=self.defender,routes=self.routes),
             #Middleware(NoCacheMiddleware),
-            #Middleware(CSRFMiddleware, secret=self.config['project']['key']),
+            #Middleware(CSRFMiddleware, secret=self._session_secret()),
         ]
         self.active_websockets = {} # sid -> [websocket]
         self.validate_adapter()
 
     def _session_secret(self):
-        project = self.config.get('project', {})
-        secret = project.get('key') if isinstance(project, dict) else None
-        secret = secret or self.config.get('session_key')
+        config = getattr(getattr(self, 'loader', None), 'current_config', {})
+        defender = config.get('manager', {}).get('defender', {}) if isinstance(config, dict) else {}
+        secret = defender.get('key') if isinstance(defender, dict) else None
         if not secret:
-            project = getattr(getattr(self, 'loader', None), 'current_config', {}).get('project', {})
-            secret = project.get('key') if isinstance(project, dict) else None
+            manager = self.config.get('manager', {})
+            defender = manager.get('defender', {}) if isinstance(manager, dict) else {}
+            secret = defender.get('key') if isinstance(defender, dict) else None
+        secret = secret or self.config.get('session_key')
         if not secret:
             if self.config.get('dev'):
                 return secrets.token_urlsafe(32)
-            raise RuntimeError("Configurare project.key o session_key per l'adapter Starlette")
+            raise RuntimeError("Configurare manager.defender.key o session_key per l'adapter Starlette")
         return secret
 
     async def http_exception_handler(self,request, exc):

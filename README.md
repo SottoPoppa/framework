@@ -128,7 +128,7 @@ python3 public/main.py --install
 
 ### 4. Configura la sicurezza e avvia l'applicazione
 
-Per l'adapter Starlette, `project.key` è obbligatoria per firmare la sessione. Sostituisci il valore di esempio con una chiave segreta non versionata in un ambiente reale. Le origini CORS sono vuote per default e devono essere configurate esplicitamente quando servono.
+Per l'adapter Starlette, `manager.defender.key` è obbligatoria per firmare la sessione. Sostituisci il valore di esempio con una chiave segreta non versionata in un ambiente reale. Le origini CORS sono vuote per default e devono essere configurate esplicitamente quando servono.
 
 ```bash
 python3 public/main.py

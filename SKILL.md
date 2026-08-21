@@ -177,10 +177,12 @@ Gli alias reactive cercano esclusivamente `src/application/controller/<alias>.ds
 ```toml
 [project]
 name = "my_app"
-key = "SECRET_KEY"
 
 [project.policy]
 presentation = "web.toml"  # → src/application/policy/presentation/web.toml
+
+[manager.defender]
+key = "SECRET_KEY"
 
 [presentation.backend]
 adapter = "starlette"

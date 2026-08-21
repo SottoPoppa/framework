@@ -4,12 +4,12 @@ imports: {
     'types': import("types")
 };
 
-any:adapter := imports.module.Adapter(loader: none, defender: none, presenter: none, messenger: none, project: {"key": "test-key"});
+any:adapter := imports.module.Adapter(loader: none, defender: none, presenter: none, messenger: none, manager: {"defender": {"key": "test-key"}});
 any:unsupported_request := imports.module.Request({"type": "http"; "method": "PUT"; "path": "/"; "query_string": ""; "headers": []; "session": {}});
 any:action_request := imports.types.SimpleNamespace(method: "GET", query_params: {"q": "dsl"}, session: {});
 any:authenticate := imports.mock.AsyncMock(return_value: {"success": true; "outputs": {"user": "alice"}; "errors": []});
 any:auth_defender := imports.types.SimpleNamespace(authenticate: authenticate);
-any:auth_adapter := imports.module.Adapter(loader: none, defender: auth_defender, presenter: none, messenger: none, project: {"key": "test-key"});
+any:auth_adapter := imports.module.Adapter(loader: none, defender: auth_defender, presenter: none, messenger: none, manager: {"defender": {"key": "test-key"}});
 
 exports: {
     'attrs': imports.module.attrs;
