@@ -151,6 +151,89 @@ Prima di creare o modificare business logic in un file `.dsl`, leggi sempre `src
 - Le chiamate a moduli Python importati sono affidabili per funzioni/metodi già esposti; il runner DSL dei test non costruisce in modo affidabile istanze Python arbitrarie né consente di patchare i loro attributi con assegnazioni imperative.
 - Commenti su singola riga con `//`. I blocchi `/* ... */` non si annidano: il primo `*/` incontrato chiude il blocco, indipendentemente dall'intenzione.
 
+### Repository DSL e normalizzazione delle risposte
+
+I repository applicativi definiscono il percorso del provider, il modello
+canonico e l'eventuale mapping delle chiavi nella risposta:
+
+```dsl
+factory:repository := {
+    location: {
+        "GITHUB": ["repos/{{ owner }}/{{ name }}"]
+    };
+    model: "repository";
+    mapper: {
+        "name": {"GITHUB": "name"};
+        "owner": {"GITHUB": "owner.login"};
+        "stars": {"GITHUB": "stargazers_count"}
+    }
+};
+```
+
+Regole:
+
+1. `location` contiene i template dei percorsi per ciascun provider.
+2. `model` identifica lo schema canonico da usare per la risposta.
+3. `mapper` ha direzione **chiave del modello → percorso nella risposta del
+   provider**. Sono supportati percorsi annidati, come `owner.login`.
+4. I profili provider vengono normalizzati in lowercase dal repository:
+   usa quindi `github` quando invochi `parameters()` o `results()`, anche se
+   la chiave è dichiarata come `GITHUB` nel DSL.
+5. `Repository.results()` estrae il payload Flow, applica il mapper del
+   profilo, invoca `scheme.normalize()` e restituisce il modello normalizzato.
+   Un risultato Flow fallito deve essere propagato senza trasformarlo.
+
+Il mapping delle risposte non sostituisce automaticamente le chiavi dei
+payload in uscita: per modificare il formato richiesto da un provider,
+definisci esplicitamente i parametri nel repository o nell'adapter.
+
+### Ciclo completo: Storekeeper → output
+
+Una richiesta di persistenza segue questo percorso:
+
+```text
+caller
+  → Storekeeper.gather/store/change/remove/overview(session, ...)
+  → Repository DSL
+  → selezione dei provider compatibili
+  → Repository.parameters()
+  → Adapter CRUD / Adapter.request()
+  → risposta HTTP del provider
+  → Orchestrator.first_completed()
+  → Repository.results()
+  → scheme.normalize()
+  → Flow result
+  → flow.output(result)
+```
+
+Dettaglio operativo:
+
+1. Il chiamante invoca un metodo pubblico di Storekeeper passando sempre la
+   `session` come primo argomento operativo. L'operazione viene tradotta nel
+   verbo CRUD corrispondente: `gather` → `read`, `store` → `create`,
+   `change` → `update`, `remove` → `delete`, `overview` → `view`.
+2. Storekeeper carica il file
+   `src/application/repository/<nome>.dsl` tramite Defender e ne crea
+   un'istanza `Repository`, mantenendola in cache.
+3. Per ogni persistence provider configurato, verifica che il profilo
+   lowercase esista in `repository.location`. Poi `Repository.parameters()`
+   seleziona il template più specifico, risolve i valori Jinja e costruisce
+   `location`, `payload`, `filter` e `provider`.
+4. Storekeeper crea un task per il metodo CRUD del provider e passa la stessa
+   sessione al metodo. Se il provider usa OAuth, l'adapter legge dalla
+   sessione `session["providers"][auth]["tokens"]` e rifiuta richieste senza
+   token o con token scaduto.
+5. Orchestrator coordina i task. Con `first_completed()` conserva il primo
+   risultato Flow valido e annulla le operazioni ancora pendenti.
+6. Il callback `Repository.results()` estrae il payload con `flow.output()`,
+   applica il mapping provider → modello canonico e normalizza il dato usando
+   lo schema indicato da `model`. Errori di normalizzazione diventano un
+   `flow.error(...)`.
+7. Il risultato restituito resta un Flow: prima di usarne il payload, il
+   chiamante deve verificare `result["success"]` e chiamare
+   `flow.output(result)`. Non passare direttamente il dizionario Flow a una
+   risposta HTTP o a un renderer.
+
 ---
 
 ## 🖼️ Sistema di Presentazione XML

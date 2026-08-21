@@ -198,6 +198,71 @@ Il file TOML supporta anche il rendering tramite template Jinja2 prima del parsi
 name = "{{ uuid4() }}"
 ```
 
+### Repository, modelli e mapping dei provider
+
+Un repository DSL definisce sia i percorsi dei provider sia il modello canonico
+usato per normalizzare le risposte:
+
+```dsl
+factory:repository := {
+    location: {
+        "GITHUB": [
+            "repos/{{ owner }}/{{ name }}"
+        ]
+    };
+
+    model: "repository";
+
+    mapper: {
+        "name": {"GITHUB": "name"};
+        "owner": {"GITHUB": "owner.login"};
+        "stars": {"GITHUB": "stargazers_count"}
+    }
+};
+```
+
+`mapper` usa la forma:
+
+```text
+chiave_del_modello: {
+    PROFILO_PROVIDER: percorso_nella_risposta
+}
+```
+
+Il flusso di una risposta è:
+
+```text
+provider response
+    → mapper del profilo
+    → chiavi canoniche del modello
+    → scheme.normalize()
+    → Repository.results()
+```
+
+Per esempio, una risposta GitHub come:
+
+```json
+{
+    "name": "framework",
+    "owner": {"login": "SottoPoppa"},
+    "stargazers_count": 12
+}
+```
+
+viene trasformata nel modello applicativo:
+
+```json
+{
+    "name": "framework",
+    "owner": "SottoPoppa",
+    "stars": 12
+}
+```
+
+I percorsi annidati, come `owner.login`, sono supportati. Il modello indicato
+da `model` viene poi validato e completato con i valori di default definiti
+nello schema JSON.
+
 ## Risultati Flow
 
 I metodi pubblici dei Manager e le API degli Adapter usano un contratto comune
