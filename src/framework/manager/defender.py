@@ -8,8 +8,16 @@ import framework.service.scheme as scheme
 import framework.service.flow as flow
 import framework.manager.loader as loader
 import framework.port.authentication as authentication
+import framework.port.manager as manager
 
-class Manager:
+class Manager(manager.Port):
+    _session_exempt_methods = {
+        "session_create",
+        "session_get",
+        "get_policy",
+        "authorized",
+        "resolve_route",
+    }
     def __init__(self, loader: loader.Loader, authentications: list[authentication.Port], **constants):
         """
         Inizializza il manager con i servizi necessari alla gestione delle richieste.
@@ -79,8 +87,9 @@ class Manager:
     @flow.result(inputs='session')
     async def session_create(self, env={},**session):
         env = env | {**self.managers}
-        print(session)
-        self.interpreter.session_create(sid=session.get('id'),env=env)
+        if not session.get("id"):
+            session["id"] = token_urlsafe(16)
+        self.interpreter.session_create(sid=session, env=env)
         return language.SessionHandle(self.interpreter, session=session)
 
     def session_get(self, sid) -> language.SessionHandle | None:

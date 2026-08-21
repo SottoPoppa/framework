@@ -1,4 +1,5 @@
 import framework.port.presentation as presentation
+import framework.port.manager as manager
 import framework.service.flow as flow
 from framework.manager.loader import Loader
 
@@ -8,7 +9,15 @@ import xml.etree.ElementTree as ET
 import asyncio
 from bs4 import BeautifulSoup
 
-class Manager:
+class Manager(manager.Port):
+    _session_exempt_methods = {
+        "sono_stessa_risorsa",
+        "split_text_and_children",
+        "apply_text_and_children",
+        "estrai_da_nodo",
+        "estrai_attributi_tag",
+        "estrai_da_xml_string",
+    }
     def __init__(self, presentations: list[presentation.Port], loader:Loader, **constants):
         self.presentations = presentations
         self.loader = loader
@@ -35,11 +44,11 @@ class Manager:
                 await presentation.stop(session)
 
     @flow.result()
-    async def get_view(self,path):
+    async def get_view(self, session, path):
         return await self.loader.resource(path)
 
     @flow.result(safe_kwargs=True)
-    async def get_attribute(self,**constants):
+    async def get_attribute(self, session, **constants):
         driver = self._get_driver()
         return await driver.get_attribute(constants.get('widget'),constants.get('field')) if driver else None
 
@@ -47,7 +56,7 @@ class Manager:
         return self.presentations[-1] if self.presentations else None
 
     @flow.result(safe_kwargs=True)
-    async def selector(self,**constants):
+    async def selector(self, session, **constants):
         driver = self._get_driver()
         return await driver.selector(**constants) if driver else None
 
@@ -58,12 +67,12 @@ class Manager:
         await driver.rebuild(node_id)
     
     @flow.result(safe_kwargs=True)
-    async def navigate(self,**constants):
+    async def navigate(self, session, **constants):
         driver = self._get_driver()
         return await driver.apply_route(**constants) if driver else None
         
     @flow.result()
-    async def rebuild(self,node_id,session_id,context):
+    async def rebuild(self, session, node_id, session_id, context):
         
         driver = self._get_driver()
         if driver and hasattr(driver, 'rebuild'):

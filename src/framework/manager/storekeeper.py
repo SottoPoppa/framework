@@ -1,6 +1,7 @@
 import asyncio
 
 import framework.port.persistence as persistence
+import framework.port.manager as manager
 import framework.service.flow as flow
 from framework.service.factory import Repository
 
@@ -9,7 +10,7 @@ from framework.manager.orchestrator import Manager as Orchestrator
 from framework.manager.defender import Manager as Defender
 
 
-class Manager:
+class Manager(manager.Port):
 
     def __init__(
         self,
@@ -149,6 +150,7 @@ class Manager:
 
         repository, operations = flow.output(state)
         return await self.orchestrator.first_completed(
+            session,
             operations=operations,
             success=repository.results,
         )

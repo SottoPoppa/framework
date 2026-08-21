@@ -5,6 +5,7 @@ from typing import Optional
 
 import framework.service.diagnostic as diagnostic
 import framework.service.language as language
+import framework.port.manager as manager
 import framework.service.flow as flow
 import framework.manager.loader as loader_module
 
@@ -82,7 +83,8 @@ def resolve_export_alias(
     return None
 
 
-class Manager:
+class Manager(manager.Port):
+    _session_exempt_methods = {"run"}
     def __init__(self, loader: loader_module.Loader, **constants):
         """Inizializza il Manager per l'esecuzione dei test DSL.
 
@@ -125,7 +127,7 @@ class Manager:
         pass
 
     @flow.result(safe_kwargs=True)
-    async def run(self, **constants):
+    async def run(self, session, **constants):
         """Esegue la suite di test DSL filtrata secondo il prefisso configurato."""
         filter_raw = constants.get('filter', self.filter_raw)
         self.filter_raw = filter_raw

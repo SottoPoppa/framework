@@ -7,8 +7,10 @@ import framework.service.language as language
 import framework.service.flow as flow
 import framework.service.scheme as scheme
 import framework.manager.messenger as messenger
+import framework.port.manager as manager
 
-class Manager:
+class Manager(manager.Port):
+    _session_exempt_methods = {"_select_provider"}
     def __init__(self, messenger: messenger.Manager,**constants):
         self.defender = constants.get('defender')
         self.messenger = constants.get('messenger')
@@ -76,7 +78,7 @@ class Manager:
         except Exception as e:
             print(f"Errore durante l'esecuzione: {e}")'''
 
-    async def add_file(self, name, source):
+    async def add_file(self, session, name, source):
         return await self.interpreter.add_file(name, source)
 
     async def create_session(self, session, env={}):
@@ -123,7 +125,7 @@ class Manager:
     # ── API ────────────────────────────────────────────────────────────────
 
     @flow.result(safe_kwargs=True)
-    async def first_completed(self, **constants):
+    async def first_completed(self, session, **constants):
         """Attende il primo task completato e restituisce il suo risultato."""
         operations = constants.get('operations', [])
         #await self.messenger.post(domain='debug',message="⏳ Attesa della prima operazione completata...")
@@ -148,7 +150,7 @@ class Manager:
             return flow.error(error_msg)
 
     @flow.result(safe_kwargs=True)
-    async def all_completed(self, **constants) -> Dict[str, Any]:
+    async def all_completed(self, session, **constants) -> Dict[str, Any]:
         tasks: List[asyncio.Future] = constants.get('tasks', [])
     
         # Lista per raccogliere i dettagli degli errori da ogni task
@@ -181,7 +183,7 @@ class Manager:
         return {"success": True, "results": results}
 
     @flow.result(safe_kwargs=True)
-    async def chain_completed(self, **constants) -> Dict[str, Any]:
+    async def chain_completed(self, session, **constants) -> Dict[str, Any]:
         """Esegue i task in sequenza, aspettando il completamento di ciascuno prima di passare al successivo."""
         tasks = constants.get('tasks', [])
         results = []
@@ -206,7 +208,7 @@ class Manager:
             return {"state": False, "result": None, "error": error_msg}
 
     @flow.result(safe_kwargs=True)
-    async def together_completed(self, **constants) -> Dict[str, Any]:
+    async def together_completed(self, session, **constants) -> Dict[str, Any]:
         """Esegue tutti i task contemporaneamente senza attendere il completamento di tutti."""
         tasks = constants.get('tasks', [])
 

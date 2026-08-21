@@ -308,7 +308,7 @@ class XmlModalScreen(ModalScreen):
         costruita e registrata durante il rendering della pagina: usare
         open_registered_modal() invece, che non ricarica nulla da disco.
         """
-        xml_view = await self.presenter.get_view(view_path)
+        xml_view = await self.presenter.get_view(self.session, view_path)
         modal = await self.render_template(text=xml_view, controllers=[self.routes[view_path]['GET']['controller']], **context)
         await self.app.push_screen(modal)
         return modal
@@ -705,7 +705,7 @@ class Adapter(presentation.Port):
         controller = route_info.get('controller')
         controllers = [controller] if controller else []
 
-        xml_view = await self.presenter.get_view(view_path)
+        xml_view = await self.presenter.get_view(self.session, view_path)
         return await self.render_template(self.session, controllers=controllers, text=xml_view)
 
     async def render_view(self, url):

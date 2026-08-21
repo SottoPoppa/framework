@@ -1,12 +1,13 @@
 import asyncio
 
 import framework.port.message as message
+import framework.port.manager as manager
 import framework.service.flow as flow
 
 from framework.manager.defender import Manager as Defender
 
 
-class Manager:
+class Manager(manager.Port):
     def __init__(
         self,
         messages: list[message.Port],

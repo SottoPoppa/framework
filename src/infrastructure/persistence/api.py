@@ -1,5 +1,6 @@
 import time
 from urllib.parse import urljoin
+from collections.abc import Mapping
 
 import aiohttp
 
@@ -162,7 +163,7 @@ class Adapter(persistence.Port):
 
         headers = self._headers()
         if self.auth_name:
-            if not isinstance(session, dict):
+            if not isinstance(session, Mapping):
                 raise RuntimeError(
                     "Una sessione è necessaria per usare l'autenticazione OAuth."
                 )

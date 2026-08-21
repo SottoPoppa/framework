@@ -537,6 +537,7 @@ class Loader:
         "persistence": "src/framework/port/persistence.py",
         "network": "src/framework/port/network.py",
         "authentication": "src/framework/port/authentication.py",
+        "manager": "src/framework/port/manager.py",
     }
 
     managers = {
@@ -592,6 +593,8 @@ class Loader:
     async def _discover_adapters(self, config: dict):
         """Scopre e carica tutti gli adapter configurati."""
         for port_key in self.ports:
+            if port_key == "manager":
+                continue
             enabled = config.get(port_key, {})
             if not isinstance(enabled, dict):
                 continue

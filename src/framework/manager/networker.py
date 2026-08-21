@@ -1,7 +1,8 @@
 import framework.port.network as network
+import framework.port.manager as manager
 import framework.service.flow as flow
 
-class Manager:
+class Manager(manager.Port):
     def __init__(self, networks: list[network.Port], **constants):
         self.networks = networks
 
@@ -38,7 +39,7 @@ class Manager:
         return best
 
     @flow.result(inputs='intent')
-    async def provision(self, intent: dict):
+    async def provision(self, session, intent: dict):
         requirements = intent.get('requirements', {})
         provider = self._select_provider(requirements)
         if provider is None:
@@ -46,14 +47,14 @@ class Manager:
         return await provider.provision(intent=intent)
 
     @flow.result(inputs=('application', 'requirements'))
-    async def route(self, application: dict, requirements: dict):
+    async def route(self, session, application: dict, requirements: dict):
         provider = self._select_provider(requirements)
         if provider is None:
             return flow.error(f"Nessun provider SD-WAN selezionato per i requisiti: {requirements}")
         return await provider.route(application=application, requirements=requirements)
 
     @flow.result()
-    async def compute(self):
+    async def compute(self, session):
         results = []
         for provider in self.networks:
             result = await provider.compute()
@@ -62,7 +63,7 @@ class Manager:
         return results
 
     @flow.result()
-    async def monitor(self):
+    async def monitor(self, session):
         statuses = []
         for provider in self.networks:
             if hasattr(provider, 'monitor'):
@@ -70,7 +71,7 @@ class Manager:
         return flow.success({"networks": statuses})
 
     @flow.result()
-    async def status(self):
+    async def status(self, session):
         network_status = {}
         for provider in self.networks:
             if hasattr(provider, 'status'):

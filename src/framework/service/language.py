@@ -44,7 +44,7 @@ import operator
 import random
 import uuid
 from collections import ChainMap
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping, Iterator
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -424,7 +424,7 @@ class LazyCall:
 # Oggetto restituito da Interpreter.open_session(); nasconde il sid e
 # offre un'interfaccia contestuale per run/emit/update_state/close.
 
-class SessionHandle:
+class SessionHandle(MutableMapping):
     """
     Handle contestuale a una sessione DSL.
 
@@ -436,10 +436,34 @@ class SessionHandle:
             await session.emit("my_file", "reload")
     """
 
-    def __init__(self, interpreter: "Interpreter", session: dict):
-        self.session = session
+    def __init__(self, interpreter: "Interpreter", session: dict | str):
         self._interp = interpreter
-        self._sid = self.session.get('id')
+        if isinstance(session, str):
+            self._sid = session
+            self.session = interpreter._session_data.setdefault(session, {"id": session})
+        else:
+            self.session = session
+            self._sid = self.session.get('id')
+            if not self._sid:
+                raise ValueError("Una sessione deve contenere un id.")
+            interpreter._session_data[self._sid] = self.session
+
+    # The persisted session is the canonical public representation.  The DAG
+    # runtime remains an implementation detail behind this mapping facade.
+    def __getitem__(self, key: str) -> Any:
+        return self.session[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self.session[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        del self.session[key]
+
+    def __iter__(self) -> Iterator:
+        return iter(self.session)
+
+    def __len__(self) -> int:
+        return len(self.session)
 
     # ── metodi pubblici ───────────────────────────────────────────────────────
 
@@ -453,9 +477,24 @@ class SessionHandle:
         """
         return await self._interp._run_session(self._sid, file, env or {})
 
-    def update(self, path: str, value: Any) -> None:
-        """Aggiorna una variabile nel contesto senza triggerare nodi."""
-        self._interp._runner.update_state(self._sid, path, value)
+    _MISSING = object()
+
+    def update(self, path_or_values=None, value: Any = _MISSING, **kwargs) -> None:
+        """Aggiorna la sessione persistente o il contesto DSL."""
+        if value is self._MISSING and (
+            path_or_values is None or isinstance(path_or_values, Mapping)
+        ):
+            if path_or_values is not None:
+                self.session.update(path_or_values)
+            self.session.update(kwargs)
+            return
+        if value is self._MISSING and kwargs:
+            self.session.update(path_or_values, **kwargs)
+            return
+        if isinstance(path_or_values, str) and "." not in path_or_values:
+            self.session[path_or_values] = value
+            return
+        self._interp._runner.update_state(self._sid, "", path_or_values, value)
         #def update(self, file: str, path: str, value: Any) -> None:
         #self._interp._runner.update_state(self._sid, file, path, value)
 
@@ -518,6 +557,7 @@ class Interpreter:
         self._parser:       Lark              = create_parser()
         self._ast_cache:    Dict[str, dict]   = {}
         self._file_tasks:   Dict[str, List]   = {}
+        self._session_data: Dict[str, dict]  = {}
         self.custom_types:  Dict[str, Any]    = custom_types or {}
 
     # ── lifecycle ─────────────────────────────────────────────────────────────
@@ -583,8 +623,14 @@ class Interpreter:
 
     # ── session management ────────────────────────────────────────────────────
 
-    def session_create(self, sid: str, env: dict = {}) -> None:
+    def session_create(self, sid: str | dict, env: dict = {}) -> None:
         """Inizializza la struttura interna. Chiamato solo dal Defender."""
+        if isinstance(sid, Mapping):
+            session = sid
+            sid = session.get("id")
+            if not sid:
+                raise ValueError("Una sessione deve contenere un id.")
+            self._session_data[sid] = session
         self._runner.create_session(sid, DSL_FUNCTIONS | env)
 
     def session_exists(self, sid: str) -> bool:

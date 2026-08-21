@@ -792,7 +792,7 @@ class Adapter(presentation.Port):
     async def mount_view(self, url, metadata, session):
         view = metadata.get('view')
         controller = metadata.get('controller')
-        xml_view = await self.presenter.get_view(view)
+        xml_view = await self.presenter.get_view(session, view)
         controllers = [controller] if controller else []
 
         session_result = await self.defender.session_create(**session)
