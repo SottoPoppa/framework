@@ -103,6 +103,21 @@ class Infrastructure:
         self.jinja_env.filters["tojson"] = json.dumps
         self.jinja_env.globals["uuid4"] = lambda: str(uuid.uuid4())
 
+    def render_jinja(self, target: str, context: Optional[dict] = None) -> str:
+        """Renderizza una stringa Jinja con i global registrati in Infrastructure."""
+        if not isinstance(target, str):
+            return target
+        if "{{" not in target and "{%" not in target and "{#" not in target:
+            return target
+        payload = context or {}
+        return self.jinja_env.from_string(target).render(**payload)
+
+    def load_toml_config(self, config_file: str | Path, context: Optional[dict] = None) -> dict:
+        """Legge un file TOML e renderizza eventuali placeholder Jinja prima del parse."""
+        content = Path(config_file).read_text(encoding="utf-8")
+        rendered = self.render_jinja(content, context=context)
+        return tomllib.loads(rendered)
+
     async def load_schemes(self, directories: list[str]) -> dict:
         """Carica e risolve ricorsivamente i file di schema JSON nelle cartelle."""
         raw: dict[str, Any] = {}
@@ -805,7 +820,7 @@ class Loader:
                 }
             },
         )
-        config = tomllib.loads(Path(config_file).read_text(encoding="utf-8"))
+        config = self.infra.load_toml_config(config_file)
         self.current_config = config
 
         mgr_resources = []
@@ -945,11 +960,7 @@ class Loader:
         )
 
         try:
-            config = tomllib.loads(
-                Path(config_file).read_text(
-                    encoding="utf-8"
-                )
-            )
+            config = self.infra.load_toml_config(config_file)
         except Exception as exc:
             print(
                 f"[!] Errore nel caricare "
@@ -1347,7 +1358,7 @@ class Loader:
         print(f"\n[*] Caricamento configurazione da '{config_file}'...")
 
         try:
-            config = tomllib.loads(Path(config_file).read_text(encoding="utf-8"))
+            config = self.infra.load_toml_config(config_file)
         except Exception as exc:
             print(f"[!] Errore nel caricare '{config_file}': {exc}")
             return

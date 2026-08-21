@@ -169,6 +169,13 @@ name = "tui"
 
 Ogni blocco (`persistence`, `presentation`, `message`, `manager`, ...) attiva un adapter corrispondente in `src/infrastructure/`. Il `Loader` fa discovery automatico solo degli adapter effettivamente presenti nel file.
 
+Il file TOML supporta anche il rendering tramite template Jinja2 prima del parsing.
+
+```toml
+[project]
+name = "{{ uuid4() }}"
+```
+
 ## Risultati Flow
 
 I metodi pubblici dei Manager e le API degli Adapter usano un contratto comune
