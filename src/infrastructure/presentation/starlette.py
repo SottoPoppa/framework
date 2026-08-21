@@ -787,12 +787,18 @@ class Adapter(presentation.Port):
         request.session["previous_url"] = current_url
         html = await self.mount_view(url=request.state.url, metadata=request.state.metadata, session=request.session)
         request.session["errors"] = []
+        if flow.is_result(html):
+            html = flow.output(html)
+        if not isinstance(html, (str, bytes, memoryview)):
+            html = str(html)
         return HTMLResponse(html)
 
     async def mount_view(self, url, metadata, session):
         view = metadata.get('view')
         controller = metadata.get('controller')
         xml_view = await self.presenter.get_view(session, view)
+        if flow.is_result(xml_view):
+            xml_view = flow.output(xml_view)
         controllers = [controller] if controller else []
 
         session_result = await self.defender.session_create(**session)
