@@ -4,11 +4,13 @@ imports: {
 
 any:framework := imports.module.Framework();
 any:infrastructure := imports.module.Infrastructure();
+any:loader := imports.module.Loader();
 
 exports: {
     'imports': framework.imports;
     'component': framework.component;
     'import_module': infrastructure.import_module;
+    'run_integration_tests': loader.run_integration_tests;
 };
 
 tuple:test_suite := (
@@ -32,5 +34,12 @@ tuple:test_suite := (
         "outputs": true;
         "assert": @received.Framework != none;
         "note": "import_module risolve un modulo framework reale senza fixture";
+    },
+    {
+        "action": exports.run_integration_tests;
+        "inputs": none;
+        "outputs": false;
+        "assert": @received == @expected;
+        "note": "run_integration_tests fallisce in modo esplicito senza Tester nel container";
     }
 );

@@ -46,6 +46,8 @@ async def main(config):
     app = await loader_instance.bootstrap(config)
 
     try:
+        if config.get('test_integration') is not None:
+            return await loader_instance.run_integration_tests(config.get('test_integration'))
         if config.get('test') is not None:
             return await loader_instance.run_tests(config.get('test'))
 
@@ -82,6 +84,14 @@ if __name__ == "__main__":
         default=None,      # se --test non è dato: None
         metavar="FILTER",
         help="Esegue i test del framework. Filtro opzionale es: services, managers, infrastructure/message"
+    )
+    parser.add_argument(
+        "--test-integration",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="FILTER",
+        help="Esegue gli scenari *.integration.test.dsl. Filtro opzionale per percorso"
     )
     parser.add_argument(
         "--setup",

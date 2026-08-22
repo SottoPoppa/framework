@@ -9,6 +9,8 @@ imports: {
 exports: {
     'resolve_filter': imports.tester_module.resolve_filter;
     'resolve_target_name': imports.tester_module.resolve_target_name;
+    'is_integration_test_path': imports.tester_module.is_integration_test_path;
+    'is_contract_test_path': imports.tester_module.is_contract_test_path;
     'port': imports.presentation_module.Port
 };
 
@@ -27,6 +29,27 @@ tuple:test_suite := (
         "outputs": "src/framework/port";
         "assert": @received == @expected;
         "note": "Test import() - resolve_filter con 'ports'";
+    },
+    {
+        "action": exports.is_integration_test_path;
+        "inputs": "src/application/controller/account.integration.test.dsl";
+        "outputs": true;
+        "assert": @received == @expected;
+        "note": "riconosce un test di integrazione accanto al target";
+    },
+    {
+        "action": exports.is_integration_test_path;
+        "inputs": "src/application/controller/account.test.dsl";
+        "outputs": false;
+        "assert": @received == @expected;
+        "note": "non classifica un test di contract come integrazione";
+    },
+    {
+        "action": exports.is_contract_test_path;
+        "inputs": "src/application/controller/account.test.dsl";
+        "outputs": true;
+        "assert": @received == @expected;
+        "note": "riconosce un test di contract";
     },
     {
         "action": exports.resolve_target_name;

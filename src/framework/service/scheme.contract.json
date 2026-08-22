@@ -21,25 +21,25 @@
     ]
   },
   "hashes": {
-    "put": {
-      "test": "18166073bb3f0e87c49d8c3fcaa3b190ce9ea0beec20d965b5221c92094006c4",
-      "production": "18166073bb3f0e87c49d8c3fcaa3b190ce9ea0beec20d965b5221c92094006c4"
+    "normalize": {
+      "test": "cb30afb4832097b87c0168ccf75f768eaef473f578906006fcd17251461c498f",
+      "production": "cb30afb4832097b87c0168ccf75f768eaef473f578906006fcd17251461c498f"
+    },
+    "format": {
+      "test": "189dd63cfb2c4a2ebd4fb94839892c1ff6dfb0b6a57b1ba8df03a4215273792c",
+      "production": "189dd63cfb2c4a2ebd4fb94839892c1ff6dfb0b6a57b1ba8df03a4215273792c"
     },
     "get": {
       "test": "cbbf83d8cdd70e34f3bfce254acaa0fb2f2a7b1efcbfabf49496deb782a7f896",
       "production": "cbbf83d8cdd70e34f3bfce254acaa0fb2f2a7b1efcbfabf49496deb782a7f896"
     },
-    "normalize": {
-      "test": "cb30afb4832097b87c0168ccf75f768eaef473f578906006fcd17251461c498f",
-      "production": "cb30afb4832097b87c0168ccf75f768eaef473f578906006fcd17251461c498f"
+    "put": {
+      "test": "18166073bb3f0e87c49d8c3fcaa3b190ce9ea0beec20d965b5221c92094006c4",
+      "production": "18166073bb3f0e87c49d8c3fcaa3b190ce9ea0beec20d965b5221c92094006c4"
     },
     "convert": {
       "test": "1685f541e127a5ec17e9f15274a579705effbd3be92d0bfe38ca3e85b6398c02",
       "production": "1685f541e127a5ec17e9f15274a579705effbd3be92d0bfe38ca3e85b6398c02"
-    },
-    "format": {
-      "test": "189dd63cfb2c4a2ebd4fb94839892c1ff6dfb0b6a57b1ba8df03a4215273792c",
-      "production": "189dd63cfb2c4a2ebd4fb94839892c1ff6dfb0b6a57b1ba8df03a4215273792c"
     }
   }
 }

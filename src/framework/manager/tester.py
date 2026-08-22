@@ -44,6 +44,18 @@ def resolve_filter(raw: str | None) -> Optional[str]:
     return raw
 
 
+def is_integration_test_path(path: str) -> bool:
+    """Riconosce gli scenari di integrazione in base al nome del file."""
+    normalized = path.replace('\\', '/')
+    return normalized.endswith('.integration.test.dsl')
+
+
+def is_contract_test_path(path: str) -> bool:
+    """Riconosce i test DSL che certificano l'API del componente."""
+    normalized = path.replace('\\', '/')
+    return normalized.endswith('.test.dsl') and not is_integration_test_path(normalized)
+
+
 def resolve_target_name(target) -> str:
     """Ritorna il nome stabile usato per associare un callable al contract."""
     name = getattr(target, "__qualname__", None)
@@ -102,15 +114,17 @@ class Manager(manager.Port):
             return True
         return path.replace('\\', '/').startswith(self.prefix.replace('\\', '/'))
 
-    def _discover_test_files(self) -> list[str]:
+    def _discover_test_files(self, integration: bool = False) -> list[str]:
         """Elenca in anticipo tutti i file .test.dsl da eseguire, così da
         poter mostrare un contatore [i/N] e un riepilogo coerente."""
         found = []
         for root, _, files in os.walk('./src'):
             for file in files:
-                if not file.endswith('.test.dsl'):
-                    continue
                 path = os.path.join(root, file).replace('./', '')
+                if integration and not is_integration_test_path(path):
+                    continue
+                if not integration and not is_contract_test_path(path):
+                    continue
                 if self._matches_filter(path):
                     found.append(path)
         return sorted(found)
@@ -127,14 +141,26 @@ class Manager(manager.Port):
 
     @flow.result(safe_kwargs=True)
     async def run(self, session, **constants):
-        """Esegue la suite di test DSL filtrata secondo il prefisso configurato."""
+        """Esegue i test di contract DSL filtrati secondo il prefisso configurato."""
+        return await self._run_suites(session, integration=False, **constants)
+
+    @flow.result(safe_kwargs=True)
+    async def run_integration(self, session, **constants):
+        """Esegue gli scenari DSL sul runtime gia costruito dal Loader."""
+        return await self._run_suites(session, integration=True, **constants)
+
+    async def _run_suites(self, session, integration: bool, **constants):
         filter_raw = constants.get('filter', self.filter_raw)
         self.filter_raw = filter_raw
         self.prefix = resolve_filter(filter_raw)
         label = self.prefix or 'tutti'
 
-        test_files = self._discover_test_files()
-        _logger.info(f"Avvio esecuzione suite di test… filtro: {label}", file_trovati=len(test_files))
+        test_files = self._discover_test_files(integration=integration)
+        suite_label = 'integrazione' if integration else 'contract'
+        _logger.info(
+            f"Avvio esecuzione suite {suite_label}… filtro: {label}",
+            file_trovati=len(test_files),
+        )
 
         interp = language.Interpreter()
         await interp.start()
@@ -158,8 +184,15 @@ class Manager(manager.Port):
                     res = await self.loader.resource(path)
                     source = flow.value_of(res) if flow.is_result(res) else res
                     await interp.load_file(path, source)
-                    outcome = await self._execute_dsl(interp, path, s)
-                    self.loader.record_contract(path, outcome)
+                    outcome = await self._execute_dsl(
+                        interp,
+                        path,
+                        s,
+                        integration=integration,
+                        runtime_session=session,
+                    )
+                    if not integration:
+                        self.loader.record_contract(path, outcome)
 
                     data = outcome.get("data", {})
                     if "total" in data:
@@ -194,7 +227,7 @@ class Manager(manager.Port):
         esito = "PASSED" if not summary["file_con_test_falliti"] and not summary["file_non_eseguiti"] else "FAILED"
         log_fn = _logger.error if esito == "FAILED" else _logger.info
         log_fn(
-            f"Riepilogo suite di test: {esito}",
+            f"Riepilogo suite {suite_label}: {esito}",
             file_totali=summary["file_totali"],
             file_ok=summary["file_ok"],
             file_con_test_falliti=summary["file_con_test_falliti"],
@@ -207,7 +240,14 @@ class Manager(manager.Port):
 
     # ── esecuzione di un singolo file .test.dsl ────────────────────────────────
 
-    async def _execute_dsl(self, interp: language.Interpreter, path: str, s: "diagnostic.LogScope") -> dict:
+    async def _execute_dsl(
+        self,
+        interp: language.Interpreter,
+        path: str,
+        s: "diagnostic.LogScope",
+        integration: bool = False,
+        runtime_session=None,
+    ) -> dict:
         """Esegue una suite di test DSL e registra i risultati.
 
         :param interp: L'interprete DSL
@@ -227,7 +267,14 @@ class Manager(manager.Port):
             sid=session_id,
             env=language.DSL_FUNCTIONS | {
                 'resource': self.loader.resource,
-                'import': self.loader.import_module
+                'import': self.loader.import_module,
+                'test': {
+                    'loader': self.loader,
+                    'application': getattr(self.loader, 'app', None),
+                    'managers': self.loader.get_managers(),
+                    'session': runtime_session,
+                    'integration': integration,
+                },
             }
         )
 

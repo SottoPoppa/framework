@@ -867,6 +867,7 @@ class Loader:
         self.framework.strict = not (
             kwargs.get("dev")
             or kwargs.get("test") is not None
+            or kwargs.get("test_integration") is not None
             or kwargs.get("skip_verify")
         )
 
@@ -912,10 +913,15 @@ class Loader:
         return app
 
     async def run_tests(self, filter_value: str | None = None) -> bool:
-        """Esegue la suite di test DSL tramite il Manager del Tester.
-        
-        :param filter_value: Filtro opzionale per limitare i test eseguiti
-        """
+        """Esegue i test di contract DSL tramite il Manager del Tester."""
+        return await self._run_tester_suite("run", filter_value)
+
+    async def run_integration_tests(self, filter_value: str | None = None) -> bool:
+        """Esegue gli scenari di integrazione DSL sul runtime bootstrap-ato."""
+        return await self._run_tester_suite("run_integration", filter_value)
+
+    async def _run_tester_suite(self, method_name: str, filter_value: str | None) -> bool:
+        """Invoca una suite del Tester mantenendo il confine Flow nel Loader."""
         managers = self.get_managers()
         tester = managers.get("tester")
         if tester is None:
@@ -926,7 +932,11 @@ class Loader:
         import framework.service.flow as flow
 
         session = getattr(self.app, "_session", None)
-        result = await tester.run(session, filter=filter_value)
+        method = getattr(tester, method_name, None)
+        if method is None:
+            print(f"[!] Metodo Tester '{method_name}' non trovato nel container")
+            return False
+        result = await method(session, filter=filter_value)
         return flow.output(result) if flow.is_result(result) else result
 
     async def verify_contracts(self, config_toml_path: Any) -> bool:

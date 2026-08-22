@@ -1,0 +1,9 @@
+[project]
+name = "cloud.colosso.integration"
+version = "0.1.0"
+
+[manager.defender]
+key = "integration-test-key"
+
+[[persistence.mock]]
+name = "workfolder"

@@ -143,11 +143,18 @@ python3 public/main.py
 | `--install` | Installa solo le dipendenze dichiarate dagli adapter attivi, senza bootstrap completo |
 | `--setup` | `pip install -e .` + `--install`, per la prima configurazione dell'ambiente |
 | `--test [FILTRO]` | Esegue i test del framework, opzionalmente filtrati (es. `services`, `managers`, `infrastructure/message`) |
+| `--test-integration [FILTRO]` | Esegue gli scenari `*.integration.test.dsl` sul runtime bootstrap-ato |
 | `--skip-verify` | Bypassa il controllo "codice testato" degli adapter all'avvio — usare con cautela |
 
 ---
 
 ## Configurazione (`pyproject.toml`)
+
+Gli integration test che richiedono adapter dedicati possono usare una configurazione separata, per esempio `pyproject.integration.toml`, senza aggiungere provider di test alla configurazione applicativa:
+
+```bash
+python3 public/main.py --config pyproject.integration.toml --test-integration managers/storekeeper
+```
 
 Il progetto si configura dichiarativamente, senza codice imperativo:
 

@@ -300,6 +300,7 @@ Assicurati sempre che il virtual environment sia attivo prima di eseguire comand
 | `python3 public/main.py --setup` | `pip install -e .` + installazione dipendenze degli adapter attivi — al primo avvio |
 | `python3 public/main.py --install` | Installa solo le dipendenze degli adapter attivi (senza editable install) |
 | `python3 public/main.py --test [FILTRO]` | Esegue i test, opzionalmente filtrati (`managers`, `ports`, `services`, `infrastructure/message`, ecc.) |
+| `python3 public/main.py --test-integration [FILTRO]` | Esegue gli scenari `*.integration.test.dsl` vicino al caso d'uso testato |
 | `python3 public/main.py --verify` | Verifica tutti i contract in modalità strict senza costruire né avviare l'applicazione |
 | `python3 public/main.py --dev` | Modalità dev: disattiva il controllo strict dei contract |
 | `python3 public/main.py --skip-verify` | Bypassa il controllo "codice testato" — solo per emergenze umane, mai come default in un workflow LLM |
@@ -312,6 +313,7 @@ I flag principali selezionano percorsi distinti nel launcher:
 - **Setup iniziale** — `python3 public/main.py --setup`: installa il progetto in editable mode con `pip install -e .`, poi analizza e installa le dipendenze dichiarate nei contract degli adapter attivi. Non avvia l'applicazione.
 - **Installazione adapter** — `python3 public/main.py --install`: salta l'editable install e installa solo le dipendenze dichiarate dagli adapter attivi. Non esegue il bootstrap completo e non avvia l'applicazione.
 - **Test DSL** — `python3 public/main.py --test [FILTRO]`: esegue il bootstrap necessario al tester con strict disattivato, esegue i file `.test.dsl` selezionati e può rigenerare i contract certificati. Restituisce exit code `0` se la suite passa e `1` se un test o un file non viene eseguito.
+- **Integration test DSL** — `python3 public/main.py --test-integration [FILTRO]`: esegue i file `*.integration.test.dsl` sul runtime già bootstrap-ato. Gli scenari usano manager, adapter e sessione applicativa reali, ma non aggiornano i contract dei componenti.
 - **Verifica contract** — `python3 public/main.py --verify`: carica i componenti in strict senza costruire container, adapter o `Application`. Restituisce `0` solo se tutti gli export dichiarati sono presenti e gli hash corrispondono; restituisce `1` in caso di contract stale, export mancanti o errore di discovery.
 - **Modalità sviluppo** — `python3 public/main.py --dev`: esegue il normale bootstrap con verifica strict disattivata. Non deve essere usata come sostituto dei test o della verifica dei contract.
 - **Bypass emergenziale** — `python3 public/main.py --skip-verify`: esegue il normale bootstrap ignorando il controllo strict dei contract. È riservato a interventi manuali temporanei e non deve essere usato per risolvere test falliti.
