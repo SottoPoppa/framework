@@ -107,6 +107,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
     args_dict = vars(args)
 
+    '''if (
+        args_dict["test_integration"] is not None
+        and args_dict["config"] == "pyproject.toml"
+        and os.path.exists("pyproject.integration.toml")
+    ):
+        args_dict["config"] = "pyproject.integration.toml"'''
+    
+
     result = asyncio.run(main(args_dict))
     if result is False:
         sys.exit(1)
