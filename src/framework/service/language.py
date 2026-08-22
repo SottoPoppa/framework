@@ -11,7 +11,8 @@ Cambiamenti principali
    lo stato di build viene tenuto per file nel dict `_file_state[name]`.
 
 3. **`invoke()` diventa `_invoke()` (privato)** — l'unico punto di entrata
-   esterno per chiamare funzioni DSL diventa `call()`.
+    esterno per chiamare funzioni DSL diventa `call()`, che restituisce il Flow
+    completo; il payload si ottiene con `flow.output()`.
 
 4. **`create_session` + `run_session` → `open_session()` + `run()`** — nomi più
    chiari, firma coerente; `open_session` restituisce un `SessionHandle`
@@ -467,13 +468,15 @@ class SessionHandle(MutableMapping):
 
     # ── metodi pubblici ───────────────────────────────────────────────────────
 
+    @flow.result()
     async def run(self, file: str, env: Optional[Dict] = None) -> Dict[str, Any]:
         """
         Esegue un file caricato sulla sessione e restituisce i risultati.
 
         :param file: nome del file (deve essere già caricato con `load_file`)
         :param env:  variabili aggiuntive per questa esecuzione (opzionale)
-        :returns:    dict ``{node_name: result}``
+        :returns:    risultato Flow con la mappa ``{node_name: result}`` in
+                 ``outputs``
         """
         return await self._interp._run_session(self._sid, file, env or {})
 
@@ -646,19 +649,22 @@ class Interpreter:
     ) -> Any:
         """
         Invoca una funzione (Python callable, DSL tuple, o LazyCall) e
-        restituisce il suo output direttamente (non il dict Result interno).
+        restituisce il dict Result completo.
+
+        Per ottenere il payload usare ``flow.output(result)``. Il risultato
+        conserva anche ``transactions`` e la traccia delle chiamate interne.
 
         Solleva ``DSLRuntimeError`` in caso di errore.
 
         :param fn:     funzione da invocare
         :param args:   argomenti posizionali
         :param kwargs: argomenti keyword
-        :returns:      output della funzione
+        :returns:      risultato Flow della funzione
         """
         res = await self._invoke(fn, args, kwargs or {})
         if not res["success"]:
             raise DSLRuntimeError(f"Errore in call: {res['errors']}")
-        return res["outputs"]
+        return res
 
     # ── internals ─────────────────────────────────────────────────────────────
     # Tutto ciò che segue è API privata (prefisso _).
@@ -674,12 +680,10 @@ class Interpreter:
         # Esegui il motore per i nodi reattivi/task
         dag_results = await self._runner.run_file(sid, file, ast_result)
         
-        # Unisci i risultati statici dell'AST (es. 'a': 1) con quelli del DAG
-        # Estraiamo i valori reali dai Result del DAG se presenti
-        unwrapped_dag = {k: v["outputs"] if isinstance(v, dict) and "outputs" in v else v 
-                         for k, v in dag_results.items()}
-        
-        return ast_result | unwrapped_dag
+        # Conserva i Result dei nodi nel payload e nella catena transazionale.
+        result = flow.success(ast_result | dag_results)
+        result["transactions"] = list(dag_results.values())
+        return result
 
     async def _invoke(self, fn: Any, args: tuple, kwargs: Dict, path: str = "") -> Dict:
         """Esegue fn e restituisce sempre un dict Result."""

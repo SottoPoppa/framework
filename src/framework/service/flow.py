@@ -9,6 +9,7 @@ Modello:
 """
 
 import asyncio, inspect, time
+from contextvars import ContextVar
 from typing import Any, Callable, Dict, List, Optional
 import networkx as nx
 import functools
@@ -21,7 +22,9 @@ import framework.service.scheme as scheme
 # RESULT
 # ─────────────────────────────────────────────
 
-def _res(ok, value=None, errors=None, t0=None):
+_transaction_stack = ContextVar("flow_transaction_stack", default=None)
+
+def _res(ok, value=None, errors=None, t0=None, transactions=None):
     result = {
         "action":     None,
         "success":    ok,
@@ -31,6 +34,7 @@ def _res(ok, value=None, errors=None, t0=None):
         "updated_at": time.time(),
         "version":    str(uuid.uuid4())[:8],
         "duration":   0,
+        "transactions": transactions if transactions is not None else [],
     }
 
     if isinstance(errors, BaseException):
@@ -50,6 +54,7 @@ def error(e,   t0=None):
     return result
 def output(v):           return v.get("outputs") if isinstance(v, dict) and v.get("success") is not None else v
 def is_result(v):        return isinstance(v, dict) and v.get("success") is not None
+def transactions(v):    return v.get("transactions", []) if is_result(v) else []
 def flux(v): return success(output(v)) if v.get("success") is not None else error(v.get("errors"))
 def check(v): return isinstance(v, dict) and v.get("success") is True
 
@@ -243,6 +248,10 @@ def result(inputs=None, outputs=None, safe_kwargs=False):
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
             t0 = time.perf_counter()
+            parent_transactions = _transaction_stack.get()
+            own_transactions = []
+            transaction_result = None
+            token = _transaction_stack.set(own_transactions)
 
             try:
                 #nargs, nkwargs = sig.bind_partial(*args, **kwargs)
@@ -251,20 +260,47 @@ def result(inputs=None, outputs=None, safe_kwargs=False):
                 #print(f"Received args: {args}, kwargs: {kwargs}")
                 res = await func(*args, **new_kwargs) if is_async else func(*args, **new_kwargs)
                 result = await rett(res)
-                if not is_result(result):
-                    result = success(result, t0)
-                return trace(
-                    result,
+                child_transactions = list(own_transactions)
+                if is_result(result) and not child_transactions:
+                    child_transactions.extend(result.get("transactions", []))
+
+                if is_result(result):
+                    wrapped = _res(
+                        result["success"],
+                        output(result),
+                        result.get("errors"),
+                        t0,
+                        child_transactions,
+                    )
+                    for key in ("exception", "traceback"):
+                        if key in result:
+                            wrapped[key] = result[key]
+                else:
+                    wrapped = success(result, t0)
+                    wrapped["transactions"] = child_transactions
+
+                traced = trace(
+                    wrapped,
                     action=func.__name__,
                     component=func.__module__,
                 )
+                transaction_result = traced
+                return traced
             except Exception as e:
                 result = error(e, t0)
-                return trace(
+                result["transactions"] = list(own_transactions)
+                transaction_result = trace(
                     result,
                     action=func.__name__,
                     component=func.__module__,
                 )
+                return transaction_result
+            finally:
+                _transaction_stack.reset(token)
+                if parent_transactions is not None:
+                    parent_transactions.append(
+                        transaction_result or error("transaction failed")
+                    )
 
         return wrapper
     return decorator

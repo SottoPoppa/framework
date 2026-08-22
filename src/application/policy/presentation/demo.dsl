@@ -53,7 +53,8 @@ roles:{
 
 routes: {
     // Home
-    route:GET_INDEX := { path:"/"; method:"GET"; "type":"view"; view:"cartoleria.xml"; controller:"counter" };
+    route:GET_INDEX := { path:"/"; method:"GET"; "type":"view"; view:"ecommerce.xml"; controller:"catalog" };
+    route:GET_ECOMMERCE := { path:"/shop"; method:"GET"; "type":"view"; view:"ecommerce.xml"; controller:"catalog" };
     route:GET_PROFILE := { path:"/profile"; method:"GET"; "type":"view"; view:"profile.xml" };
     // Auth
     route:GET_LOGIN := { path:"/login"; method:"GET"; "type":"view"; view:"auth/login.xml" };
@@ -104,6 +105,7 @@ requirement:REQUIRES := {
 
 rules : {
     "/": [policies.GET_ALLOW_ALL];
+    "/shop": [policies.GET_ALLOW_ALL];
     "/profile": [policies.GET_ALLOW_PATH];
     "/login": [policies.GET_ALLOW_ALL,policies.POST_ALLOW_ALL];
     "/logout": [policies.GET_ALLOW_PATH];

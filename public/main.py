@@ -3,6 +3,7 @@ import os
 import asyncio
 import argparse
 import subprocess
+import threading
 
 # Setup del path
 cwd = os.getcwd()
@@ -51,6 +52,8 @@ async def main(config):
         if config.get('test') is not None:
             return await loader_instance.run_tests(config.get('test'))
 
+        from mock_api import start as start_mock_api
+        threading.Thread(target=start_mock_api, daemon=True).start()
         await app.startup()
     except Exception as e:
         print(f"[!] Errore critico: {e}")

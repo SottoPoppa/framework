@@ -70,7 +70,8 @@ class Manager(manager.Port):
             #await self.load_file(name, source)
             session_result = await self.session_create()
             async with flow.output(session_result) as session:
-                self.policies[policy] = await session.run(path)
+                run_result = await session.run(path)
+                self.policies[policy] = flow.output(run_result)
             print(f"[+] Policy: {policy}/{filename}")
 
         from pathlib import Path

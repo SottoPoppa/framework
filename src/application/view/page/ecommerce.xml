@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Window type="page" title="NOVA MARKET | DummyJSON" background="#f4f1ea,#e9f0ed" font="sans">
+    <Navigation width="full" background="#16211f" padding="18px,6%" shadow="medium">
+        <Row justify="between" align="center">
+            <Row align="center" spacing="12px">
+                <Container width="42px" height="42px" background="#d5f36b" radius="medium" align="center" justify="center">
+                    <Icon name="bi-lightning-charge-fill" size="22px" color="#16211f" />
+                </Container>
+                <Column spacing="2px">
+                    <Text type="h4" font="extrabold" color="#f8f6ef">NOVA MARKET</Text>
+                    <Text size="11px" color="#d5f36b" uppercase="true" font="bold">Demo catalog · DummyJSON</Text>
+                </Column>
+            </Row>
+            <Row align="center" spacing="18px">
+                <Text color="#d6ded8" size="14px">Catalogo</Text>
+                <Action type="button" background="#d5f36b" radius="full" padding="9px,15px">
+                    <Row align="center" spacing="8px"><Icon name="bi-bag" color="#16211f" /><Text color="#16211f" font="bold">Carrello {{ catalog.catalog_logic.cart_count }}</Text></Row>
+                </Action>
+            </Row>
+        </Row>
+    </Navigation>
+
+    <Column width="full" padding="65px,6%,35px" spacing="24px">
+        <Row justify="between" align="end">
+            <Column spacing="10px" max-width="650px">
+                <Text size="13px" color="#e2603d" font="bold" uppercase="true">Nuovi arrivi / 2026</Text>
+                <Text type="h1" font="extrabold" size="48px" color="#16211f">Oggetti scelti per una vita più semplice.</Text>
+                <Text type="p" size="17px" color="#596661">Un piccolo e-commerce fittizio alimentato dai prodotti del catalogo DummyJSON.</Text>
+            </Column>
+            <Container width="210px" background="#e2603d" padding="18px" radius="large" shadow="medium">
+                <Text size="12px" color="#fff3e7" uppercase="true" font="bold">Spedizione</Text>
+                <Text type="h3" color="#ffffff" font="extrabold">Gratis sopra € 50</Text>
+                <Icon name="bi-arrow-up-right" size="28px" color="#d5f36b" />
+            </Container>
+        </Row>
+    </Column>
+
+    <Row width="full" padding="15px,6%" background="#ffffff" border="1px solid #dfe7e1" justify="between" align="center">
+        <Row spacing="8px">
+            <Action type="button" click="catalog.show_all" background="#16211f" radius="full" padding="8px,16px"><Text color="#ffffff" font="bold">Tutti</Text></Action>
+            <Action type="button" click="catalog.show_beauty" background="#edf2ed" radius="full" padding="8px,16px"><Text color="#16211f">Beauty</Text></Action>
+            <Action type="button" click="catalog.show_fragrances" background="#edf2ed" radius="full" padding="8px,16px"><Text color="#16211f">Profumi</Text></Action>
+        </Row>
+        <Text size="13px" color="#718078">{{ catalog.catalog_logic.products | length }} prodotti disponibili</Text>
+    </Row>
+
+    <Column width="full" padding="45px,6%,80px" spacing="25px">
+        <Row justify="between" align="center">
+            <Column spacing="4px"><Text type="h2" font="extrabold" color="#16211f">In evidenza</Text><Text color="#718078">Prezzi e disponibilità in tempo reale per questa demo.</Text></Column>
+            <Row align="center" spacing="8px"><Icon name="bi-stars" color="#e2603d" /><Text color="#e2603d" font="bold">Scelti per te</Text></Row>
+        </Row>
+        <Grid class="grid-cols-1 md:grid-cols-2 lg:grid-cols-3" spacing="20px">
+            {% for product in catalog.catalog_logic.products %}
+            <Column background="#ffffff" radius="large" shadow="medium" border="1px solid #dfe7e1" spacing="0px" overflow="hidden">
+                <Container height="205px" background="#eef3ed" align="center" justify="center">
+                    <Action type="link" src="{{ product.thumbnail }}" alt="{{ product.title }}" width="full" height="full" />
+                </Container>
+                <Column padding="20px" spacing="12px">
+                    <Row justify="between" align="center"><Text size="11px" color="#e2603d" font="bold" uppercase="true">{{ product.category }}</Text><Text size="12px" color="#718078">★ {{ product.rating }}</Text></Row>
+                    <Text type="h3" font="bold" color="#16211f">{{ product.title }}</Text>
+                    <Text size="13px" color="#718078">{{ product.brand }} · {{ product.stock }} disponibili</Text>
+                    <Row justify="between" align="center" margin="8px,0,0,0">
+                        <Text size="22px" font="extrabold" color="#16211f">€ {{ product.price }}</Text>
+                        <Action type="button" click="catalog.add_to_cart" background="#d5f36b" radius="full" padding="9px,13px"><Icon name="bi-plus-lg" color="#16211f" /></Action>
+                    </Row>
+                </Column>
+            </Column>
+            {% endfor %}
+        </Grid>
+    </Column>
+
+    <Row width="full" background="#16211f" padding="22px,6%" justify="between" align="center">
+        <Text color="#d6ded8" size="13px">Dati demo ispirati a dummyjson.com/products</Text>
+        <Text color="#d5f36b" size="13px" font="bold">NOVA MARKET / 01</Text>
+    </Row>
+</Window>

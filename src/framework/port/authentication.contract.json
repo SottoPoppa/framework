@@ -19,25 +19,25 @@
   },
   "hashes": {
     "Port": {
+      "sign_aid": {
+        "test": "52e9e4f379001a55f6148b764a5eabb4f0a06bcbb68db1650c24d0c6a27acd79",
+        "production": "52e9e4f379001a55f6148b764a5eabb4f0a06bcbb68db1650c24d0c6a27acd79"
+      },
       "sign_in": {
         "test": "fb61b5c95131bf7ad4d45e7e1d7ede089cb7cdacd262cc504adde30f47c02ee7",
         "production": "fb61b5c95131bf7ad4d45e7e1d7ede089cb7cdacd262cc504adde30f47c02ee7"
-      },
-      "sign_up": {
-        "test": "442b6020ed0b9220b619a46f173a58f8026b6ac29e28f52e52f230017a982c65",
-        "production": "442b6020ed0b9220b619a46f173a58f8026b6ac29e28f52e52f230017a982c65"
       },
       "get_user": {
         "test": "6ee3686658a80fe81a08a0fb135a7f3e718098a0035ccf4e04b6eb95f3fbc4b8",
         "production": "6ee3686658a80fe81a08a0fb135a7f3e718098a0035ccf4e04b6eb95f3fbc4b8"
       },
+      "sign_up": {
+        "test": "442b6020ed0b9220b619a46f173a58f8026b6ac29e28f52e52f230017a982c65",
+        "production": "442b6020ed0b9220b619a46f173a58f8026b6ac29e28f52e52f230017a982c65"
+      },
       "sign_out": {
         "test": "d81b61ee3e15e29fcf25ad8b74049e83f870616988927d779372aa1ff807a1ea",
         "production": "d81b61ee3e15e29fcf25ad8b74049e83f870616988927d779372aa1ff807a1ea"
-      },
-      "sign_aid": {
-        "test": "52e9e4f379001a55f6148b764a5eabb4f0a06bcbb68db1650c24d0c6a27acd79",
-        "production": "52e9e4f379001a55f6148b764a5eabb4f0a06bcbb68db1650c24d0c6a27acd79"
       }
     }
   }

@@ -23,6 +23,10 @@
         "test": "710bd4ece15f563addcd5b33e21998340930479873561d6ccd0f087edc9999cf",
         "production": "710bd4ece15f563addcd5b33e21998340930479873561d6ccd0f087edc9999cf"
       },
+      "get_requirements": {
+        "test": "2a751756ac17d8b7c4683ce2a1be0d5053a5d3923a2e75c37f4e07ddf03d742e",
+        "production": "2a751756ac17d8b7c4683ce2a1be0d5053a5d3923a2e75c37f4e07ddf03d742e"
+      },
       "parameters": {
         "test": "acb1e2ebed0419c72b03e55720d892eccca188640d9bde62d15c044b4b12dd25",
         "production": "acb1e2ebed0419c72b03e55720d892eccca188640d9bde62d15c044b4b12dd25"
@@ -30,10 +34,6 @@
       "results": {
         "test": "5ceca344b2586b21426c18cb2fefcd8ebb6d13647b36587d2827936c220cfbcf",
         "production": "5ceca344b2586b21426c18cb2fefcd8ebb6d13647b36587d2827936c220cfbcf"
-      },
-      "get_requirements": {
-        "test": "2a751756ac17d8b7c4683ce2a1be0d5053a5d3923a2e75c37f4e07ddf03d742e",
-        "production": "2a751756ac17d8b7c4683ce2a1be0d5053a5d3923a2e75c37f4e07ddf03d742e"
       }
     }
   }

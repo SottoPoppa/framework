@@ -230,9 +230,13 @@ Dettaglio operativo:
    lo schema indicato da `model`. Errori di normalizzazione diventano un
    `flow.error(...)`.
 7. Il risultato restituito resta un Flow: prima di usarne il payload, il
-   chiamante deve verificare `result["success"]` e chiamare
-   `flow.output(result)`. Non passare direttamente il dizionario Flow a una
-   risposta HTTP o a un renderer.
+    chiamante deve verificare `result["success"]` e chiamare
+    `flow.output(result)`. Non passare direttamente il dizionario Flow a una
+    risposta HTTP o a un renderer.
+8. Il campo `transactions` conserva i Flow dei confini interni attraversati
+    dalla chiamata. La raccolta vale per DSL, framework e infrastructure e
+    consente di ricostruire l'albero della transazione. Gli input non vengono
+    memorizzati automaticamente per evitare di registrare segreti o token.
 
 ---
 

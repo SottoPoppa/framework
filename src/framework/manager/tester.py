@@ -374,13 +374,13 @@ class Manager(manager.Port):
                         positional = (positional,)
                     if not isinstance(keyword, dict):
                         raise TypeError("'inputs.kwargs' deve essere un dizionario")
-                    received = await interp.call(target, tuple(positional), keyword)
+                    received = flow.output(await interp.call(target, tuple(positional), keyword))
                 elif isinstance(args, dict):
-                    received = await interp.call(target, (), args)
+                    received = flow.output(await interp.call(target, (), args))
                 elif isinstance(args, (list, tuple)):
-                    received = await interp.call(target, args)
+                    received = flow.output(await interp.call(target, args))
                 else:
-                    received = await interp.call(target, (args,))
+                    received = flow.output(await interp.call(target, (args,)))
             except Exception as e:
                 results["failed"] += 1
                 results["errors"].append({"target": str(target), "error": str(e), "test_note": test_note, "phase": "action"})
@@ -390,7 +390,7 @@ class Manager(manager.Port):
 
             # ── fase 2: valutazione dell'assert ─────────────────────────
             try:
-                ok = await interp.call(assert_fn, (), {"received": received, "expected": expected})
+                ok = flow.output(await interp.call(assert_fn, (), {"received": received, "expected": expected}))
             except Exception as e:
                 results["failed"] += 1
                 results["errors"].append({"target": str(target), "error": str(e), "test_note": test_note, "phase": "assert"})

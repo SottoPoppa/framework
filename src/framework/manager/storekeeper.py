@@ -50,7 +50,8 @@ class Manager(manager.Port):
             await self.defender.interpreter.load_file(path, code)
             session_result = await self.defender.session_create()
             async with flow.output(session_result) as repository_session:
-                self.repositories[repository_name] = await repository_session.run(path)
+                run_result = await repository_session.run(path)
+                self.repositories[repository_name] = flow.output(run_result)
             self.maked[repository_name] = Repository(
                 **self.repositories[repository_name]['repository']
             )
