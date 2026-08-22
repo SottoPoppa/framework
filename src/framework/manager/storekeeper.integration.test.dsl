@@ -1,8 +1,9 @@
-// Integration test reale: Storekeeper -> Repository DSL -> adapter in-memory
+// Integration test reale: Storekeeper -> Repository file -> filesystem adapter
 
 exports: {
     "store": test.managers.storekeeper.store;
-    "gather": test.managers.storekeeper.gather
+    "gather": test.managers.storekeeper.gather;
+    "remove": test.managers.storekeeper.remove
 };
 
 session:session := test.session;
@@ -23,7 +24,7 @@ any:expected := {
     "name": "integration-storekeeper";
     "extension": "txt";
     "mime_type": "application/octet-stream";
-    "size": 0;
+    "size": 23;
     "encoding": "utf-8";
     "content": "storekeeper integration";
     "metadata": {};
@@ -43,7 +44,7 @@ tuple:test_suite := (
         };
         "outputs": expected;
         "assert": @received == @expected;
-        "note": "Storekeeper.store persiste una risorsa usando il repository file e il provider in-memory";
+        "note": "Storekeeper.store persiste un record usando il repository file e il filesystem reale";
     },
     {
         "action": exports.gather;
@@ -53,6 +54,16 @@ tuple:test_suite := (
         };
         "outputs": expected;
         "assert": @received == @expected;
-        "note": "Storekeeper.gather legge la risorsa appena persistita tramite lo stesso repository";
+        "note": "Storekeeper.gather legge il record persistito tramite lo stesso repository reale";
+    },
+    {
+        "action": exports.remove;
+        "inputs": {
+            "args": [session];
+            "kwargs": resource
+        };
+        "outputs": none;
+        "assert": @received == @expected;
+        "note": "Storekeeper.remove ripulisce la risorsa creata dal test integrativo";
     }
 );

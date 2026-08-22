@@ -142,6 +142,8 @@ class Repository:
 
         data = flow.output(transaction) if flow.is_result(transaction) else transaction
         data = self._unwrap_response(data)
+        if data == {}:
+            return flow.success(None)
         data = self._map_provider_data(data, profile)
         model = (
             scheme.schemes.get(self.schema)

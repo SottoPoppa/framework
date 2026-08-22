@@ -192,6 +192,8 @@ class Manager(manager.Port):
 
     def authorized(self, policy, **constants) -> bool:
         policy = self.get_policy(policy)
+        if not policy:
+            return False
         rules = policy.get('rules', {})
         action, resource, location = constants.get('action', ''), constants.get('resource', ''), constants.get('location', '')
         target = {'action':action, 'resource':resource, 'location':location}

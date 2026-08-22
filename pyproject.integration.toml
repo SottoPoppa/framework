@@ -4,6 +4,30 @@ version = "0.1.0"
 
 [manager.defender]
 key = "integration-test-key"
+soglia_tentativi = 5
+timeout_blocchi = 60
+presentation = "demo.dsl"
 
-[[persistence.mock]]
+[manager.messenger]
+debug_mode = true
+
+[[message.stub]]
+name = "console"
+
+[[presentation.stub]]
+name = "web"
+attributes = {}
+
+[[persistence.stub]]
+name = "memory"
+
+[[persistence.filesystem]]
 name = "workfolder"
+path = "/tmp"
+
+[[authentication.stub]]
+name = "stub"
+
+[[network.stub]]
+name = "stub"
+capabilities = { platform = "stub" }

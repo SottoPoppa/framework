@@ -91,6 +91,13 @@ tuple:test_suite := (
         "note": "results normalizza la risposta secondo lo schema file e applica i default";
     },
     {
+        "action": exports.results;
+        "inputs": [{}, "WORKFOLDER"];
+        "outputs": none;
+        "assert": @received == @expected;
+        "note": "results tratta una risposta vuota di delete come esito senza payload";
+    },
+    {
         "action": exports.mapped_results;
         "inputs": [mapped_file_data, "github"];
         "outputs": {

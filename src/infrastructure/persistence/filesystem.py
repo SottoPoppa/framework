@@ -2,6 +2,7 @@ import sys
 import os
 import time
 import asyncio
+from pathlib import Path
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import framework.port.persistence as persistence
@@ -100,34 +101,65 @@ class Adapter(persistence.Port):
 
     @flow.result()
     async def request(self, **constants):
-        filename = constants.get('filter', {}).get('eq', {}).get('filename','')
-        #raise Exception(filename)
+        values = constants.get('storekeeper', constants)
+        if not isinstance(values, dict):
+            values = constants
+        path = self._resolve_path(**values)
+        data = self._payload_data(**values)
         method = constants.get('method')
-        
-        path = self.path + filename
 
         match method:
             case 'POST':
+                os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
                 with open(path, "w", encoding="utf-8") as file:
                     file.write(data)
+                return flow.success(self._record(path, data))
             case 'DELETE':
-                if os.path.exists(filepath):
-                    os.remove(filepath)
-                    return flow.success(filepath)
+                if os.path.exists(path):
+                    os.remove(path)
+                    return flow.success({})
 
                 return flow.error("File non trovato")
             case 'PUT':
-                with open(path, "a", encoding="utf-8") as file:
+                os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+                with open(path, "w", encoding="utf-8") as file:
                     file.write(data)
+                return flow.success(self._record(path, data))
             case 'GET':
                 with open(path, "r", encoding="utf-8") as file:
                     data = file.read()
 
-                return flow.success(data)
+                return flow.success(self._record(path, data))
             case 'VIEW':
                 return await self.query(**constants)
             case _:
                 return flow.error()
+
+    @staticmethod
+    def _resolve_path(**constants):
+        location = constants.get('location')
+        if isinstance(location, str) and location:
+            return location
+        filename = constants.get('filter', {}).get('eq', {}).get('filename', '')
+        return os.path.join(constants.get('path', os.getcwd()), filename)
+
+    @staticmethod
+    def _payload_data(**constants):
+        payload = constants.get('payload', {})
+        if isinstance(payload, dict) and 'content' in payload:
+            return str(payload['content'])
+        return str(constants.get('data', ''))
+
+    @staticmethod
+    def _record(path, content):
+        file_path = Path(path)
+        return {
+            'path': str(file_path),
+            'name': file_path.stem,
+            'extension': file_path.suffix.lstrip('.'),
+            'size': len(content.encode('utf-8')),
+            'content': content,
+        }
 
     # --- Operazioni CRUD standard di modello ---
     async def create(self, **constants): return await self.request(**{'method': 'POST'} | constants)

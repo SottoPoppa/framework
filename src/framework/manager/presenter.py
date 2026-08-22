@@ -62,8 +62,9 @@ class Manager(manager.Port):
     @flow.result()
     async def render(self, session, node_id, context=None):
         driver = self._get_driver()
-        raise Exception(f"[render] driver={driver} node_id={node_id} context={context}")
-        await driver.rebuild(node_id)
+        if driver and hasattr(driver, 'rebuild'):
+            return await driver.rebuild(node_id, context)
+        return None
     
     @flow.result(safe_kwargs=True)
     async def navigate(self, session, **constants):

@@ -3,7 +3,9 @@ imports: {
 };
 
 exports: {
-	'filter': imports.module.Adapter.filter
+	'filter': imports.module.Adapter.filter;
+	'resolve_path': imports.module.Adapter._resolve_path;
+	'payload_data': imports.module.Adapter._payload_data
 };
 
 tuple:test_suite := (
@@ -20,5 +22,19 @@ tuple:test_suite := (
 		"outputs": none;
 		"assert": @received != none;
 		"note": "Adapter.filter normalizza lo slash e applica startswith sui percorsi";
+	},
+	{
+		"action": exports.resolve_path;
+		"inputs": {"location": "/tmp/integration.txt"; "filter": {"eq": {"filename": "ignored.txt"}}};
+		"outputs": "/tmp/integration.txt";
+		"assert": @received == @expected;
+		"note": "Adapter usa il percorso prodotto dal Repository quando disponibile";
+	},
+	{
+		"action": exports.payload_data;
+		"inputs": {"payload": {"content": "hello"}};
+		"outputs": "hello";
+		"assert": @received == @expected;
+		"note": "Adapter estrae il contenuto dal payload del Repository";
 	}
 );

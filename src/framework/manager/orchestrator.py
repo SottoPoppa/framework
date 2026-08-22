@@ -182,9 +182,9 @@ class Manager(manager.Port):
         
         # Se ci sono errori dettagliati, il risultato complessivo è un fallimento logico
         if any(result.get('success', False) is not True for result in results):
-            return {"success": False, "results": results, "errors": detailed_errors}
+            return flow.error(detailed_errors)
         
-        return {"success": True, "results": results}
+        return flow.success({"results": results})
 
     @flow.result(safe_kwargs=True)
     async def chain_completed(self, session, **constants) -> Dict[str, Any]:
@@ -204,12 +204,12 @@ class Manager(manager.Port):
                     #await messenger.post(domain='debug', message=f"❌ Errore nel task {task}: {e}")
                     pass
 
-            return {"state": True, "result": results, "error": None}
+            return flow.success({"state": True, "result": results, "error": None})
 
         except Exception as e:
             error_msg = f"❌ Errore in chain_completed: {str(e)}"
             #await messenger.post(domain='debug', message=error_msg)
-            return {"state": False, "result": None, "error": error_msg}
+            return flow.error(error_msg)
 
     @flow.result(safe_kwargs=True)
     async def together_completed(self, session, **constants) -> Dict[str, Any]:
@@ -223,9 +223,9 @@ class Manager(manager.Port):
                 asyncio.create_task(task)
 
             #await messenger.post(domain='debug', message="✅ Tutti i task sono stati avviati in background.")
-            return {"state": True, "result": "Tasks avviati in background", "error": None}
+            return flow.success({"state": True, "result": "Tasks avviati in background", "error": None})
 
         except Exception as e:
             error_msg = f"❌ Errore in together_completed: {str(e)}"
             #await messenger.post(domain='debug', message=error_msg)
-            return {"state": False, "result": None, "error": error_msg}
+            return flow.error(error_msg)
