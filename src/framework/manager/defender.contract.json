@@ -9,7 +9,7 @@
     "Manager": {
       "resolve_route": {
         "test": "f651cff45782dbe9adfe7ce9567ce600207c2821c48ffa8a738034f74be16d8b",
-        "production": "e316342d65c6bcc8f152f042b89401804b60901bc915cbd99ee062dc978bcd35"
+        "production": "f651cff45782dbe9adfe7ce9567ce600207c2821c48ffa8a738034f74be16d8b"
       }
     }
   }

@@ -1,13 +1,8 @@
-from secrets import token_urlsafe
-from typing import Dict, Any
-from urllib.parse import urlparse, parse_qs, urljoin
-
-
 import framework.service.language as language
 import framework.service.scheme as scheme
 import framework.service.flow as flow
 import framework.manager.loader as loader
-import framework.port.authentication as authentication
+import framework.manager.authenticator as authenticator
 import framework.port.manager as manager
 
 class Manager(manager.Port):
@@ -18,18 +13,14 @@ class Manager(manager.Port):
         "authorized",
         "resolve_route",
     }
-    def __init__(self, 
-            loader: loader.Loader, 
-            authentications: list[authentication.Port], 
-            **constants
-        ):
+    def __init__(self, loader: loader.Loader, authenticator:authenticator.Manager, **configuration):
         """
         Inizializza il manager con i servizi necessari alla gestione delle richieste.
 
         :param loader: Carica risorse, manager e file DSL dell'applicazione.
-        :param authentications: Provider usati per autenticare, registrare e
+        :param authenticator: Provider usato per autenticare, registrare e
             disconnettere gli utenti.
-        :param constants: Configurazioni del manager, incluse le policy da
+        :param configuration: Configurazioni del manager, incluse le policy da
             caricare durante l'avvio.
         """
 
@@ -40,11 +31,11 @@ class Manager(manager.Port):
         self.loader = loader
 
         # Configurazione ricevuta dal container, conservata per il bootstrap.
-        self.config = constants
+        self.config = configuration
 
         # Provider di autenticazione utilizzati dai metodi del ciclo di vita
         # dell'utente: authenticate, activate, reinstate e terminate.
-        self.authentications = authentications
+        self.authenticator = authenticator
 
         # Nomi dei controller DSL caricati durante startup().
         self.controllers = []
@@ -108,96 +99,10 @@ class Manager(manager.Port):
     def get_policy(self, policy):
         return self.policies.get(policy)
 
-    @staticmethod
-    def _merge_authentication_result(session, authentication, session_result):
-        if not session_result.get('success'):
-            return session_result
-
-        payload = flow.output(session_result)
-        if not isinstance(payload, dict):
-            return flow.error("Authentication provider returned an invalid payload")
-
-        providers = payload.get('providers', {})
-        user = payload.get('user')
-        provider = providers.get(authentication.name)
-        if not isinstance(provider, dict) or not isinstance(user, dict):
-            return flow.error("Authentication provider returned incomplete identity data")
-
-        session.setdefault('providers', {})
-        session.setdefault('user', {})
-        session['providers'][authentication.name] = provider
-        session['user'] |= user
-        return None
-
     @flow.result(inputs=('session',))
     async def new_session(self, session):
         return flow.success(session)
     
-    @flow.result(outputs=('session',))
-    async def terminate(self, session, **constants) -> bool:
-        """
-        Termina la sessione di un utente specificato.
-
-        :param constants: Deve includere 'identifier'.
-        :return: True se la sessione è stata terminata, False se l'utente non esiste.
-        """
-
-        for authentication in self.authentications:
-            session_result = await authentication.sign_out(session)
-            if not session_result.get('success'):
-                return session_result
-
-        session.pop('providers', None)
-        session.pop('user', None)
-
-        return flow.success(session)
-
-    @flow.result(outputs=('session',), safe_kwargs=True)
-    async def reinstate(self, session, **constants):
-        """
-        Autentica un utente utilizzando i provider configurati.
-
-        :param constants: Deve includere 'identifier', 'ip' e credenziali.
-        :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
-        """
-        for authentication in self.authentications:
-            session_result = await authentication.sign_aid(**constants)
-            merge_error = self._merge_authentication_result(session, authentication, session_result)
-            if merge_error:
-                return merge_error
-        return flow.success(session)
-
-    @flow.result(outputs=('session',))
-    async def authenticate(self, session, **constants):
-        """
-        Autentica un utente utilizzando i provider configurati.
-
-        :param constants: Deve includere 'identifier', 'ip' e credenziali.
-        :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
-        """
-        for authentication in self.authentications:
-            session_result = await authentication.sign_in(**constants)
-            merge_error = self._merge_authentication_result(session, authentication, session_result)
-            if merge_error:
-                return merge_error
-        return flow.success(session)
-
-
-    @flow.result(outputs=('session',))
-    async def activate(self, session, **constants) -> Any:
-        """
-        Registra un utente utilizzando i provider configurati.
-
-        :param constants: Deve includere 'identifier', 'ip' e credenziali.
-        :return: Dizionario di sessione aggiornato se la registrazione ha successo, altrimenti None.
-        """
-        for authentication in self.authentications:
-            session_result = await authentication.sign_up(**constants)
-            merge_error = self._merge_authentication_result(session, authentication, session_result)
-            if merge_error:
-                return merge_error
-        return flow.success(session)
-
     def authorized(self, policy, **constants) -> bool:
         policy = self.get_policy(policy)
         if not policy:
@@ -235,62 +140,3 @@ class Manager(manager.Port):
             else:
                 all_resutl.append(False)
         return any(all_resutl) if len(all_resutl) > 0 else False
-
-    def resolve_route(self, risorse, request_url, request_method, base_url=None,**kargs):
-        
-        try:
-            # 1. Normalizzazione URL
-            # Se request_url è relativo (es. "/home"), urljoin lo unisce a base_url
-            full_url = urljoin(base_url, request_url) if base_url else request_url
-            parsed = urlparse(full_url)
-            
-            # Pulizia del path: togliamo slash vuoti per la lista, ma manteniamo il path stringa per il match
-            path_list = [p for p in parsed.path.split('/') if p]
-            
-            # Trasformiamo query e fragment in dizionari puliti
-            query_params = {k: v[0] if len(v) == 1 else v for k, v in parse_qs(parsed.query).items()}
-            frag_params = {k: v[0] if len(v) == 1 else v for k, v in parse_qs(parsed.fragment).items()}
-
-            url_payload = {
-                'url': full_url,
-                'protocol': parsed.scheme,
-                'host': parsed.hostname,
-                'port': parsed.port,
-                'path': path_list,
-                'query': query_params,
-                'fragment': frag_params
-            }
-
-            # 2. Ciclo di Matching (Aggiornato per supportare la struttura nidificata {path: {metodo: config}})
-            for methods_dict in risorse.values():
-                # Tutte le configurazioni per lo stesso path condividono lo stesso pattern
-                # ne prendiamo una qualsiasi per eseguire il match del path
-                first_config = next(iter(methods_dict.values()))
-                match = first_config['pattern'].match(parsed.path)
-                
-                if match:
-                    # Trovato il path, cerchiamo se il metodo richiesto è supportato
-                    route_data = methods_dict.get(request_method.upper())
-                    
-                    if not route_data:
-                        # Metodo non trovato per questo path specifico
-                        continue
-                        
-                    # Recuperiamo i metadati
-                    metadata = route_data.get('metadata', route_data)
-                    
-                    # Estrazione parametri dinamici dalla Regex (es. {'id': '123'})
-                    dynamic_params = match.groupdict()
-                    
-                    return {
-                        'metadata': metadata,
-                        'params': dynamic_params,
-                        'url_details': url_payload
-                    }
-
-            print(f"[-] No route matched for: {request_method} {parsed.path}")
-            return None
-
-        except Exception as e:
-            print(f"[!] Resolve Error: {e}")
-            return None

@@ -11,6 +11,7 @@ from markupsafe import Markup
 
 import framework.port.presentation as presentation
 import framework.service.flow as flow
+import framework.service.route as route
 from framework.service.route import split_url
 from framework.manager.defender import Manager as Defender
 from framework.manager.presenter import Manager as Presenter
@@ -95,7 +96,7 @@ class DefenderMiddleware(BaseHTTPMiddleware):
         if path.startswith("/static/"):
             return await call_next(request)
         
-        data = self.defender.resolve_route(self.routes, path, method)
+        data = route.resolve_route(self.routes, path, method)
 
         if not data:
             # Rifiutiamo la richiesta con un 403 Forbidden o 404

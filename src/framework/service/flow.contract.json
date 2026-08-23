@@ -1,6 +1,7 @@
 {
   "requires": [
-    "networkx"
+    "networkx",
+    "returns"
   ],
   "contract_version": 2,
   "exports": {
