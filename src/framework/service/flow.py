@@ -68,9 +68,24 @@ def _res(ok, value=None, errors=None, t0=None, transactions=None):
     return result
 
 def success(v, t0=None): return _res(True,  v,    None, t0)
-def error(e,   t0=None):
+def error(e, t0=None, *, action=None, component=None, context=None):
     result = _res(False, None, e, t0)
-    print(f"[FLOW ERROR] {result['errors']}")
+    if action is not None:
+        result["action"] = action
+    if component is not None:
+        result["component"] = component
+    if context:
+        result["diagnostics"] = context
+
+    details = []
+    if component:
+        details.append(f"component={component}")
+    if action:
+        details.append(f"action={action}")
+    if context:
+        details.extend(f"{key}={value}" for key, value in context.items())
+    prefix = f" ({', '.join(details)})" if details else ""
+    print(f"[FLOW ERROR]{prefix} {result['errors']}")
     if result.get("traceback"):
         print(result["traceback"], end="")
     return result
@@ -291,7 +306,20 @@ def result(inputs=None, outputs=None, safe_kwargs=False):
 
             try:
                 #nargs, nkwargs = sig.bind_partial(*args, **kwargs)
-                new_kwargs = await nkwargs(kwargs)
+                try:
+                    new_kwargs = await nkwargs(kwargs)
+                except ValueError as exception:
+                    return error(
+                        exception,
+                        t0,
+                        action=func.__qualname__,
+                        component=func.__module__,
+                        context={
+                            "signature": str(sig),
+                            "validation_model": inputs,
+                            "received_fields": sorted(kwargs.keys())
+                        }
+                    )
                 #print(f"Normalized kwargs: {s}")
                 #print(f"Received args: {args}, kwargs: {kwargs}")
                 res = await func(*args, **new_kwargs) if is_async else func(*args, **new_kwargs)
@@ -378,7 +406,7 @@ async def pipeline(iterable, *functions):
     r = iterable
     pipeline_transactions = []
     for fn in functions:
-        r = await fn(r)
+        r = await _call(fn, r)
         if is_result(r):
             _merge_transactions(pipeline_transactions, [r])
             _merge_transactions(pipeline_transactions, r.get("transactions"))

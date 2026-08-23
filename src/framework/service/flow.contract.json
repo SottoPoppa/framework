@@ -15,9 +15,24 @@
     ],
     "transactions": [
       "transactions"
+    ],
+    "pipeline": [
+      "pipeline"
     ]
   },
   "hashes": {
+    "pipeline": {
+      "test": "3a9f08a08c9cd273a49882ce17c292eec608f40ce26004053bd7bdae9b223259",
+      "production": "3a9f08a08c9cd273a49882ce17c292eec608f40ce26004053bd7bdae9b223259"
+    },
+    "success": {
+      "test": "6ad6ec76c5a9d5ce42c42a33bd23b3119d1b3f5323905384bdd6d4d4251a2486",
+      "production": "6ad6ec76c5a9d5ce42c42a33bd23b3119d1b3f5323905384bdd6d4d4251a2486"
+    },
+    "transactions": {
+      "test": "374af066ced78a1fe5d770c5454c1f1e7e2acc796e0401f3bf6eeda2ced0911a",
+      "production": "374af066ced78a1fe5d770c5454c1f1e7e2acc796e0401f3bf6eeda2ced0911a"
+    },
     "reset": {
       "test": "efabe157fb368873be24c5dce2710178c1df694ecde6a4782b4006066b944660",
       "production": "efabe157fb368873be24c5dce2710178c1df694ecde6a4782b4006066b944660"
@@ -25,14 +40,6 @@
     "switch": {
       "test": "eebf5c5efe090b8ec6ae6134781481d8eb0792c5a3e3b78ff1568f806a8444fb",
       "production": "eebf5c5efe090b8ec6ae6134781481d8eb0792c5a3e3b78ff1568f806a8444fb"
-    },
-    "transactions": {
-      "test": "374af066ced78a1fe5d770c5454c1f1e7e2acc796e0401f3bf6eeda2ced0911a",
-      "production": "374af066ced78a1fe5d770c5454c1f1e7e2acc796e0401f3bf6eeda2ced0911a"
-    },
-    "success": {
-      "test": "6ad6ec76c5a9d5ce42c42a33bd23b3119d1b3f5323905384bdd6d4d4251a2486",
-      "production": "6ad6ec76c5a9d5ce42c42a33bd23b3119d1b3f5323905384bdd6d4d4251a2486"
     }
   }
 }
