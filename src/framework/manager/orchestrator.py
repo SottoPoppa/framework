@@ -5,6 +5,7 @@ import traceback
 
 import framework.service.language as language
 import framework.service.flow as flow
+from returns.result import Failure, Success
 import framework.service.scheme as scheme
 import framework.manager.messenger as messenger
 import framework.port.manager as manager
@@ -136,16 +137,16 @@ class Manager(manager.Port):
 
             for operation in finished:
                 transaction = operation.result()
-                if flow.check(transaction):
+                if isinstance(transaction, Success):
                     # framework_log("DEBUG", f"Transazione completata: {type(transaction)}", emoji="💼")
                     if 'success' in constants:
                         transaction = await constants['success'](transaction=transaction,profile=operation.get_name())
                     for task in unfinished:
                         task.cancel()
-                    return flow.success(flow.output(transaction))
+                    return transaction
 
-                if flow.is_result(transaction):
-                    errors.extend(transaction.get('errors', []))
+                if isinstance(transaction, Failure):
+                    errors.append(str(transaction.failure()))
 
                 operations = unfinished
 

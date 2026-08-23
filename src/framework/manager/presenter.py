@@ -7,6 +7,7 @@ import re
 import xml.etree.ElementTree as ET
 
 import asyncio
+from returns.result import Failure
 
 class Manager(manager.Port):
     _session_exempt_methods = {
@@ -28,10 +29,8 @@ class Manager(manager.Port):
         for presentation in self.presentations:
             if hasattr(presentation, 'start'):
                 res = await presentation.start(session)
-                if flow.is_result(res):
-                    if not res.get('success'):
-                        return res
-                    res = flow.output(res)
+                if isinstance(res, Failure):
+                    return res
                 if res:
                     loops.append(res)
         return loops

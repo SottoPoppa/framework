@@ -1,9 +1,11 @@
+from secrets import token_urlsafe
 import framework.service.language as language
 import framework.service.scheme as scheme
 import framework.service.flow as flow
 import framework.manager.loader as loader
 import framework.manager.authenticator as authenticator
 import framework.port.manager as manager
+from returns.result import Success
 
 class Manager(manager.Port):
     _session_exempt_methods = {
@@ -64,9 +66,13 @@ class Manager(manager.Port):
             await self.interpreter.load_file(path, code)
             #await self.load_file(name, source)
             session_result = await self.session_create()
-            async with flow.output(session_result) as session:
+            if not isinstance(session_result, Success):
+                return session_result
+            async with session_result.unwrap() as session:
                 run_result = await session.run(path)
-                self.policies[policy] = flow.output(run_result)
+                if not isinstance(run_result, Success):
+                    return run_result
+                self.policies[policy] = run_result.unwrap()
             print(f"[+] Policy: {policy}/{filename}")
 
         from pathlib import Path

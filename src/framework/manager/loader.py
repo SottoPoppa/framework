@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Optional, Type, get_args, get_type_hints
 
 from jinja2 import BaseLoader, Environment
+from returns.result import Success
 
 # Python 3.11+ native TOML support with fallback for older versions
 try:
@@ -453,11 +454,10 @@ class Application:
                     continue
 
                 message_result = await messenger.receive(self._session, domain="event")
-                if not flow.is_result(message_result):
+                from returns.result import Failure, Success
+                if isinstance(message_result, Failure):
                     continue
-                if not message_result.get("success"):
-                    continue
-                message = flow.output(message_result)
+                message = message_result.unwrap()
                 for name, mgr in list(self._loader.get_managers().items()):
                     if hasattr(mgr, "reload"):
                         try:
@@ -488,10 +488,10 @@ class Application:
             if not hasattr(manager, "startup"):
                 continue
             result = await manager.startup(self._session)
-            if flow.is_result(result):
-                if not result.get("success"):
-                    continue
-                result = flow.output(result)
+            from returns.result import Failure, Success
+            if isinstance(result, Failure):
+                continue
+            result = result.unwrap() if isinstance(result, Success) else result
             if not result:
                 continue
 
@@ -506,13 +506,14 @@ class Application:
     async def shutdown(self):
         """Esegue il graceful shutdown di tutti i componenti registrati."""
         import framework.service.flow as flow
+        from returns.result import Failure
 
         print("\n[*] Spegnimento controllato dei servizi...")
         for manager in reversed(self._managers):
             if hasattr(manager, "shutdown"):
                 result = await manager.shutdown(self._session)
-                if flow.is_result(result) and not result.get("success"):
-                    print(f"[!] Shutdown fallito per {manager}: {result.get('errors')}")
+                if isinstance(result, Failure):
+                    print(f"[!] Shutdown fallito per {manager}: {result.failure()}")
 
         for task in self._running_tasks:
             if not task.done():
@@ -868,8 +869,8 @@ class Loader:
         )
         config_file = kwargs.get("config", "pyproject.toml")
         self.kwargs = kwargs
-        import framework.service.flow as flow
-        flow.set_replay_capture(bool(kwargs.get("dev")))
+        #import framework.service.flow as flow
+        #flow.set_replay_capture(bool(kwargs.get("dev")))
         self.framework.strict = not (
             kwargs.get("dev")
             or kwargs.get("test") is not None
@@ -895,6 +896,9 @@ class Loader:
         print("\n[*] Discovery...")
 
         print("\n[*] Build...")
+        import framework.service.flow as flow
+        from returns.result import Failure, Success
+
         managers = self._build_managers(mgr_resources)
         self._build_adapters(self.framework.components_ports())
 
@@ -906,10 +910,11 @@ class Loader:
         if defender:
             if hasattr(defender, "startup"):
                 startup_result = await defender.startup()
-                if flow.is_result(startup_result) and not startup_result.get("success"):
-                    raise RuntimeError(startup_result.get("errors"))
+                if isinstance(startup_result, Failure):
+                    raise RuntimeError(startup_result.failure())
             if hasattr(defender, "session_create"):
-                session = flow.output(await defender.session_create())
+                session_result = await defender.session_create()
+                session = session_result.unwrap() if isinstance(session_result, Success) else None
                 print(f"[*] Sessione creata: {session}")
 
         app = Application(self, managers, session)
@@ -941,7 +946,7 @@ class Loader:
             print(f"[!] Metodo Tester '{method_name}' non trovato nel container")
             return False
         result = await method(session, filter=filter_value)
-        return flow.output(result) if flow.is_result(result) else result
+        return result.unwrap() if isinstance(result, Success) else result
 
     async def verify_contracts(self, config_toml_path: Any) -> bool:
         """Verifica i contract senza costruire o avviare l'applicazione."""

@@ -9,6 +9,7 @@ import framework.service.flow as flow
 import framework.manager.loader as loader
 import framework.port.authentication as authentication
 import framework.port.manager as manager
+from returns.result import Failure, Success
 
 class Manager(manager.Port):
     _session_exempt_methods = {
@@ -73,9 +74,13 @@ class Manager(manager.Port):
             await self.interpreter.load_file(path, code)
             #await self.load_file(name, source)
             session_result = await self.session_create()
-            async with flow.output(session_result) as session:
+            if not isinstance(session_result, Success):
+                return session_result
+            async with session_result.unwrap() as session:
                 run_result = await session.run(path)
-                self.policies[policy] = flow.output(run_result)
+                if not isinstance(run_result, Success):
+                    return run_result
+                self.policies[policy] = run_result.unwrap()
             print(f"[+] Policy: {policy}/{filename}")
 
         from pathlib import Path
@@ -110,10 +115,10 @@ class Manager(manager.Port):
 
     @staticmethod
     def _merge_authentication_result(session, authentication, session_result):
-        if not session_result.get('success'):
+        if isinstance(session_result, Failure):
             return session_result
 
-        payload = flow.output(session_result)
+        payload = session_result.unwrap()
         if not isinstance(payload, dict):
             return flow.error("Authentication provider returned an invalid payload")
 
@@ -127,7 +132,7 @@ class Manager(manager.Port):
         session.setdefault('user', {})
         session['providers'][authentication.name] = provider
         session['user'] |= user
-        return None
+        return Success(None)
 
     @flow.result(inputs=('session',))
     async def new_session(self, session):
@@ -144,7 +149,7 @@ class Manager(manager.Port):
 
         for authentication in self.authentications:
             session_result = await authentication.sign_out(session)
-            if not session_result.get('success'):
+            if isinstance(session_result, Failure):
                 return session_result
 
         session.pop('providers', None)

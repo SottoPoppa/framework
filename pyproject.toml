@@ -6,6 +6,7 @@ readme = "README.md"
 dependencies = [
     "jinja2",
     "tomli; python_version < '3.11'",
+    "returns",
 ]
 
 [manager.defender]

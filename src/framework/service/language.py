@@ -59,6 +59,7 @@ _visit_stack: contextvars.ContextVar[List[dict]] = contextvars.ContextVar(
 from lark import Lark, Token, Transformer, v_args
 
 import framework.service.flow as flow
+from returns.result import Failure, Success
 import framework.service.scheme as scheme
 
 # ── Grammar (invariata) ───────────────────────────────────────────────────────
@@ -406,7 +407,7 @@ class LazyBinOp:
 @dataclass(frozen=True)
 class ContextVar:
     name: str
-    def __call__(self, *_, **ctx): return flow.output(scheme.get(ctx, self.name))
+    def __call__(self, *_, **ctx): return scheme.get(ctx, self.name)
     def __repr__(self):            return self.name
 
 @dataclass(frozen=True)
@@ -651,8 +652,7 @@ class Interpreter:
         Invoca una funzione (Python callable, DSL tuple, o LazyCall) e
         restituisce il dict Result completo.
 
-        Per ottenere il payload usare ``flow.output(result)``. Il risultato
-        conserva anche ``transactions`` e la traccia delle chiamate interne.
+        Il risultato è un ``returns.Result`` e conserva l'errore tipizzato.
 
         Solleva ``DSLRuntimeError`` in caso di errore.
 
@@ -662,8 +662,8 @@ class Interpreter:
         :returns:      risultato Flow della funzione
         """
         res = await self._invoke(fn, args, kwargs or {})
-        if not res["success"]:
-            raise DSLRuntimeError(f"Errore in call: {res['errors']}")
+        if isinstance(res, Failure):
+            raise DSLRuntimeError(f"Errore in call: {res.failure()}")
         return res
 
     # ── internals ─────────────────────────────────────────────────────────────
@@ -681,12 +681,10 @@ class Interpreter:
         dag_results = await self._runner.run_file(sid, file, ast_result)
         
         # Conserva i Result dei nodi nel payload e nella catena transazionale.
-        result = flow.success(ast_result | dag_results)
-        result["transactions"] = list(dag_results.values())
-        return result
+        return flow.success(ast_result | dag_results)
 
-    async def _invoke(self, fn: Any, args: tuple, kwargs: Dict, path: str = "") -> Dict:
-        """Esegue fn e restituisce sempre un dict Result."""
+    async def _invoke(self, fn: Any, args: tuple, kwargs: Dict, path: str = "") -> Result:
+        """Esegue fn e restituisce sempre un Result."""
         if isinstance(fn, LazyCall):
             merged = ChainMap(kwargs, fn.env)
             res, _ = await self.visit_call(fn.call_node, merged, path=path)
@@ -812,7 +810,7 @@ class Interpreter:
     async def visit_bool(self, n, e, path=""):        return n["value"], e
     async def visit_any(self, n, e, path=""):         return None, e
     async def visit_identifier(self, n, e, path=""):  return n["name"], e
-    async def visit_var(self, n, e, path=""):         return flow.output(scheme.get(e, n["name"], n["name"])), e
+    async def visit_var(self, n, e, path=""):         return scheme.get(e, n["name"], n["name"]), e
     async def visit_context_var(self, n, e, path=""): return ContextVar(n["name"]), e
 
     async def visit_function_def(self, n, e, path=""):
@@ -943,9 +941,9 @@ class Interpreter:
         all_kwargs = {**kwargs, **ast_kwargs}
         fn = scheme.get(env, str(name))
         res = await self._invoke(fn, all_args, all_kwargs, path=call_path)
-        if not res["success"]:
+        if isinstance(res, Failure):
             return res, env
-        return res["outputs"], env
+        return res.unwrap(), env
 
     async def _call_dsl_fn(self, fn_triple, args, kwargs, path=""):
         params_ast, body_ast, return_ast = fn_triple[:3]

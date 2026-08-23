@@ -8,6 +8,7 @@ from framework.service.factory import Repository
 from framework.manager.messenger import Manager as Messenger
 from framework.manager.orchestrator import Manager as Orchestrator
 from framework.manager.defender import Manager as Defender
+from returns.result import Failure
 
 
 class Manager(manager.Port):
@@ -49,9 +50,13 @@ class Manager(manager.Port):
             code = await self.defender.loader.resource(path)
             await self.defender.interpreter.load_file(path, code)
             session_result = await self.defender.session_create()
-            async with flow.output(session_result) as repository_session:
+            if isinstance(session_result, Failure):
+                return session_result
+            async with session_result.unwrap() as repository_session:
                 run_result = await repository_session.run(path)
-                self.repositories[repository_name] = flow.output(run_result)
+                if isinstance(run_result, Failure):
+                    return run_result
+                self.repositories[repository_name] = run_result.unwrap()
             self.maked[repository_name] = Repository(
                 **self.repositories[repository_name]['repository']
             )
@@ -112,11 +117,11 @@ class Manager(manager.Port):
                 task = await self._prepare_provider(
                     provider, repository, storekeeper, session
                 )
-                if not task.get('success'):
+                if isinstance(task, Failure):
                     for pending in tasks:
                         pending.cancel()
                     return task
-                tasks.append(flow.output(task))
+                tasks.append(task.unwrap())
             except Exception as error:
                 for task in tasks:
                     task.cancel()
@@ -139,22 +144,22 @@ class Manager(manager.Port):
             return flow.error("Nome del repository non specificato.")
 
         repository_result = await self._load_repository(repository_name)
-        if not repository_result.get('success'):
+        if isinstance(repository_result, Failure):
             return repository_result
-        repository = flow.output(repository_result)
+        repository = repository_result.unwrap()
 
         preparation = await self._prepare_operations(repository, storekeeper, session)
-        if not preparation.get('success'):
+        if isinstance(preparation, Failure):
             return preparation
-        return flow.success((repository, flow.output(preparation)))
+        return flow.success((repository, preparation.unwrap()))
     
     @flow.result()
     async def _execute(self, operation, session, constants):
         state = await self.preparation(session, constants | {'operation': operation})
-        if not state.get('success'):
+        if isinstance(state, Failure):
             return state
 
-        repository, operations = flow.output(state)
+        repository, operations = state.unwrap()
         return await self.orchestrator.first_completed(
             session,
             operations=operations,
