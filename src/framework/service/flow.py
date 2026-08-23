@@ -15,6 +15,7 @@ import networkx as nx
 import functools
 import uuid
 import traceback
+import copy
 
 import framework.service.scheme as scheme
 
@@ -23,6 +24,27 @@ import framework.service.scheme as scheme
 # ─────────────────────────────────────────────
 
 _transaction_stack = ContextVar("flow_transaction_stack", default=None)
+_capture_replay_inputs = ContextVar("flow_capture_replay_inputs", default=False)
+
+def set_replay_capture(enabled: bool):
+    """Abilita il salvataggio degli input per il replay in modalità sviluppo."""
+    _capture_replay_inputs.set(bool(enabled))
+
+def _replay_data(func, args, kwargs):
+    if not _capture_replay_inputs.get():
+        return None
+    try:
+        captured_args = copy.deepcopy(args)
+        captured_kwargs = copy.deepcopy(kwargs)
+    except Exception:
+        captured_args = args
+        captured_kwargs = kwargs
+    return {
+        "action": func.__name__,
+        "component": func.__module__,
+        "args": captured_args,
+        "kwargs": captured_kwargs,
+    }
 
 def _res(ok, value=None, errors=None, t0=None, transactions=None):
     result = {
@@ -52,7 +74,14 @@ def error(e,   t0=None):
     if result.get("traceback"):
         print(result["traceback"], end="")
     return result
-def output(v):           return v.get("outputs") if isinstance(v, dict) and v.get("success") is not None else v
+def output(v):
+    if not is_result(v):
+        return v
+    current_transactions = _transaction_stack.get()
+    if current_transactions is not None:
+        _merge_transactions(current_transactions, [v])
+        _merge_transactions(current_transactions, v.get("transactions"))
+    return v.get("outputs")
 def is_result(v):        return isinstance(v, dict) and v.get("success") is not None
 def transactions(v):    return v.get("transactions", []) if is_result(v) else []
 def flux(v): return success(output(v)) if v.get("success") is not None else error(v.get("errors"))
@@ -134,6 +163,13 @@ def _deep_merge_defaults(target: dict, source: dict):
 
 def _key(fname: str, node_name: str) -> str:
     return f"{fname}::{node_name}"
+
+def _merge_transactions(target, source):
+    """Unisce transazioni mantenendo l'ordine e scartando duplicati."""
+    for transaction in source or []:
+        if not any(transaction is existing for existing in target):
+            target.append(transaction)
+    return target
 
 # ─────────────────────────────────────────────
 # NODE DSL
@@ -261,8 +297,8 @@ def result(inputs=None, outputs=None, safe_kwargs=False):
                 res = await func(*args, **new_kwargs) if is_async else func(*args, **new_kwargs)
                 result = await rett(res)
                 child_transactions = list(own_transactions)
-                if is_result(result) and not child_transactions:
-                    child_transactions.extend(result.get("transactions", []))
+                if is_result(result) and not any(result is transaction for transaction in child_transactions):
+                    _merge_transactions(child_transactions, result.get("transactions"))
 
                 if is_result(result):
                     wrapped = _res(
@@ -284,6 +320,9 @@ def result(inputs=None, outputs=None, safe_kwargs=False):
                     action=func.__name__,
                     component=func.__module__,
                 )
+                replay_data = _replay_data(func, args, new_kwargs)
+                if replay_data is not None:
+                    traced["replay"] = replay_data
                 transaction_result = traced
                 return traced
             except Exception as e:
@@ -294,6 +333,9 @@ def result(inputs=None, outputs=None, safe_kwargs=False):
                     action=func.__name__,
                     component=func.__module__,
                 )
+                replay_data = _replay_data(func, args, kwargs)
+                if replay_data is not None:
+                    transaction_result["replay"] = replay_data
                 return transaction_result
             finally:
                 _transaction_stack.reset(token)
@@ -334,11 +376,20 @@ def foreach(iterable, fn, args=()):
 @action()
 async def pipeline(iterable, *functions):
     r = iterable
+    pipeline_transactions = []
     for fn in functions:
         r = await fn(r)
-        if not r["success"]: return error(r["errors"], r["time"])
+        if is_result(r):
+            _merge_transactions(pipeline_transactions, [r])
+            _merge_transactions(pipeline_transactions, r.get("transactions"))
+        if not r["success"]:
+            failed = error(r["errors"], r["time"])
+            failed["transactions"] = pipeline_transactions
+            return failed
         r = output(r)
-    return success(r)
+    completed = success(r)
+    completed["transactions"] = pipeline_transactions
+    return completed
 
 async def reset(old, new): return new
 

@@ -18,7 +18,7 @@ session:session := test.session;
             }
         };
         "outputs": none;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Messenger.send deposita il messaggio nel message stub";
     },
     {
@@ -33,7 +33,7 @@ session:session := test.session;
             "message": "integration-ping";
             "domain": "info"
         };
-        "assert": @received.message == @expected.message & @received.domain == @expected.domain;
+        "assert": @received.outputs.message == @expected.message & @received.outputs.domain == @expected.domain;
         "note": "Messenger.receive recupera il messaggio dal message stub";
     }
 );

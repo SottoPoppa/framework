@@ -339,8 +339,40 @@ transactions = result["transactions"]
 
 Anche `SessionHandle.run()` restituisce un Flow. I risultati dei nodi DAG sono
 disponibili sia nella mappa `flow.output(run_result)` sia nelle transazioni del
-risultato. Gli input non vengono registrati automaticamente, così password,
+risultato. In modalità `--dev`, ogni risultato Flow include anche `replay` con
+azione, componente, argomenti e keyword argument necessari a ripetere la
+chiamata. Fuori da `--dev` gli input non vengono registrati, così password,
 token e altri dati sensibili non finiscono nella cronologia.
+
+### Test DSL
+
+Durante un test, `@received` contiene il risultato Flow completo restituito da
+`interpreter.call()`, non solo il payload. I campi principali sono:
+
+```dsl
+@received.success
+@received.outputs
+@received.errors
+@received.transactions
+@received.replay
+```
+
+`@expected` contiene sempre il valore dichiarato in `outputs`. Per verificare
+il payload si usa quindi `@received.outputs`; per verificare anche l'esito:
+
+```dsl
+"outputs": {"name": "Alice"};
+"assert": @received.success == true & @received.outputs.name == @expected.name;
+```
+
+Gli errori possono essere verificati senza estrarre il payload:
+
+```dsl
+"assert": @received.success == false & @received.errors != none;
+```
+
+Una suite con zero test non è considerata valida. Il comando di test deve
+riportare un numero di test eseguiti maggiore di zero.
 
 Gli helper privati e le funzioni pure non devono essere decorati senza motivo:
 il contratto Flow va applicato ai confini pubblici tra componenti.

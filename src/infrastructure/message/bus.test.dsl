@@ -12,14 +12,14 @@ tuple:test_suite := (
         "action": exports.post;
         "inputs": (imports.module.Adapter(),);
         "outputs": none;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Message bus accetta un post senza reader registrati";
     },
     {
         "action": exports.forget;
         "inputs": (imports.module.Adapter(), {"id": "reader"});
         "outputs": none;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Message bus dimentica le code associate a una sessione";
     }
 );

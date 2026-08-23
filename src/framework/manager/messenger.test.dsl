@@ -15,35 +15,35 @@ tuple:test_suite := (
         "action": exports.messenger._split_domain;
         "inputs": "notifications.created";
         "outputs": (none, "notifications.created");
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "_split_domain conserva un dominio senza controller";
     },
     {
         "action": exports.messenger._split_domain;
         "inputs": "email:notifications.created";
         "outputs": ("email", "notifications.created");
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "_split_domain separa controller e dominio usando il primo separatore";
     },
     {
         "action": exports.messenger._split_domain;
         "inputs": "email:notifications:created";
         "outputs": ("email", "notifications:created");
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "_split_domain conserva i separatori successivi nel dominio";
     },
     {
         "action": exports.messenger._split_domain;
         "inputs": "console:info";
         "outputs": ("console", "info");
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "_split_domain prepara correttamente il routing usato dallo shutdown";
     },
     {
         "action": exports.messenger._split_domain;
         "inputs": none;
         "outputs": (none, none);
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "_split_domain gestisce un dominio nullo senza crashare";
     },
     {
@@ -56,7 +56,7 @@ tuple:test_suite := (
             }
         };
         "outputs": none;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "send inoltra un messaggio al provider mock con il dominio normalizzato";
     },
     {
@@ -71,7 +71,7 @@ tuple:test_suite := (
             "message": "pong";
             "domain": "info"
         };
-        "assert": @received.message == @expected.message & @received.domain == @expected.domain;
+        "assert": @received.outputs.message == @expected.message & @received.outputs.domain == @expected.domain;
         "note": "receive legge dal provider mock il messaggio inviato da send";
     }
 );

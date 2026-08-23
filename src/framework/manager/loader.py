@@ -285,7 +285,10 @@ class Framework:
     ):
         """Carica o ricarica un modulo Python utilizzando importlib in modo sicuro."""
         if name in sys.modules and not force:
-            return sys.modules[name]
+            module = sys.modules[name]
+            if extra:
+                module.__dict__.update(extra)
+            return module
 
         file_path = Path(path)
         spec = importlib.util.spec_from_file_location(name, file_path)
@@ -864,6 +867,8 @@ class Loader:
         )
         config_file = kwargs.get("config", "pyproject.toml")
         self.kwargs = kwargs
+        import framework.service.flow as flow
+        flow.set_replay_capture(bool(kwargs.get("dev")))
         self.framework.strict = not (
             kwargs.get("dev")
             or kwargs.get("test") is not None
@@ -874,8 +879,6 @@ class Loader:
         config, mgr_resources = await self._discover_components(config_toml_path)
 
         # Risoluzione dinamica di Container dopo il caricamento del core.
-        import framework.service.flow as flow
-
         container_mod = sys.modules.get("framework.service.container")
         if not container_mod or not hasattr(container_mod, "Container"):
             raise RuntimeError(

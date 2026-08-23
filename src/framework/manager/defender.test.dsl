@@ -22,21 +22,21 @@ tuple:test_suite := (
         "action": exports.resolve_route;
         "inputs": (none, routes, "https://example.test/users/42?tag=one&tag=two#section=profile", "GET");
         "outputs": "user";
-        "assert": @received.metadata.view == @expected & @received.params.id == "42" & @received.url_details.protocol == "https" & @received.url_details.query.tag == ["one", "two"] & @received.url_details.fragment.section == "profile";
+        "assert": @received.outputs.metadata.view == @expected & @received.outputs.params.id == "42" & @received.outputs.url_details.protocol == "https" & @received.outputs.url_details.query.tag == ["one", "two"] & @received.outputs.url_details.fragment.section == "profile";
         "note": "resolve_route trova una rotta GET ed estrae parametro, query e fragment";
     },
     {
         "action": exports.resolve_route;
         "inputs": (none, routes, "/users/42", "POST");
         "outputs": none;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "resolve_route rifiuta un metodo non dichiarato per la rotta";
     },
     {
         "action": exports.resolve_route;
         "inputs": (none, routes, "/missing", "GET");
         "outputs": none;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "resolve_route ritorna null quando il path non corrisponde";
     }
 );

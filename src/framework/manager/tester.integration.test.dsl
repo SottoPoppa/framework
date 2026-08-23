@@ -9,7 +9,7 @@ tuple:test_suite := (
         "action": exports.get_managers;
         "inputs": ();
         "outputs": true;
-        "assert": @received.tester != none;
+        "assert": @received.outputs.tester != none;
         "note": "il contesto di integrazione espone il Tester dal container reale";
     }
 );

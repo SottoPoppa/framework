@@ -38,28 +38,28 @@ tuple:test_suite := (
         "action": exports.bool;
         "inputs": "true";
         "outputs": true;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "OAuth interpreta il flag SSL testuale";
     },
     {
         "action": exports.bool;
         "inputs": "false";
         "outputs": false;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "OAuth rifiuta il flag SSL disabilitato";
     },
     {
         "action": exports.headers;
         "inputs": (session,);
         "outputs": {"Authorization": "Bearer test-access-token"};
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "OAuth costruisce gli header dal token presente nella sessione";
     },
     {
         "action": exports.user;
         "inputs": (session,);
         "outputs": {"email": "user@example.test"};
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "OAuth recupera l'utente dalla sessione";
     }
 );

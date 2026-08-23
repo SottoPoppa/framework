@@ -14,28 +14,28 @@ tuple:test_suite := (
         "action": exports.first_completed;
         "inputs": {"args": [session]; "kwargs": {"operations": []}};
         "outputs": none;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "first_completed gestisce una coda vuota senza operazioni"
     },
     {
         "action": exports.all_completed;
         "inputs": {"args": [session]; "kwargs": {"tasks": []}};
         "outputs": {};
-        "assert": @received.results != none;
+        "assert": @received.outputs.results != none;
         "note": "all_completed conclude correttamente senza task"
     },
     {
         "action": exports.chain_completed;
         "inputs": {"args": [session]; "kwargs": {"tasks": []}};
         "outputs": true;
-        "assert": @received.state == @expected;
+        "assert": @received.outputs.state == @expected;
         "note": "chain_completed conclude correttamente senza task"
     },
     {
         "action": exports.together_completed;
         "inputs": {"args": [session]; "kwargs": {"tasks": []}};
         "outputs": true;
-        "assert": @received.state == @expected;
+        "assert": @received.outputs.state == @expected;
         "note": "together_completed avvia una coda vuota senza errori"
     }
 );

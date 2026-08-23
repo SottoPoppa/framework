@@ -28,28 +28,28 @@ tuple:test_suite := (
         "action": adapter._url;
         "inputs": "/posts/1";
         "outputs": "https://jsonplaceholder.typicode.com/posts/1";
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Adapter._url normalizza il percorso e costruisce l'URL della risorsa";
     },
     {
         "action": adapter._headers;
         "inputs": {"headers": {"X-Test": "api"}};
         "outputs": {"Accept": "application/json"; "Content-Type": "application/json"; "X-Test": "api"};
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Adapter._headers combina gli header predefiniti con quelli della richiesta";
     },
     {
         "action": exports.token_adapter._headers;
         "inputs": {};
         "outputs": "Token secret";
-        "assert": @received.Authorization == @expected;
+        "assert": @received.outputs.Authorization == @expected;
         "note": "Adapter costruisce l'header Authorization usando token e schema configurati";
     },
     {
         "action": adapter.request;
         "inputs": {"method": "GET"; "location": "/posts/1"};
         "outputs": 1;
-        "assert": @received.id == @expected;
+        "assert": @received.outputs.id == @expected;
         "note": "Adapter.request esegue una GET e restituisce il payload JSON";
     },
     {
@@ -59,7 +59,7 @@ tuple:test_suite := (
             "storekeeper": {"provider": "jsonplaceholder"; "location": "/posts"; "operation": "create"; "repository": "posts"; "payload": {"title": "OmniPort"; "body": "test"; "userId": 1}}
         };
         "outputs": "OmniPort";
-        "assert": @received.title == @expected;
+        "assert": @received.outputs.title == @expected;
         "note": "Adapter.create delega a POST e restituisce la risorsa creata";
     },
     {
@@ -69,7 +69,7 @@ tuple:test_suite := (
             "storekeeper": {"provider": "jsonplaceholder"; "location": "/posts/1"; "operation": "read"; "repository": "posts"}
         };
         "outputs": 1;
-        "assert": @received.id == @expected;
+        "assert": @received.outputs.id == @expected;
         "note": "Adapter.read delega a GET sulla risorsa richiesta";
     },
     {
@@ -79,7 +79,7 @@ tuple:test_suite := (
             "storekeeper": {"provider": "jsonplaceholder"; "location": "/posts/1"; "operation": "update"; "repository": "posts"; "payload": {"id": 1; "title": "Aggiornato"; "body": "test"; "userId": 1}}
         };
         "outputs": "Aggiornato";
-        "assert": @received.title == @expected;
+        "assert": @received.outputs.title == @expected;
         "note": "Adapter.update delega a PUT e restituisce il payload aggiornato";
     },
     {
@@ -89,7 +89,7 @@ tuple:test_suite := (
             "storekeeper": {"provider": "jsonplaceholder"; "location": "/posts/1"; "operation": "delete"; "repository": "posts"}
         };
         "outputs": {};
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Adapter.delete delega a DELETE e accetta la risposta senza payload";
     },
     {
@@ -99,7 +99,7 @@ tuple:test_suite := (
             "storekeeper": {"provider": "jsonplaceholder"; "location": "/posts/1"; "operation": "read"; "repository": "posts"}
         };
         "outputs": 1;
-        "assert": @received.id == @expected;
+        "assert": @received.outputs.id == @expected;
         "note": "Adapter.query usa GET per interrogare una risorsa API";
     },
     {
@@ -109,7 +109,7 @@ tuple:test_suite := (
             "storekeeper": {"provider": "jsonplaceholder"; "location": "/posts/1"; "operation": "view"; "repository": "posts"}
         };
         "outputs": 1;
-        "assert": @received.id == @expected;
+        "assert": @received.outputs.id == @expected;
         "note": "Adapter.view usa GET per leggere la rappresentazione della risorsa"
     }
 );

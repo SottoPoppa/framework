@@ -182,7 +182,7 @@ class Manager(manager.Port):
             with _logger.scope(f"[{i}/{len(test_files)}] {path}") as s:
                 try:
                     res = await self.loader.resource(path)
-                    source = flow.value_of(res) if flow.is_result(res) else res
+                    source = flow.output(res) if flow.is_result(res) else res
                     await interp.load_file(path, source)
                     outcome = await self._execute_dsl(
                         interp,
@@ -281,7 +281,9 @@ class Manager(manager.Port):
         session = language.SessionHandle(interp, session=session_dict)
 
         try:
-            ctx = await session.run(path)
+            run_result = await session.run(path)
+            ctx = flow.output(run_result) if flow.is_result(run_result) else run_result
+            #exit(ctx)
         except Exception as e:
             s.error(
                 f"Il file DSL {path} non è stato eseguito correttamente (errore di parsing o runtime)",
@@ -374,13 +376,13 @@ class Manager(manager.Port):
                         positional = (positional,)
                     if not isinstance(keyword, dict):
                         raise TypeError("'inputs.kwargs' deve essere un dizionario")
-                    received = flow.output(await interp.call(target, tuple(positional), keyword))
+                    received = await interp.call(target, tuple(positional), keyword)
                 elif isinstance(args, dict):
-                    received = flow.output(await interp.call(target, (), args))
+                    received = await interp.call(target, (), args)
                 elif isinstance(args, (list, tuple)):
-                    received = flow.output(await interp.call(target, args))
+                    received = await interp.call(target, args)
                 else:
-                    received = flow.output(await interp.call(target, (args,)))
+                    received = await interp.call(target, (args,))
             except Exception as e:
                 results["failed"] += 1
                 results["errors"].append({"target": str(target), "error": str(e), "test_note": test_note, "phase": "action"})

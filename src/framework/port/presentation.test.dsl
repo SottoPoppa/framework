@@ -23,98 +23,98 @@ tuple:test_suite := (
         "action": exports.initialize;
         "inputs": imports.module.Port;
         "outputs": none;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Presentation Port inizializza lo stato base senza restituire un valore";
     },
     {
         "action": exports.mount_view;
         "inputs": imports.module.Port;
         "outputs": none;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Presentation Port espone mount_view come hook astratto";
     },
     {
         "action": exports.mount_route;
         "inputs": imports.module.Port;
         "outputs": none;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Presentation Port espone mount_route come hook astratto";
     },
     {
         "action": exports.mount_css;
         "inputs": imports.module.Port;
         "outputs": none;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Presentation Port espone mount_css come hook astratto";
     },
     {
         "action": exports.node_create;
         "inputs": (imports.module.Port, none, none);
         "outputs": none;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Presentation Port espone node_create come hook astratto";
     },
     {
         "action": exports.node_update;
         "inputs": (imports.module.Port, none, none);
         "outputs": none;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Presentation Port espone node_update come hook astratto";
     },
     {
         "action": exports.node_union;
         "inputs": (imports.module.Port, {"attrs": {"id": "counter"}; "inner": ["old"]}, {"attrs": {"class": "value"}; "inner": ["new"]});
         "outputs": {"attrs": {"id": "counter"; "class": "value"}; "inner": ["new"]};
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Presentation Port unisce attributi e contenuto del descrittore DSL";
     },
     {
         "action": exports.node_union;
         "inputs": (imports.module.Port, none, {"attrs": {"class": "value"}});
         "outputs": {"attrs": {"class": "value"}; "inner": []};
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Presentation Port gestisce un nodo assente durante una union";
     },
     {
         "action": exports.node_get;
         "inputs": (imports.module.Port, "missing");
         "outputs": none;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Presentation Port ritorna none per un nodo DOM assente";
     },
     {
         "action": exports.rebuild;
         "inputs": (imports.module.Port, "missing");
         "outputs": none;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Presentation Port espone rebuild come hook astratto";
     },
     {
         "action": exports.normalize_route_path;
         "inputs": "/users/{$id}";
         "outputs": "/users/{id}";
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Presentation Port normalizza i placeholder delle route";
     },
     {
         "action": exports.parse_reactive_event;
         "inputs": {"type": "event"; "name": "counter:increment"};
         "outputs": {"alias": "counter"; "name": "increment"; "file": "src/application/controller/counter.dsl"};
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Presentation Port interpreta gli eventi reactive senza dipendere dal trasporto";
     },
     {
         "action": exports.resolve_controller_file;
         "inputs": " counter ";
         "outputs": "src/application/controller/counter.dsl";
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Presentation Port normalizza gli alias dei controller";
     },
     {
         "action": exports.shutdown;
         "inputs": ();
         "outputs": none;
-        "assert": @received == @expected;
+        "assert": @received.outputs == @expected;
         "note": "Presentation Port espone un lifecycle di chiusura comune";
     }
 );

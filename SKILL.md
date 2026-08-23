@@ -416,7 +416,7 @@ tuple:test_suite := (
     "action":   exports.component.method,      // Metodo dell'API da testare
     "inputs":   "arg" or ("arg1", "arg2") or {"key": "value"},  // Input(i)
     "outputs":  "expected_result",             // Output atteso
-    "assert":   @received == @expected,        // Condizione di successo
+    "assert":   @received.outputs == @expected, // Condizione sul payload
     "note":     "Descrizione leggibile del test"  // Documentazione
 }
 ```
@@ -429,11 +429,18 @@ tuple:test_suite := (
   - Un singolo valore (se la funzione richiede un solo argomento): `"string_arg"` o `123`
   - Un dizionario (se la funzione è lazy e accetta kwargs): `{"key": "value", "other": true}`
   - Una tupla di tuple per funzioni che prendono liste di tuple: `(("a", 1), ("b", 2))`
-- **`"outputs"`**: L'output atteso. Il framework lo assegnerà a `@expected`.
+- **`"outputs"`**: Il payload atteso. Il framework lo assegnerà a `@expected`.
 - **`"assert"`**: Qualunque espressione DSL che ritorni `true`/`false`. I valori testati sono disponibili come:
-  - `@received` — il valore effettivo tornato dalla funzione
-  - `@expected` — il valore dichiarato in `"outputs"`
-    - Puoi scrivere asserzioni complesse: `@received == @expected & @received != none` (AND), `@received == "OK" | @received == "SKIP"` (OR)
+    - `@received` — il risultato Flow completo, con `success`, `outputs`, `errors`, `transactions` e, in `--dev`, `replay`
+    - `@received.outputs` — il payload restituito dalla funzione
+    - `@received.success` — l'esito booleano della chiamata
+    - `@received.errors` — gli errori della chiamata
+    - `@received.transactions` — i risultati Flow delle chiamate interne
+    - `@received.replay` — gli input catturati in modalità `--dev`
+    - `@expected` — il valore dichiarato in `"outputs"`
+        - Per il payload: `@received.outputs == @expected`
+        - Per un esito riuscito: `@received.success == true & @received.outputs == @expected`
+        - Per un errore: `@received.success == false & @received.errors != none`
 - **`"note"`**: Descrizione breve e leggibile del test, mostrata nei log quando passa o fallisce. **Obbligatoria.**
 
 ### Pattern Consigliati
@@ -444,7 +451,7 @@ tuple:test_suite := (
     "action": exports.resolve_filter;
     "inputs": "managers";
     "outputs": "src/framework/manager";
-    "assert": @received == @expected;
+    "assert": @received.outputs == @expected;
     "note": "resolve_filter('managers') ritorna il percorso corretto";
 }
 ```
@@ -455,7 +462,7 @@ tuple:test_suite := (
     "action": exports.union;
     "inputs": ({"a": 1}, {"b": 2});
     "outputs": {"a": 1, "b": 2};
-    "assert": @received == @expected;
+    "assert": @received.outputs == @expected;
     "note": "union() unisce due dizionari correttamente";
 }
 ```
@@ -466,7 +473,7 @@ tuple:test_suite := (
     "action": exports.validate_user;
     "inputs": {"name": "Alice", "age": 25};
     "outputs": true;
-    "assert": @received == @expected & @received != none;
+    "assert": @received.success == true & @received.outputs == @expected;
     "note": "validate_user accetta utente valido";
 }
 ```
@@ -477,7 +484,7 @@ tuple:test_suite := (
     "action": exports.get_item;
     "inputs": ("items", "missing_key");
     "outputs": none;
-    "assert": @received == @expected;
+    "assert": @received.outputs == @expected;
     "note": "get_item ritorna null per chiave mancante (no crash)";
 }
 ```
@@ -488,7 +495,7 @@ tuple:test_suite := (
     "action": exports.is_admin;
     "inputs": {"role": "user"};
     "outputs": false;
-    "assert": @received == @expected & @received != true;
+    "assert": @received.success == true & @received.outputs == @expected & @received.outputs != true;
     "note": "is_admin ritorna false per utente non-admin";
 }
 ```
@@ -514,7 +521,7 @@ tuple:test_suite := (
        "action": imports.module_name;  // Non è una funzione!
        "inputs": ();
        "outputs": true;
-    "assert": @received != none;
+    "assert": @received.success == true & @received.outputs != none;
    }
    ```
    **Soluzione:** Testa una **funzione** del modulo importato, non il modulo stesso.
@@ -526,7 +533,7 @@ tuple:test_suite := (
        "action": exports.foo;
        "inputs": "bar";
        "outputs": "baz";
-       "assert": @received == @expected;
+    "assert": @received.outputs == @expected;
        "note": "test";  // Troppo vago
    }
    ```
@@ -546,7 +553,7 @@ tuple:test_suite := (
        "action": exports.my_function;
        "inputs": "test_input";
        "outputs": "test_output";
-       "assert": @received == @expected;
+    "assert": @received.outputs == @expected;
        "note": "Verificare che my_function è disponibile e non crasha";
    }
    ```
