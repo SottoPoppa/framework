@@ -67,9 +67,3 @@ auth = '{{ env.get("GLPI_AUTH_NAME", "glpi-oauth") }}'
 app_token = '{{ env["GLPI_APP_TOKEN"] }}'
 timeout = '{{ env.get("GLPI_TIMEOUT", "30") }}'
 verify_ssl = '{{ env.get("GLPI_VERIFY_SSL", "false") }}'
-
-#[[network.neural]]
-#name = "decoder"
-#input = 40
-#hidden = 2048
-#output = 2048

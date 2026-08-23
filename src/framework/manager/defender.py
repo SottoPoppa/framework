@@ -18,7 +18,11 @@ class Manager(manager.Port):
         "authorized",
         "resolve_route",
     }
-    def __init__(self, loader: loader.Loader, authentications: list[authentication.Port], **constants):
+    def __init__(self, 
+            loader: loader.Loader, 
+            authentications: list[authentication.Port], 
+            **constants
+        ):
         """
         Inizializza il manager con i servizi necessari alla gestione delle richieste.
 

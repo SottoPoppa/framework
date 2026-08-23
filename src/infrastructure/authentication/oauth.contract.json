@@ -1,6 +1,6 @@
 {
   "contract_version": 2,
-  "requires":[
+  "requires": [
     "PyJWT"
   ],
   "exports": {
@@ -22,7 +22,7 @@
       },
       "get_headers": {
         "test": "90f285f6369688f9513bee5f10f4a91ab3f369336a340db1c800ab0617ea563c",
-        "production": "90f285f6369688f9513bee5f10f4a91ab3f369336a340db1c800ab0617ea563c"
+        "production": "ed757393f956fa3d36eb89469bba1c349f62461a7890eac3364845563f2bd2dd"
       },
       "_bool": {
         "test": "c4246d6e54a0ccae937d912923fad26f1ceb72d641b856e7fc11af1b6f6f1642",
