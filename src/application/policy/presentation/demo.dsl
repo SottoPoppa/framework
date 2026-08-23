@@ -52,7 +52,6 @@ roles:{
 }
 
 routes: {
-    // Home
     route:GET_INDEX := { path:"/"; method:"GET"; "type":"view"; view:"ecommerce.xml"; controller:"catalog" };
     route:GET_ECOMMERCE := { path:"/shop"; method:"GET"; "type":"view"; view:"ecommerce.xml"; controller:"catalog" };
     route:GET_PROFILE := { path:"/profile"; method:"GET"; "type":"view"; view:"profile.xml" };

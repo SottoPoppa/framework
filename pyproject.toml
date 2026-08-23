@@ -48,12 +48,6 @@ path = "src/"
 watch = true
 message = "broker"
 
-[[persistence.api]]
-name = "dummyjson"
-url = "http://127.0.0.1:8888/"
-timeout = 15
-verify_ssl = false
-
 [[authentication.oauth]]
 name = "glpi-oauth"
 token_url = '{{ env.get("GLPI_TOKEN_URL", "https://37.99.229.247/api.php/token") }}'
