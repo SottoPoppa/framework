@@ -1,5 +1,8 @@
 {
   "contract_version": 2,
+  "requires":[
+    "PyJWT"
+  ],
   "exports": {
     "bool": [
       "Adapter._bool"
