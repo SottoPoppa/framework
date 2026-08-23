@@ -323,9 +323,24 @@ Il payload non va letto direttamente dal risultato: usa sempre
 decorator agli Adapter concreti tramite `__init_subclass__`.
 
 Il risultato può includere metadati di tracciamento come `action`, `component`,
-`pipeline`, `node` e `history`. Questi dati permettono di ricostruire quale
-metodo e quale componente hanno prodotto un risultato senza annidare più
-risultati Flow.
+`pipeline`, `node` e `history`. Il campo `transactions` contiene i risultati
+Flow dei confini chiamati internamente. La catena attraversa DSL, framework e
+infrastructure, permettendo di ricostruire la chiamata senza perdere il
+risultato completo di ogni passaggio.
+
+Nel DSL e nell'interprete, le chiamate restituiscono il risultato Flow
+completo. Il payload va estratto esplicitamente:
+
+```python
+result = await interpreter.call(action)
+payload = flow.output(result)
+transactions = result["transactions"]
+```
+
+Anche `SessionHandle.run()` restituisce un Flow. I risultati dei nodi DAG sono
+disponibili sia nella mappa `flow.output(run_result)` sia nelle transazioni del
+risultato. Gli input non vengono registrati automaticamente, così password,
+token e altri dati sensibili non finiscono nella cronologia.
 
 Gli helper privati e le funzioni pure non devono essere decorati senza motivo:
 il contratto Flow va applicato ai confini pubblici tra componenti.

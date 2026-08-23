@@ -1,6 +1,7 @@
 import xml.etree.ElementTree as ET
 
 from jinja2 import DebugUndefined, Environment, FileSystemLoader, select_autoescape
+import framework.service.flow as flow
 
 
 async def render(loader, runtime_session, render_node, text=None, file=None, controllers=None, **constants):
@@ -18,10 +19,11 @@ async def render(loader, runtime_session, render_node, text=None, file=None, con
     data = {}
     managers = {"manager": loader.get_managers()}
     for controller in controllers or []:
-        data[controller] = await runtime_session.run(
+        run_result = await runtime_session.run(
             controller,
             {"session": runtime_session}|managers,
         )
+        data[controller] = flow.output(run_result)
 
     #raise Exception(data)
 
