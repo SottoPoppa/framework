@@ -6,6 +6,7 @@ exports: {
     'reset': imports.flow.reset;
     'switch': imports.flow.switch;
     'success': imports.flow.success;
+    'check': imports.flow.check;
     'transactions': imports.flow.transactions;
     'pipeline': imports.flow.pipeline
 };
@@ -31,6 +32,13 @@ tuple:test_suite := (
         "outputs": "payload";
         "assert": @received.outputs == @expected;
         "note": "success conserva il payload del risultato Flow";
+    },
+    {
+        "action": exports.check;
+        "inputs": {"args": [imports.flow.error("invalid credentials")]};
+        "outputs": false;
+        "assert": @received.outputs == @expected;
+        "note": "check riconosce un risultato Flow fallito";
     },
     {
         "action": exports.transactions;

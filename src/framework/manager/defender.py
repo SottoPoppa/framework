@@ -86,7 +86,8 @@ class Manager(manager.Port):
         print("[+] Controllers: ",self.controllers)
 
     @flow.result(inputs='session')
-    async def session_create(self, env={},**session):
+    async def session_create(self, env=None, **session):
+        env = env or {}
         env = env | {**self.managers}
         if not session.get("id"):
             session["id"] = token_urlsafe(16)
@@ -103,6 +104,27 @@ class Manager(manager.Port):
     def get_policy(self, policy):
         return self.policies.get(policy)
 
+    @staticmethod
+    def _merge_authentication_result(session, authentication, session_result):
+        if not session_result.get('success'):
+            return session_result
+
+        payload = flow.output(session_result)
+        if not isinstance(payload, dict):
+            return flow.error("Authentication provider returned an invalid payload")
+
+        providers = payload.get('providers', {})
+        user = payload.get('user')
+        provider = providers.get(authentication.name)
+        if not isinstance(provider, dict) or not isinstance(user, dict):
+            return flow.error("Authentication provider returned incomplete identity data")
+
+        session.setdefault('providers', {})
+        session.setdefault('user', {})
+        session['providers'][authentication.name] = provider
+        session['user'] |= user
+        return None
+
     @flow.result(inputs=('session',))
     async def new_session(self, session):
         return flow.success(session)
@@ -118,10 +140,11 @@ class Manager(manager.Port):
 
         for authentication in self.authentications:
             session_result = await authentication.sign_out(session)
-            if session_result.get('success'):
-                session.update(session_result['outputs'])
-            else:
-                return flow.error(session_result['errors'])
+            if not session_result.get('success'):
+                return session_result
+
+        session.pop('providers', None)
+        session.pop('user', None)
 
         return flow.success(session)
 
@@ -134,18 +157,10 @@ class Manager(manager.Port):
         :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
         """
         for authentication in self.authentications:
-            #provider_persistence = authentication.config.get('persistence')
             session_result = await authentication.sign_aid(**constants)
-            if session_result.get('success'):
-                session.setdefault('providers', {})
-                session.setdefault('user', {})
-                session['providers'][authentication.name] = session_result['outputs']['providers'][authentication.name]
-                session['user'] |= session_result['outputs']['user']
-            else:
-                return flow.error(session_result['errors'])
-            '''if provider_persistence:
-                await storekeeper.store(repository='sessions',payload=session)
-                pass'''
+            merge_error = self._merge_authentication_result(session, authentication, session_result)
+            if merge_error:
+                return merge_error
         return flow.success(session)
 
     @flow.result(outputs=('session',))
@@ -157,18 +172,10 @@ class Manager(manager.Port):
         :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
         """
         for authentication in self.authentications:
-            #provider_persistence = authentication.config.get('persistence')
             session_result = await authentication.sign_in(**constants)
-            if session_result.get('success'):
-                session.setdefault('providers', {})
-                session.setdefault('user', {})
-                session['providers'][authentication.name] = session_result['outputs']['providers'][authentication.name]
-                session['user'] |= session_result['outputs']['user']
-            else:
-                return flow.error(session_result['errors'])
-            '''if provider_persistence:
-                await storekeeper.store(repository='sessions',payload=session)
-                pass'''
+            merge_error = self._merge_authentication_result(session, authentication, session_result)
+            if merge_error:
+                return merge_error
         return flow.success(session)
 
 
@@ -182,13 +189,9 @@ class Manager(manager.Port):
         """
         for authentication in self.authentications:
             session_result = await authentication.sign_up(**constants)
-            if session_result.get('success'):
-                session.setdefault('providers', {})
-                session.setdefault('user', {})
-                session['providers'][authentication.name] = session_result['outputs']['providers'][authentication.name]
-                session['user'] |= session_result['outputs']['user']
-            else:
-                return flow.error(session_result['errors'])
+            merge_error = self._merge_authentication_result(session, authentication, session_result)
+            if merge_error:
+                return merge_error
         return flow.success(session)
 
     def authorized(self, policy, **constants) -> bool:

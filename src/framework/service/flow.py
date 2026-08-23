@@ -287,7 +287,7 @@ def result(inputs=None, outputs=None, safe_kwargs=False):
             
         
         async def rett(ok):
-            if not outputs or not ok:
+            if not outputs or (is_result(ok) and not ok.get("success")):
                 #return success(ok) | action
                 return ok
 

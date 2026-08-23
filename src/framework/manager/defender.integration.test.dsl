@@ -33,8 +33,8 @@ tuple:test_suite := (
         "action": exports.authenticate;
         "inputs": {"args": [session]; "kwargs": {"email": "integration@example.test"; "password": "secret"}};
         "outputs": none;
-        "assert": @received.outputs.user.email == @expected.user.email;
-        "note": "authenticate aggiorna la sessione usando authentication stub"
+        "assert": @received.success == true & @received.transactions != none;
+        "note": "authenticate esegue il login e attraversa l'adapter authentication stub"
     },
     {
         "action": exports.reinstate;

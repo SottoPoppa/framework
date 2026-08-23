@@ -13,11 +13,14 @@ class Adapter(authentication.Port):
         self._users: dict[str, dict[str, Any]] = {}
 
     @staticmethod
-    def _result(name: str, email: str) -> dict[str, Any]:
+    def _user_id(email: str) -> str:
+        return email.replace("@", "-").replace(".", "-")
+
+    def _result(self, name: str, email: str) -> dict[str, Any]:
         return {
             "id": name,
             "providers": {
-                "stub": {
+                self.name: {
                     "tokens": {
                         "access_token": f"access-{name}",
                         "refresh_token": f"refresh-{name}",
@@ -31,16 +34,14 @@ class Adapter(authentication.Port):
     async def sign_up(self, email: str, password: str, **kwargs: Any):
         if email in self._users:
             return flow.error("User already exists")
-        user_id = email.replace("@", "-").replace(".", "-")
+        user_id = self._user_id(email)
         self._users[email] = {"id": user_id, "email": email, "password": password}
         return flow.success(self._result(user_id, email))
 
     async def sign_in(self, email: str, password: str):
         user = self._users.get(email)
         if user is None:
-            user_id = email.replace("@", "-").replace(".", "-")
-            user = {"id": user_id, "email": email, "password": password}
-            self._users[email] = user
+            return flow.error("User not found")
         if user["password"] != password:
             return flow.error("Invalid credentials")
         return flow.success(self._result(user["id"], email))
