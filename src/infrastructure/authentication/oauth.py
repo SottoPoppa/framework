@@ -1,11 +1,14 @@
+from __future__ import annotations
+
 import asyncio
 import base64
 import hashlib
 import secrets
 import time
-import aiohttp
-import jwt
+from typing import Any
 from urllib.parse import urlencode
+
+import aiohttp
 
 import framework.port.authentication as authentication
 import framework.service.flow as flow
@@ -15,57 +18,226 @@ class Adapter(authentication.Port):
     """
     Generic OAuth2 authentication adapter.
 
-    Supports:
-        - client_credentials
+    Supporta:
+
+        - authorization_code
+        - authorization_code + PKCE
+        - refresh_token
         - password
+        - client_credentials
 
-    The adapter exposes:
-        async def get_headers() -> dict
+    Il token può essere:
 
-    so it can be plugged into a generic API adapter.
+        1. mantenuto internamente per integrazioni machine-to-machine
+
+        oppure
+
+        2. salvato nella sessione dell'utente.
+
+    Per integrazioni utente -> GLPI è consigliato:
+
+        authorization_code + PKCE
+
+    Esempio:
+
+        auth = Adapter(
+            provider="glpi",
+
+            authorization_endpoint=(
+                "https://glpi.example.com/"
+                "api.php/v2.3/authorize"
+            ),
+
+            token_url=(
+                "https://glpi.example.com/"
+                "api.php/v2.3/token"
+            ),
+
+            client_id="...",
+            client_secret="...",
+
+            redirect_uri=(
+                "https://app.example.com/"
+                "auth/glpi/callback"
+            ),
+
+            grant_type="authorization_code",
+
+            scope="api",
+
+            auth_style="basic",
+        )
+
+    Il risultato di authorization_url():
+
+        {
+            "url": "...",
+            "state": "...",
+            "code_verifier": "...",
+            "code_challenge": "..."
+        }
+
+    Il risultato di exchange_code():
+
+        {
+            "providers": {
+                "glpi": {
+                    "tokens": {
+                        "access_token": "...",
+                        "refresh_token": "...",
+                        "token_type": "Bearer",
+                        "expires_in": 3600,
+                        "expires_at": ...
+                    }
+                }
+            }
+        }
+
+    La sessione utente può quindi contenere:
+
+        {
+            "providers": {
+                "glpi": {
+                    "tokens": {
+                        ...
+                    }
+                }
+            }
+        }
+
+    E il GLPI API adapter può semplicemente fare:
+
+        headers = await auth.get_headers(session)
+
+    ottenendo:
+
+        {
+            "Authorization": "Bearer ..."
+        }
     """
 
-    def __init__(self, **constants):
-        self.name = constants.get("provider", constants.get("name", "oauth"))
-        self.config = constants
+    # ==================================================================
+    # INIT
+    # ==================================================================
 
-        self.token_url = str(
-            constants.get("token_url", "")
-        ).strip()
-        self.authorization_endpoint = str(
-            constants.get("authorization_endpoint", "")
-        ).strip()
-        self.revoke_url = str(constants.get("revoke_url", "")).strip()
-        self.redirect_uri = constants.get("redirect_uri")
-        self.jwks_url = constants.get("jwks_url")
-        self.jwt_secret = constants.get("jwt_secret")
-        self.jwt_algorithms = constants.get("jwt_algorithms", ["HS256"])
-        if isinstance(self.jwt_algorithms, str):
-            self.jwt_algorithms = [self.jwt_algorithms]
-        self.jwt_issuer = constants.get("jwt_issuer")
-        self.jwt_audience = constants.get("jwt_audience")
+    def __init__(self, **constants: Any):
 
-        self.grant_type = constants.get(
-            "grant_type",
-            "client_credentials",
-        )
-
-        self.client_id = constants.get("client_id")
-        self.client_secret = constants.get("client_secret")
-
-        self.username = constants.get("username")
-        self.password = constants.get("password")
-
-        self.scope = constants.get("scope")
-
-        self.client_auth = constants.get(
-            "auth_style",
+        self.name = constants.get(
+            "provider",
             constants.get(
-                "client_auth",
-                constants.get("token_auth_method", "basic"),
+                "name",
+                "oauth",
             ),
         )
-        self.audience = constants.get("audience")
+
+        self.config = dict(constants)
+
+        # --------------------------------------------------------------
+        # OAuth endpoints
+        # --------------------------------------------------------------
+
+        self.token_url = str(
+            constants.get(
+                "token_url",
+                "",
+            )
+            or ""
+        ).strip()
+
+        self.authorization_endpoint = str(
+            constants.get(
+                "authorization_endpoint",
+                "",
+            )
+            or ""
+        ).strip()
+
+        self.revoke_url = str(
+            constants.get(
+                "revoke_url",
+                "",
+            )
+            or ""
+        ).strip()
+
+        self.redirect_uri = constants.get(
+            "redirect_uri"
+        )
+
+        # --------------------------------------------------------------
+        # OAuth client
+        # --------------------------------------------------------------
+
+        self.client_id = constants.get(
+            "client_id"
+        )
+
+        self.client_secret = constants.get(
+            "client_secret"
+        )
+
+        self.grant_type = str(
+            constants.get(
+                "grant_type",
+                "client_credentials",
+            )
+            or "client_credentials"
+        ).strip().lower()
+
+        self.scope = constants.get(
+            "scope"
+        )
+
+        self.audience = constants.get(
+            "audience"
+        )
+
+        # --------------------------------------------------------------
+        # Password grant
+        # --------------------------------------------------------------
+
+        self.username = constants.get(
+            "username"
+        )
+
+        self.password = constants.get(
+            "password"
+        )
+
+        # --------------------------------------------------------------
+        # OAuth client authentication
+        #
+        # basic:
+        #
+        # Authorization: Basic ...
+        #
+        # body:
+        #
+        # client_id=...
+        # client_secret=...
+        #
+        # none:
+        #
+        # public PKCE client
+        # --------------------------------------------------------------
+
+        self.client_auth = str(
+            constants.get(
+                "auth_style",
+                constants.get(
+                    "client_auth",
+                    constants.get(
+                        "token_auth_method",
+                        "basic",
+                    ),
+                ),
+            )
+            or "basic"
+        ).strip().lower()
+
+        # --------------------------------------------------------------
+        # Token response
+        # --------------------------------------------------------------
 
         self.token_field = constants.get(
             "token_field",
@@ -77,6 +249,20 @@ class Adapter(authentication.Port):
             "expires_in",
         )
 
+        self.refresh_token_field = constants.get(
+            "refresh_token_field",
+            "refresh_token",
+        )
+
+        self.token_type_field = constants.get(
+            "token_type_field",
+            "token_type",
+        )
+
+        # --------------------------------------------------------------
+        # Authentication header
+        # --------------------------------------------------------------
+
         self.auth_header = constants.get(
             "auth_header",
             "Authorization",
@@ -87,53 +273,370 @@ class Adapter(authentication.Port):
             "Bearer",
         )
 
-        self.timeout = float(constants.get("timeout", 30))
-        self.verify_ssl = self._bool(
-            constants.get("verify_ssl", True)
+        # --------------------------------------------------------------
+        # HTTP
+        # --------------------------------------------------------------
+
+        self.timeout = float(
+            constants.get(
+                "timeout",
+                30,
+            )
         )
+
+        self.verify_ssl = self._bool(
+            constants.get(
+                "verify_ssl",
+                True,
+            )
+        )
+
+        # --------------------------------------------------------------
+        # Token request parameters
+        # --------------------------------------------------------------
 
         self.extra_token_params = dict(
-            constants.get("token_params", {})
+            constants.get(
+                "token_params",
+                {},
+            )
+            or {}
         )
 
-        self.access_token = None
-        self.token_expires_at = 0
+        # --------------------------------------------------------------
+        # Runtime token
+        #
+        # Usato solo quando l'adapter viene usato senza sessione.
+        #
+        # Per utenti reali è preferibile session.
+        # --------------------------------------------------------------
+
+        self.access_token: str | None = None
+
+        self.refresh_token_value: str | None = None
+
+        self.token_type: str = (
+            self.auth_scheme
+        )
+
+        self.token_expires_at: float = 0.0
+
+        # --------------------------------------------------------------
+        # OAuth synchronization
+        # --------------------------------------------------------------
+
         self._token_lock = asyncio.Lock()
-        self._pending_states = {}
+
+        # --------------------------------------------------------------
+        # Pending PKCE
+        #
+        # Compatibilità con applicazioni single-process.
+        #
+        # In produzione è preferibile salvare
+        # state/code_verifier nel session store.
+        # --------------------------------------------------------------
+
+        self._pending_states: dict[
+            str,
+            str,
+        ] = {}
+
+    # ==================================================================
+    # BOOLEAN
+    # ==================================================================
 
     @staticmethod
-    def _bool(value):
-        if isinstance(value, bool):
+    def _bool(
+        value: Any,
+    ) -> bool:
+
+        if isinstance(
+            value,
+            bool,
+        ):
             return value
 
-        if isinstance(value, str):
-            return value.strip().lower() in (
-                "true",
-                "1",
-                "yes",
-                "on",
+        if isinstance(
+            value,
+            str,
+        ):
+            return (
+                value.strip().lower()
+                in {
+                    "true",
+                    "1",
+                    "yes",
+                    "on",
+                }
             )
 
         return bool(value)
 
-    async def _authenticate(self, username=None, password=None):
-        async with self._token_lock:
-            return await self._authenticate_unlocked(username, password)
+    # ==================================================================
+    # PKCE
+    # ==================================================================
 
-    async def _authenticate_unlocked(self, username=None, password=None):
+    @staticmethod
+    def _pkce_challenge(
+        code_verifier: str,
+    ) -> str:
+
+        digest = hashlib.sha256(
+            code_verifier.encode(
+                "ascii"
+            )
+        ).digest()
+
+        return (
+            base64.urlsafe_b64encode(
+                digest
+            )
+            .rstrip(b"=")
+            .decode("ascii")
+        )
+
+    # ==================================================================
+    # CLIENT AUTH
+    # ==================================================================
+
+    def _client_auth(
+        self,
+        payload: dict[str, Any],
+    ):
+
+        if self.client_auth == "basic":
+
+            if not self.client_id:
+                raise RuntimeError(
+                    "OAuth client_id is required"
+                )
+
+            if not self.client_secret:
+                raise RuntimeError(
+                    "OAuth client_secret is required "
+                    "when auth_style=basic"
+                )
+
+            return aiohttp.BasicAuth(
+                str(self.client_id),
+                str(self.client_secret),
+            )
+
+        if self.client_auth == "body":
+
+            if not self.client_id:
+                raise RuntimeError(
+                    "OAuth client_id is required"
+                )
+
+            if not self.client_secret:
+                raise RuntimeError(
+                    "OAuth client_secret is required "
+                    "when auth_style=body"
+                )
+
+            payload.update(
+                {
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                }
+            )
+
+            return None
+
+        if self.client_auth in {
+            "none",
+            "public",
+        }:
+
+            if self.client_id:
+                payload.setdefault(
+                    "client_id",
+                    self.client_id,
+                )
+
+            return None
+
+        raise RuntimeError(
+            "Unsupported OAuth auth_style: "
+            f"{self.client_auth}"
+        )
+
+    # ==================================================================
+    # TOKEN REQUEST
+    # ==================================================================
+
+    async def _request_token(
+        self,
+        payload: dict[str, Any],
+        auth=None,
+    ) -> dict[str, Any]:
+
         if not self.token_url:
             raise RuntimeError(
                 "OAuth token_url is not configured"
             )
 
-        if not self.client_id:
-            raise RuntimeError(
-                "OAuth client_id is not configured"
+        timeout = aiohttp.ClientTimeout(
+            total=self.timeout
+        )
+
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": (
+                "application/x-www-form-urlencoded"
+            ),
+        }
+
+        async with aiohttp.ClientSession(
+            timeout=timeout
+        ) as http:
+
+            try:
+
+                async with http.post(
+                    self.token_url,
+                    data=payload,
+                    headers=headers,
+                    auth=auth,
+                    ssl=self.verify_ssl,
+                ) as response:
+
+                    data = (
+                        await self._read_response(
+                            response
+                        )
+                    )
+
+                    if not (
+                        200
+                        <= response.status
+                        < 300
+                    ):
+
+                        raise RuntimeError(
+                            "OAuth token request failed: "
+                            f"HTTP {response.status} "
+                            f"{data}"
+                        )
+
+                    if not isinstance(
+                        data,
+                        dict,
+                    ):
+
+                        raise RuntimeError(
+                            "OAuth token response "
+                            "is not JSON"
+                        )
+
+                    access_token = data.get(
+                        self.token_field
+                    )
+
+                    if not access_token:
+
+                        raise RuntimeError(
+                            "OAuth response does not "
+                            f"contain {self.token_field}"
+                        )
+
+                    return data
+
+            except aiohttp.ClientError as exc:
+
+                raise RuntimeError(
+                    "OAuth token connection error: "
+                    f"{exc}"
+                ) from exc
+
+            except asyncio.TimeoutError as exc:
+
+                raise RuntimeError(
+                    "OAuth token request timeout"
+                ) from exc
+
+    # ==================================================================
+    # RESPONSE
+    # ==================================================================
+
+    async def _read_response(
+        self,
+        response: aiohttp.ClientResponse,
+    ) -> Any:
+
+        content_type = (
+            response.headers.get(
+                "Content-Type",
+                "",
+            )
+            or ""
+        ).lower()
+
+        if "json" in content_type:
+
+            try:
+
+                return await response.json(
+                    content_type=None
+                )
+
+            except Exception:
+                pass
+
+        text = await response.text()
+
+        if not text:
+            return None
+
+        return text
+
+    # ==================================================================
+    # AUTHENTICATE
+    # ==================================================================
+
+    async def _authenticate(
+        self,
+        username=None,
+        password=None,
+    ):
+
+        async with self._token_lock:
+
+            return await (
+                self._authenticate_unlocked(
+                    username,
+                    password,
+                )
             )
 
-        if not self.client_secret:
+    # ==================================================================
+    # AUTHENTICATE UNLOCKED
+    # ==================================================================
+
+    async def _authenticate_unlocked(
+        self,
+        username=None,
+        password=None,
+    ):
+
+        if not self.token_url:
             raise RuntimeError(
-                "OAuth client_secret is not configured"
+                "OAuth token_url is not configured"
+            )
+
+        if (
+            self.grant_type
+            in {
+                "authorization_code",
+                "password",
+                "client_credentials",
+            }
+            and not self.client_id
+        ):
+
+            raise RuntimeError(
+                "OAuth client_id is not configured"
             )
 
         payload = {
@@ -143,12 +646,26 @@ class Adapter(authentication.Port):
 
         if self.scope:
             payload["scope"] = self.scope
+
         if self.audience:
             payload["audience"] = self.audience
 
+        # --------------------------------------------------------------
+        # Password
+        # --------------------------------------------------------------
+
         if self.grant_type == "password":
-            username = username or self.username
-            password = password or self.password
+
+            username = (
+                username
+                or self.username
+            )
+
+            password = (
+                password
+                or self.password
+            )
+
             if not username:
                 raise RuntimeError(
                     "OAuth username is not configured"
@@ -162,87 +679,161 @@ class Adapter(authentication.Port):
             payload["username"] = username
             payload["password"] = password
 
-        auth = None
+        # --------------------------------------------------------------
+        # Client credentials
+        # --------------------------------------------------------------
 
-        if self.client_auth == "basic":
-            auth = aiohttp.BasicAuth(
-                self.client_id,
-                self.client_secret,
+        elif (
+            self.grant_type
+            == "client_credentials"
+        ):
+
+            pass
+
+        # --------------------------------------------------------------
+        # Authorization code
+        # --------------------------------------------------------------
+
+        elif (
+            self.grant_type
+            == "authorization_code"
+        ):
+
+            raise RuntimeError(
+                "authorization_code requires "
+                "exchange_code()"
             )
-
-        elif self.client_auth == "body":
-            payload["client_id"] = self.client_id
-            payload["client_secret"] = self.client_secret
 
         else:
+
             raise RuntimeError(
-                "Unsupported OAuth client_auth: "
-                f"{self.client_auth}"
+                "Unsupported OAuth grant_type: "
+                f"{self.grant_type}"
             )
 
-        return await self._request_token(payload, auth=auth)
+        auth = self._client_auth(
+            payload
+        )
 
-    async def _request_token(self, payload, auth=None):
-        timeout = aiohttp.ClientTimeout(total=self.timeout)
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/x-www-form-urlencoded",
-        }
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(
-                self.token_url,
-                data=payload,
-                headers=headers,
-                auth=auth,
-                ssl=self.verify_ssl,
-            ) as response:
-                content_type = response.headers.get("Content-Type", "")
-                if "json" in content_type.lower():
-                    try:
-                        data = await response.json(content_type=None)
-                    except Exception:
-                        data = await response.text()
-                else:
-                    data = await response.text()
-                if not 200 <= response.status < 300:
-                    raise RuntimeError(
-                        f"OAuth token request failed: HTTP {response.status} {data}"
-                    )
-                if not isinstance(data, dict):
-                    raise RuntimeError("OAuth token response is not JSON")
-                access_token = data.get(self.token_field)
-                if not access_token:
-                    raise RuntimeError(
-                        f"OAuth response does not contain {self.token_field}"
-                    )
-                expires_in = int(data.get(self.expires_field, 3600))
-                self.access_token = str(access_token)
-                self.token_expires_at = time.monotonic() + max(expires_in - 60, 1)
-                return data
+        data = await self._request_token(
+            payload,
+            auth=auth,
+        )
 
-    def _client_auth(self, payload):
-        if self.client_auth == "basic":
-            return aiohttp.BasicAuth(self.client_id, self.client_secret)
-        if self.client_auth == "body":
-            payload.update({
-                "client_id": self.client_id,
-                "client_secret": self.client_secret,
-            })
-            return None
-        raise RuntimeError(f"Unsupported OAuth client_auth: {self.client_auth}")
+        self._store_runtime_token(
+            data
+        )
 
-    @staticmethod
-    def _pkce_challenge(code_verifier):
-        digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
-        return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+        return data
 
-    async def authorization_url(self, state=None, code_verifier=None, **kwargs):
+    # ==================================================================
+    # RUNTIME TOKEN
+    # ==================================================================
+
+    def _store_runtime_token(
+        self,
+        data: dict[str, Any],
+    ):
+
+        access_token = data.get(
+            self.token_field
+        )
+
+        if not access_token:
+            raise RuntimeError(
+                "OAuth access token is missing"
+            )
+
+        expires_in = int(
+            data.get(
+                self.expires_field,
+                3600,
+            )
+            or 3600
+        )
+
+        token_type = str(
+            data.get(
+                self.token_type_field,
+                self.auth_scheme,
+            )
+            or self.auth_scheme
+        )
+
+        self.access_token = str(
+            access_token
+        )
+
+        self.token_type = token_type
+
+        refresh_token = data.get(
+            self.refresh_token_field
+        )
+
+        if refresh_token:
+
+            self.refresh_token_value = (
+                str(refresh_token)
+            )
+
+        self.token_expires_at = (
+            time.monotonic()
+            + max(
+                expires_in - 60,
+                1,
+            )
+        )
+
+    # ==================================================================
+    # AUTHORIZATION URL
+    # ==================================================================
+
+    async def authorization_url(
+        self,
+        state=None,
+        code_verifier=None,
+        **kwargs,
+    ):
+
         if not self.authorization_endpoint:
-            return flow.error("OAuth authorization_endpoint is not configured")
-        state = state or secrets.token_urlsafe(32)
-        code_verifier = code_verifier or secrets.token_urlsafe(64)
-        self._pending_states[state] = code_verifier
-        code_challenge = self._pkce_challenge(code_verifier)
+
+            return flow.error(
+                "OAuth authorization_endpoint "
+                "is not configured"
+            )
+
+        if not self.client_id:
+
+            return flow.error(
+                "OAuth client_id is not configured"
+            )
+
+        if not self.redirect_uri:
+
+            return flow.error(
+                "OAuth redirect_uri is not configured"
+            )
+
+        state = (
+            state
+            or secrets.token_urlsafe(32)
+        )
+
+        code_verifier = (
+            code_verifier
+            or secrets.token_urlsafe(64)
+        )
+
+        code_challenge = (
+            self._pkce_challenge(
+                code_verifier
+            )
+        )
+
+        self._pending_states[
+            state
+        ] = code_verifier
+
         params = {
             "response_type": "code",
             "client_id": self.client_id,
@@ -251,199 +842,1030 @@ class Adapter(authentication.Port):
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
         }
-        if self.scope:
-            params["scope"] = self.scope
-        params.update({key: value for key, value in kwargs.items() if value is not None})
-        params = {key: value for key, value in params.items() if value is not None}
-        return flow.success({
-            "url": f"{self.authorization_endpoint}?{urlencode(params)}",
-            "state": state,
-            "code_verifier": code_verifier,
-            "code_challenge": code_challenge,
-        })
 
-    async def exchange_code(self, code, code_verifier, state=None):
+        if self.scope:
+
+            params["scope"] = self.scope
+
+        if self.audience:
+
+            params["audience"] = self.audience
+
+        params.update(
+            {
+                key: value
+                for key, value in kwargs.items()
+                if value is not None
+            }
+        )
+
+        params = {
+            key: value
+            for key, value in params.items()
+            if value is not None
+        }
+
+        url = (
+            f"{self.authorization_endpoint}"
+            f"?{urlencode(params)}"
+        )
+
+        return flow.success(
+            {
+                "url": url,
+                "state": state,
+                "code_verifier": code_verifier,
+                "code_challenge": code_challenge,
+            }
+        )
+
+    # ==================================================================
+    # EXCHANGE CODE
+    # ==================================================================
+
+    async def exchange_code(
+        self,
+        code,
+        code_verifier,
+        state=None,
+        *,
+        session=None,
+    ):
+
+        if not code:
+
+            return flow.error(
+                "OAuth authorization code is missing"
+            )
+
+        if not code_verifier:
+
+            return flow.error(
+                "OAuth PKCE code_verifier is missing"
+            )
+
+        # --------------------------------------------------------------
+        # Validate state
+        # --------------------------------------------------------------
+
         if state is not None:
-            expected_verifier = self._pending_states.pop(state, None)
-            if expected_verifier is None or expected_verifier != code_verifier:
-                return flow.error("OAuth state or PKCE verifier is invalid")
+
+            expected_verifier = (
+                self._pending_states.pop(
+                    state,
+                    None,
+                )
+            )
+
+            if (
+                expected_verifier is not None
+                and expected_verifier
+                != code_verifier
+            ):
+
+                return flow.error(
+                    "OAuth state or PKCE "
+                    "verifier is invalid"
+                )
+
         payload = {
-            "grant_type": "authorization_code",
+            "grant_type": (
+                "authorization_code"
+            ),
             "code": code,
             "code_verifier": code_verifier,
         }
+
+        if self.client_id:
+
+            payload[
+                "client_id"
+            ] = self.client_id
+
         if self.redirect_uri:
-            payload["redirect_uri"] = self.redirect_uri
+
+            payload[
+                "redirect_uri"
+            ] = self.redirect_uri
+
         try:
-            data = await self._request_token(payload, auth=self._client_auth(payload))
-            return flow.success(self._token_payload(data))
-        except Exception as exc:
-            return flow.error(str(exc))
 
-    async def callback(self, params):
-        if params.get("error"):
-            return flow.error(params.get("error_description", params["error"]))
-        if not params.get("state"):
-            return flow.error("OAuth state is missing")
-        return await self.exchange_code(
-            params.get("code"),
-            self._pending_states.get(params.get("state"), ""),
-            params.get("state"),
-        )
-
-    def _token_payload(self, data):
-        expires_in = int(data.get(self.expires_field, 3600))
-        tokens = {
-            "access_token": str(data[self.token_field]),
-            "token_type": data.get("token_type", self.auth_scheme),
-            "auth_header": self.auth_header,
-            "expires_in": expires_in,
-            "expires_at": time.time() + max(expires_in - 60, 1),
-        }
-        if data.get("refresh_token"):
-            tokens["refresh_token"] = str(data["refresh_token"])
-        return {"providers": {self.name: {"tokens": tokens}}}
-
-    @staticmethod
-    def token_expired(tokens):
-        if not tokens or not tokens.get("access_token"):
-            return True
-        expires_at = tokens.get("expires_at")
-        return expires_at is not None and float(expires_at) <= time.time()
-
-    async def refresh(self, refresh_token=None, session=None):
-        if session is not None:
-            refresh_token = session.get("providers", {}).get(self.name, {}).get("tokens", {}).get("refresh_token")
-        if not refresh_token:
-            return flow.error("OAuth refresh_token is not available")
-        payload = {"grant_type": "refresh_token", "refresh_token": refresh_token}
-        try:
-            data = await self._request_token(payload, auth=self._client_auth(payload))
-            result = self._token_payload(data)
-            if session is not None:
-                session.setdefault("providers", {})[self.name] = result["providers"][self.name]
-            return flow.success(result)
-        except Exception as exc:
-            return flow.error(str(exc))
-
-    async def revoke(self, token=None, token_type="access_token"):
-        if not self.revoke_url:
-            return flow.error("OAuth revoke_url is not configured")
-        if not token:
-            token = self.access_token
-        if not token:
-            return flow.error("OAuth token is not available")
-        payload = {"token": token, "token_type_hint": token_type}
-        try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
-                async with session.post(self.revoke_url, data=payload, ssl=self.verify_ssl) as response:
-                    if not 200 <= response.status < 300:
-                        raise RuntimeError(f"OAuth revocation failed: HTTP {response.status}")
-            if token == self.access_token:
-                self.access_token = None
-                self.token_expires_at = 0
-            return flow.success(True)
-        except Exception as exc:
-            return flow.error(str(exc))
-
-    async def validate_token(self, token):
-        if not token:
-            return flow.error("OAuth access_token is not available")
-        try:
-            options = {"verify_exp": True}
-            kwargs = {}
-            if self.jwt_issuer:
-                kwargs["issuer"] = self.jwt_issuer
-            if self.jwt_audience:
-                kwargs["audience"] = self.jwt_audience
-            if self.jwt_secret:
-                claims = jwt.decode(token, self.jwt_secret, algorithms=self.jwt_algorithms, options=options, **kwargs)
-            elif self.jwks_url:
-                signing_key = jwt.PyJWKClient(self.jwks_url).get_signing_key_from_jwt(token)
-                claims = jwt.decode(token, signing_key.key, algorithms=self.jwt_algorithms, options=options, **kwargs)
-            else:
-                return flow.error("JWT validation key or jwks_url is not configured")
-            return flow.success(claims)
-        except Exception as exc:
-            return flow.error(f"Invalid OAuth JWT: {exc}")
-
-    async def sign_in(self, email, password):
-        if self.grant_type != "password":
-            return flow.error(
-                "Il provider OAuth configurato non supporta il login password."
+            auth = self._client_auth(
+                payload
             )
 
-        try:
-            data = await self._authenticate(email, password)
+            data = await self._request_token(
+                payload,
+                auth=auth,
+            )
+
+            result = self._token_payload(
+                data
+            )
+
+            if session is not None:
+
+                self._store_session_tokens(
+                    session,
+                    result["providers"][
+                        self.name
+                    ]["tokens"],
+                )
+
+            else:
+
+                self._store_runtime_token(
+                    data
+                )
+
+            return flow.success(
+                result
+            )
+
         except Exception as exc:
-            return flow.error(str(exc))
+
+            return flow.error(
+                str(exc)
+            )
+
+    # ==================================================================
+    # CALLBACK
+    # ==================================================================
+
+    async def callback(
+        self,
+        params,
+        *,
+        session=None,
+        code_verifier=None,
+    ):
+
+        params = params or {}
+
+        if params.get("error"):
+
+            return flow.error(
+                params.get(
+                    "error_description",
+                    params["error"],
+                )
+            )
+
+        state = params.get(
+            "state"
+        )
+
+        if not state:
+
+            return flow.error(
+                "OAuth state is missing"
+            )
+
+        code = params.get(
+            "code"
+        )
+
+        if not code:
+
+            return flow.error(
+                "OAuth authorization code "
+                "is missing"
+            )
+
+        # --------------------------------------------------------------
+        # PKCE verifier
+        #
+        # Prefer session/server-side storage.
+        # Fallback to in-memory state store.
+        # --------------------------------------------------------------
+
+        if not code_verifier:
+
+            code_verifier = (
+                self._get_pending_verifier(
+                    state,
+                    session,
+                )
+            )
+
+        if not code_verifier:
+
+            return flow.error(
+                "OAuth PKCE code_verifier "
+                "is missing"
+            )
+
+        return await self.exchange_code(
+            code=code,
+            code_verifier=code_verifier,
+            state=state,
+            session=session,
+        )
+
+    # ==================================================================
+    # PENDING VERIFIER
+    # ==================================================================
+
+    def _get_pending_verifier(
+        self,
+        state,
+        session=None,
+    ):
+
+        # --------------------------------------------------------------
+        # Session first
+        # --------------------------------------------------------------
+
+        if session is not None:
+
+            oauth_state = session.get(
+                "_oauth",
+                {},
+            )
+
+            provider_state = (
+                oauth_state.get(
+                    self.name,
+                    {},
+                )
+            )
+
+            verifier = provider_state.get(
+                "code_verifier"
+            )
+
+            if verifier:
+
+                return verifier
+
+        # --------------------------------------------------------------
+        # Memory fallback
+        # --------------------------------------------------------------
+
+        return self._pending_states.get(
+            state
+        )
+
+    # ==================================================================
+    # TOKEN PAYLOAD
+    # ==================================================================
+
+    def _token_payload(
+        self,
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+
+        access_token = data.get(
+            self.token_field
+        )
+
+        if not access_token:
+
+            raise RuntimeError(
+                "OAuth token response does not "
+                f"contain {self.token_field}"
+            )
+
+        expires_in = int(
+            data.get(
+                self.expires_field,
+                3600,
+            )
+            or 3600
+        )
+
+        token_type = data.get(
+            self.token_type_field,
+            self.auth_scheme,
+        )
 
         tokens = {
-            "access_token": str(data[self.token_field]),
-            "token_type": data.get("token_type", self.auth_scheme),
+            "access_token": str(
+                access_token
+            ),
+            "token_type": str(
+                token_type
+                or self.auth_scheme
+            ),
             "auth_header": self.auth_header,
-            "expires_in": int(data.get(self.expires_field, 3600)),
+            "expires_in": expires_in,
+            "expires_at": (
+                time.time()
+                + max(
+                    expires_in - 60,
+                    1,
+                )
+            ),
         }
-        tokens["expires_at"] = time.time() + max(
-            tokens["expires_in"] - 60,
-            1,
-        )
-        if data.get("refresh_token"):
-            tokens["refresh_token"] = str(data["refresh_token"])
 
-        return flow.success({
+        refresh_token = data.get(
+            self.refresh_token_field
+        )
+
+        if refresh_token:
+
+            tokens[
+                "refresh_token"
+            ] = str(refresh_token)
+
+        return {
             "providers": {
                 self.name: {
                     "tokens": tokens,
-                    "user": {"email": email},
                 }
-            },
-            "user": {"email": email},
-        })
+            }
+        }
 
-    async def sign_up(self, email, password):
-        return flow.error("OAuth non supporta la registrazione tramite questo provider.")
+    # ==================================================================
+    # STORE SESSION TOKENS
+    # ==================================================================
 
-    async def sign_out(self, session):
-        session.get("providers", {}).pop(self.name, None)
-        return flow.success({"session": session})
+    def _store_session_tokens(
+        self,
+        session,
+        tokens,
+    ):
 
-    async def sign_aid(self, **constants):
-        return flow.error("OAuth non supporta questa operazione.")
+        provider = (
+            session.setdefault(
+                "providers",
+                {},
+            )
+            .setdefault(
+                self.name,
+                {},
+            )
+        )
 
-    async def get_user(self, session):
-        provider = session.get("providers", {}).get(self.name)
-        if not provider:
-            return flow.error("Utente non autenticato.")
-        return flow.success(provider.get("user", {}))
+        provider[
+            "tokens"
+        ] = dict(tokens)
 
-    async def get_headers(self, session=None):
+    # ==================================================================
+    # TOKEN EXPIRATION
+    # ==================================================================
+
+    @staticmethod
+    def token_expired(
+        tokens,
+    ) -> bool:
+
+        if not tokens:
+
+            return True
+
+        access_token = tokens.get(
+            "access_token"
+        )
+
+        if not access_token:
+
+            return True
+
+        expires_at = tokens.get(
+            "expires_at"
+        )
+
+        if expires_at is None:
+
+            return False
+
+        try:
+
+            return (
+                float(expires_at)
+                <= time.time()
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+
+            return True
+
+    # ==================================================================
+    # REFRESH
+    # ==================================================================
+
+    async def refresh(
+        self,
+        refresh_token=None,
+        session=None,
+    ):
+
         if session is not None:
-            provider = session.get("providers", {}).get(self.name)
-            tokens = provider.get("tokens", {}) if provider else {}
-            access_token = tokens.get("access_token")
+
+            provider = (
+                session
+                .get("providers", {})
+                .get(self.name)
+            )
+
+            if provider:
+
+                tokens = provider.get(
+                    "tokens",
+                    {},
+                )
+
+                refresh_token = (
+                    refresh_token
+                    or tokens.get(
+                        "refresh_token"
+                    )
+                )
+
+        refresh_token = (
+            refresh_token
+            or self.refresh_token_value
+        )
+
+        if not refresh_token:
+
+            return flow.error(
+                "OAuth refresh_token "
+                "is not available"
+            )
+
+        payload = {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+        }
+
+        if self.client_id:
+
+            payload[
+                "client_id"
+            ] = self.client_id
+
+        try:
+
+            auth = self._client_auth(
+                payload
+            )
+
+            data = await self._request_token(
+                payload,
+                auth=auth,
+            )
+
+            result = self._token_payload(
+                data
+            )
+
+            if session is not None:
+
+                self._store_session_tokens(
+                    session,
+                    result["providers"][
+                        self.name
+                    ]["tokens"],
+                )
+
+            else:
+
+                self._store_runtime_token(
+                    data
+                )
+
+            return flow.success(
+                result
+            )
+
+        except Exception as exc:
+
+            return flow.error(
+                str(exc)
+            )
+
+    # ==================================================================
+    # GET HEADERS
+    # ==================================================================
+
+    async def get_headers(
+        self,
+        session=None,
+    ):
+
+        # ==============================================================
+        # USER SESSION
+        # ==============================================================
+
+        if session is not None:
+
+            provider = (
+                session
+                .get("providers", {})
+                .get(self.name)
+            )
+
+            if not provider:
+
+                raise RuntimeError(
+                    "OAuth provider "
+                    f"'{self.name}' is not connected"
+                )
+
+            tokens = provider.get(
+                "tokens",
+                {},
+            )
+
+            access_token = tokens.get(
+                "access_token"
+            )
+
             if not access_token:
+
                 raise RuntimeError(
-                    f"Token OAuth assente nella sessione per '{self.name}'."
+                    "OAuth access_token is missing "
+                    f"for provider '{self.name}'"
                 )
-            if self.token_expired(tokens):
-                raise RuntimeError(
-                    f"Token OAuth scaduto nella sessione per '{self.name}'."
-                )
-            auth_scheme = tokens.get("token_type", self.auth_scheme)
-        else:
-            if (
-                not self.access_token
-                or time.monotonic() >= self.token_expires_at
+
+            # ----------------------------------------------------------
+            # Token ancora valido
+            # ----------------------------------------------------------
+
+            if not self.token_expired(
+                tokens
             ):
-                await self._authenticate()
-            access_token = self.access_token
-            auth_scheme = self.auth_scheme
+
+                token_type = tokens.get(
+                    "token_type",
+                    self.auth_scheme,
+                )
+
+                return {
+                    self.auth_header: (
+                        f"{token_type} "
+                        f"{access_token}"
+                        if token_type
+                        else access_token
+                    )
+                }
+
+            # ----------------------------------------------------------
+            # Token scaduto
+            # ----------------------------------------------------------
+
+            refresh_token = tokens.get(
+                "refresh_token"
+            )
+
+            if not refresh_token:
+
+                raise RuntimeError(
+                    "OAuth access_token expired "
+                    "and refresh_token is not available"
+                )
+
+            # ----------------------------------------------------------
+            # Refresh
+            # ----------------------------------------------------------
+
+            result = await self.refresh(
+                refresh_token=refresh_token,
+                session=session,
+            )
+
+            if result is None:
+
+                raise RuntimeError(
+                    "OAuth token refresh failed"
+                )
+
+            # ----------------------------------------------------------
+            # Recupera token aggiornato
+            # ----------------------------------------------------------
+
+            provider = (
+                session
+                .get("providers", {})
+                .get(self.name)
+            )
+
+            tokens = provider.get(
+                "tokens",
+                {},
+            )
+
+            access_token = tokens.get(
+                "access_token"
+            )
+
+            if not access_token:
+
+                raise RuntimeError(
+                    "OAuth refresh did not return "
+                    "a valid access_token"
+                )
+
+            token_type = tokens.get(
+                "token_type",
+                self.auth_scheme,
+            )
+
+            return {
+                self.auth_header: (
+                    f"{token_type} "
+                    f"{access_token}"
+                    if token_type
+                    else access_token
+                )
+            }
+
+        # ==============================================================
+        # RUNTIME / MACHINE TO MACHINE
+        # ==============================================================
+
+        if (
+            not self.access_token
+            or time.monotonic()
+            >= self.token_expires_at
+        ):
+
+            await self._authenticate()
 
         return {
             self.auth_header: (
-                f"{auth_scheme} {access_token}"
-                if auth_scheme
-                else access_token
+                f"{self.token_type} "
+                f"{self.access_token}"
+                if self.token_type
+                else self.access_token
             )
         }
+
+    # ==================================================================
+    # REVOKE
+    # ==================================================================
+
+    async def revoke(
+        self,
+        token=None,
+        token_type="access_token",
+        session=None,
+    ):
+
+        if not self.revoke_url:
+
+            return flow.error(
+                "OAuth revoke_url "
+                "is not configured"
+            )
+
+        if session is not None:
+
+            provider = (
+                session
+                .get("providers", {})
+                .get(self.name)
+            )
+
+            if provider:
+
+                tokens = provider.get(
+                    "tokens",
+                    {},
+                )
+
+                token = (
+                    token
+                    or tokens.get(
+                        "access_token"
+                    )
+                )
+
+        token = (
+            token
+            or self.access_token
+        )
+
+        if not token:
+
+            return flow.error(
+                "OAuth token is not available"
+            )
+
+        payload = {
+            "token": token,
+            "token_type_hint": token_type,
+        }
+
+        try:
+
+            timeout = aiohttp.ClientTimeout(
+                total=self.timeout
+            )
+
+            async with aiohttp.ClientSession(
+                timeout=timeout
+            ) as http:
+
+                async with http.post(
+                    self.revoke_url,
+                    data=payload,
+                    ssl=self.verify_ssl,
+                ) as response:
+
+                    if not (
+                        200
+                        <= response.status
+                        < 300
+                    ):
+
+                        data = (
+                            await self._read_response(
+                                response
+                            )
+                        )
+
+                        raise RuntimeError(
+                            "OAuth revocation failed: "
+                            f"HTTP {response.status} "
+                            f"{data}"
+                        )
+
+            # ----------------------------------------------------------
+            # Remove session credentials
+            # ----------------------------------------------------------
+
+            if session is not None:
+
+                session.get(
+                    "providers",
+                    {},
+                ).pop(
+                    self.name,
+                    None,
+                )
+
+            # ----------------------------------------------------------
+            # Remove runtime credentials
+            # ----------------------------------------------------------
+
+            if token == self.access_token:
+
+                self.access_token = None
+                self.refresh_token_value = None
+                self.token_expires_at = 0
+
+            return flow.success(
+                True
+            )
+
+        except Exception as exc:
+
+            return flow.error(
+                str(exc)
+            )
+
+    # ==================================================================
+    # VALIDATE JWT
+    # ==================================================================
+
+    async def validate_token(
+        self,
+        token,
+    ):
+
+        try:
+
+            import jwt
+
+            jwks_url = self.config.get(
+                "jwks_url"
+            )
+
+            jwt_secret = self.config.get(
+                "jwt_secret"
+            )
+
+            algorithms = self.config.get(
+                "jwt_algorithms",
+                ["HS256"],
+            )
+
+            if isinstance(
+                algorithms,
+                str,
+            ):
+
+                algorithms = [
+                    algorithms
+                ]
+
+            issuer = self.config.get(
+                "jwt_issuer"
+            )
+
+            audience = self.config.get(
+                "jwt_audience"
+            )
+
+            options = {
+                "verify_exp": True,
+            }
+
+            kwargs = {}
+
+            if issuer:
+                kwargs["issuer"] = issuer
+
+            if audience:
+                kwargs["audience"] = audience
+
+            # ----------------------------------------------------------
+            # Shared secret
+            # ----------------------------------------------------------
+
+            if jwt_secret:
+
+                claims = jwt.decode(
+                    token,
+                    jwt_secret,
+                    algorithms=algorithms,
+                    options=options,
+                    **kwargs,
+                )
+
+                return flow.success(
+                    claims
+                )
+
+            # ----------------------------------------------------------
+            # JWKS
+            # ----------------------------------------------------------
+
+            if jwks_url:
+
+                signing_key = (
+                    jwt.PyJWKClient(
+                        jwks_url
+                    )
+                    .get_signing_key_from_jwt(
+                        token
+                    )
+                )
+
+                claims = jwt.decode(
+                    token,
+                    signing_key.key,
+                    algorithms=algorithms,
+                    options=options,
+                    **kwargs,
+                )
+
+                return flow.success(
+                    claims
+                )
+
+            return flow.error(
+                "JWT validation key or "
+                "jwks_url is not configured"
+            )
+
+        except Exception as exc:
+
+            return flow.error(
+                f"Invalid OAuth JWT: {exc}"
+            )
+
+    # ==================================================================
+    # SIGN IN
+    # ==================================================================
+
+    async def sign_in(
+        self,
+        email,
+        password,
+    ):
+
+        if self.grant_type != "password":
+
+            return flow.error(
+                "Il provider OAuth configurato "
+                "non supporta il login password."
+            )
+
+        try:
+
+            data = await self._authenticate(
+                email,
+                password,
+            )
+
+        except Exception as exc:
+
+            return flow.error(
+                str(exc)
+            )
+
+        result = self._token_payload(
+            data
+        )
+
+        result[
+            "providers"
+        ][self.name][
+            "user"
+        ] = {
+            "email": email,
+        }
+
+        result[
+            "user"
+        ] = {
+            "email": email,
+        }
+
+        return flow.success(
+            result
+        )
+
+    # ==================================================================
+    # SIGN UP
+    # ==================================================================
+
+    async def sign_up(
+        self,
+        email,
+        password,
+    ):
+
+        return flow.error(
+            "OAuth non supporta la registrazione "
+            "tramite questo provider."
+        )
+
+    # ==================================================================
+    # SIGN OUT
+    # ==================================================================
+
+    async def sign_out(
+        self,
+        session,
+    ):
+
+        session.get(
+            "providers",
+            {},
+        ).pop(
+            self.name,
+            None,
+        )
+
+        session.get(
+            "_oauth",
+            {},
+        ).pop(
+            self.name,
+            None,
+        )
+
+        return flow.success(
+            {
+                "session": session
+            }
+        )
+
+    # ==================================================================
+    # GET USER
+    # ==================================================================
+
+    async def get_user(
+        self,
+        session,
+    ):
+
+        provider = (
+            session
+            .get("providers", {})
+            .get(self.name)
+        )
+
+        if not provider:
+
+            return flow.error(
+                "Utente non autenticato."
+            )
+
+        return flow.success(
+            provider.get(
+                "user",
+                {},
+            )
+        )
+
+    # ==================================================================
+    # GENERIC AUTH PORT OPERATIONS
+    # ==================================================================
+
+    async def sign_aid(
+        self,
+        **constants,
+    ):
+
+        return flow.error(
+            "OAuth non supporta questa operazione."
+        )

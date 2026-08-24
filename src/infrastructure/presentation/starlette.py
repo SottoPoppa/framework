@@ -11,10 +11,12 @@ from markupsafe import Markup
 
 import framework.port.presentation as presentation
 import framework.service.flow as flow
+import framework.service.route as route
 from framework.service.route import split_url
 from framework.manager.defender import Manager as Defender
 from framework.manager.presenter import Manager as Presenter
 from framework.manager.messenger import Manager as Messenger
+from framework.manager.authenticator import Manager as Authenticator
 from framework.manager.loader import Loader
 
 try:
@@ -95,7 +97,7 @@ class DefenderMiddleware(BaseHTTPMiddleware):
         if path.startswith("/static/"):
             return await call_next(request)
         
-        data = self.defender.resolve_route(self.routes, path, method)
+        data = route.resolve_route(self.routes, path, method)
 
         if not data:
             # Rifiutiamo la richiesta con un 403 Forbidden o 404
@@ -587,8 +589,8 @@ class Adapter(presentation.Port):
         presentation.Tag.PATTERN.value: {"pattern": lambda x: htpy.Element("pattern")(**attrs(presentation.Tag.PATTERN.value, x))[[Markup(i) for i in x['inner']]]},
     }
 
-    def __init__(self, loader: Loader, defender: Defender, presenter: Presenter, messenger: Messenger, **constants):
-        super().__init__(loader, defender, presenter, messenger, **constants)
+    def __init__(self, loader: Loader, defender: Defender, presenter: Presenter, messenger: Messenger, authenticator: Authenticator, **constants):
+        super().__init__(loader, defender, presenter, messenger, authenticator, **constants)
         self.ssh = {}
         cwd = os.getcwd()
         self.routes_static=[
@@ -718,7 +720,9 @@ class Adapter(presentation.Port):
                 return RedirectResponse('/', status_code=405)
 
         # Autenticazione tramite defender
-        session = await self.defender.authenticate(request.session, **credentials)
+        #raise Exception("Defender non implementato per Starlette. Implementare la logica di autenticazione qui.")
+        session = await self.authenticator.authenticate(request.session, **credentials)
+        
         if session['success']:
             request.session.update(session['outputs'])
         else:
@@ -738,7 +742,7 @@ class Adapter(presentation.Port):
                 return RedirectResponse('/', status_code=405)
 
         # Autenticazione tramite defender
-        session = await self.defender.activate(request.session, **credentials)
+        session = await self.authenticator.activate(request.session, **credentials)
         
         if session['success']:
             request.session.update(session['outputs'])
@@ -759,7 +763,7 @@ class Adapter(presentation.Port):
                 return RedirectResponse('/', status_code=405)
 
         # Autenticazione tramite defender
-        session = await self.defender.reinstate(request.session, **credentials)
+        session = await self.authenticator.reinstate(request.session, **credentials)
         
         if session['success']:
             request.session.update(session['outputs'])

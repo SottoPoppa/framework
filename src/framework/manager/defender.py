@@ -85,7 +85,7 @@ class Manager(manager.Port):
         
         print("[+] Controllers: ",self.controllers)
 
-    @flow.result(inputs='session')
+    @flow.result()
     async def session_create(self, env=None, **session):
         env = env or {}
         env = env | {**self.managers}
@@ -113,6 +113,8 @@ class Manager(manager.Port):
         if not isinstance(payload, dict):
             return flow.error("Authentication provider returned an invalid payload")
 
+        session_result['outputs'] = payload
+
         providers = payload.get('providers', {})
         user = payload.get('user')
         provider = providers.get(authentication.name)
@@ -123,7 +125,7 @@ class Manager(manager.Port):
         session.setdefault('user', {})
         session['providers'][authentication.name] = provider
         session['user'] |= user
-        return None
+        return  session_result
 
     @flow.result(inputs=('session',))
     async def new_session(self, session):
@@ -163,7 +165,7 @@ class Manager(manager.Port):
                 return merge_error
         return flow.success(session)
 
-    @flow.result(outputs=('session',))
+    @flow.result()
     async def authenticate(self, session, **constants):
         """
         Autentica un utente utilizzando i provider configurati.
@@ -171,8 +173,10 @@ class Manager(manager.Port):
         :param constants: Deve includere 'identifier', 'ip' e credenziali.
         :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
         """
+       
         for authentication in self.authentications:
             session_result = await authentication.sign_in(**constants)
+
             merge_error = self._merge_authentication_result(session, authentication, session_result)
             if merge_error:
                 return merge_error

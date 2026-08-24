@@ -1,7 +1,6 @@
 import itertools
 import re
-from urllib.parse import parse_qs, urlparse
-
+from urllib.parse import urlparse, parse_qs, urljoin
 
 ROUTE_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"}
 
@@ -80,3 +79,62 @@ def match(routes, path, method="GET"):
         if route_match:
             return entry, route_match.groupdict()
     return None, {}
+
+def resolve_route(risorse, request_url, request_method, base_url=None,**kargs):
+        
+        try:
+            # 1. Normalizzazione URL
+            # Se request_url è relativo (es. "/home"), urljoin lo unisce a base_url
+            full_url = urljoin(base_url, request_url) if base_url else request_url
+            parsed = urlparse(full_url)
+            
+            # Pulizia del path: togliamo slash vuoti per la lista, ma manteniamo il path stringa per il match
+            path_list = [p for p in parsed.path.split('/') if p]
+            
+            # Trasformiamo query e fragment in dizionari puliti
+            query_params = {k: v[0] if len(v) == 1 else v for k, v in parse_qs(parsed.query).items()}
+            frag_params = {k: v[0] if len(v) == 1 else v for k, v in parse_qs(parsed.fragment).items()}
+
+            url_payload = {
+                'url': full_url,
+                'protocol': parsed.scheme,
+                'host': parsed.hostname,
+                'port': parsed.port,
+                'path': path_list,
+                'query': query_params,
+                'fragment': frag_params
+            }
+
+            # 2. Ciclo di Matching (Aggiornato per supportare la struttura nidificata {path: {metodo: config}})
+            for methods_dict in risorse.values():
+                # Tutte le configurazioni per lo stesso path condividono lo stesso pattern
+                # ne prendiamo una qualsiasi per eseguire il match del path
+                first_config = next(iter(methods_dict.values()))
+                match = first_config['pattern'].match(parsed.path)
+                
+                if match:
+                    # Trovato il path, cerchiamo se il metodo richiesto è supportato
+                    route_data = methods_dict.get(request_method.upper())
+                    
+                    if not route_data:
+                        # Metodo non trovato per questo path specifico
+                        continue
+                        
+                    # Recuperiamo i metadati
+                    metadata = route_data.get('metadata', route_data)
+                    
+                    # Estrazione parametri dinamici dalla Regex (es. {'id': '123'})
+                    dynamic_params = match.groupdict()
+                    
+                    return {
+                        'metadata': metadata,
+                        'params': dynamic_params,
+                        'url_details': url_payload
+                    }
+
+            print(f"[-] No route matched for: {request_method} {parsed.path}")
+            return None
+
+        except Exception as e:
+            print(f"[!] Resolve Error: {e}")
+            return None

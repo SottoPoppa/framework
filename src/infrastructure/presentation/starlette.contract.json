@@ -6,7 +6,8 @@
     "beautifulsoup4",
     "paramiko",
     "itsdangerous",
-    "websockets"
+    "websockets",
+    "python-multipart"
   ],
   "contract_version": 2,
   "exports": {

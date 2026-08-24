@@ -300,10 +300,11 @@ class Port(ABC):
             if original is not None:
                 setattr(cls, method_name, decorator(original))
 
-    def __init__(self, loader, defender, presenter, messenger, **constants):
+    def __init__(self, loader, defender, presenter, messenger, authenticator, **constants):
         self.config = constants
         self.loader = loader
         self.defender = defender
+        self.authenticator = authenticator
         self.presenter = presenter
         self.messenger = messenger
         self.executor = constants.get("executor")

@@ -1,6 +1,6 @@
 {
   "contract_version": 2,
-  "requires":[
+  "requires": [
     "PyJWT"
   ],
   "exports": {
@@ -18,15 +18,15 @@
     "Adapter": {
       "get_user": {
         "test": "f1c793574ed4d42e226dede5d12cbff51a9f87dd79b39fbc6bf35470ce16bfab",
-        "production": "f1c793574ed4d42e226dede5d12cbff51a9f87dd79b39fbc6bf35470ce16bfab"
+        "production": "e5b0dca5ed5ae1e8fe4378c8fc2365ae971d8f08e338b51baf41c5a1515f1763"
       },
       "get_headers": {
         "test": "90f285f6369688f9513bee5f10f4a91ab3f369336a340db1c800ab0617ea563c",
-        "production": "90f285f6369688f9513bee5f10f4a91ab3f369336a340db1c800ab0617ea563c"
+        "production": "61c27a1ae78518d1dece37767076ad1533ac0b5e7cc3bc4e7276e8486d42db7e"
       },
       "_bool": {
         "test": "c4246d6e54a0ccae937d912923fad26f1ceb72d641b856e7fc11af1b6f6f1642",
-        "production": "c4246d6e54a0ccae937d912923fad26f1ceb72d641b856e7fc11af1b6f6f1642"
+        "production": "52a43b11f5448c89f0ca6f4239e3cd896259d26b0e3094d1e4f531cf3c4bdfcc"
       }
     }
   }

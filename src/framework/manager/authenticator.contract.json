@@ -1,0 +1,31 @@
+{
+  "contract_version": 2,
+  "hashes": {
+    "Manager": {
+      "shutdown": {
+        "production": "7eb425484311111d4182a6b3d7184ed503a2b31a5e43d0b8944888adb07d2e7d"
+      },
+      "startup": {
+        "production": "12ba69db33c1af82b867a925d147f3c10a55dd19af6140b1e8df038dbce626ce"
+      },
+      "terminate": {
+        "production": "c289ddd588ffc9152a345355abafd4752cd9f28eb2c49ef384c0c16db4f3688a"
+      },
+      "reinstate": {
+        "production": "7c6e648460db783fed04778d248f12801d3a2a7a19ba38ccfc4f68bcc1ca2f78"
+      },
+      "authenticate": {
+        "production": "b8f6f25ce91f3078c99013019daf2aa2a72c9229712cad5db26275ca13786fe2"
+      },
+      "activate": {
+        "production": "5784fb0e365b9e46bfadb583e13e02640d632462669359ca6d1f2405e2b2e1a5"
+      },
+      "invalidate": {
+        "production": "d8882f03f2d98676145bcdf48d1aa120ea774efc4e33fd6b50a87d36018404ed"
+      },
+      "regenerate": {
+        "production": "07f35b82b1eda3038ddb804f4331d625fa9356b7fa471bf191e2cd90dd4882f5"
+      }
+    }
+  }
+}

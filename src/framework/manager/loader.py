@@ -559,6 +559,7 @@ class Loader:
         "orchestrator": "src/framework/manager/orchestrator.py",
         "networker": "src/framework/manager/networker.py",
         "tester": "src/framework/manager/tester.py",
+        "authenticator": "src/framework/manager/authenticator.py"
     }
 
     def __init__(self):
