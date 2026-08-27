@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Window type="page" title="Cartoleria Irpina | La Tua Carta ad Avellino" background="#fdfbf7,#f5f2eb" font="sans">
+<Text>{{session}}</Text>
+    <Action type="form" route="/login" act="POST">
+    <Input type="text" name="email" placeholder="email" />
+    <Input type="password" name="password" placeholder="password" />
+    <Action type="submit"><Text>Login</Text></Action>
+</Action>
+</Window>

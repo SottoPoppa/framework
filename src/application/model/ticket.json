@@ -3,54 +3,67 @@
     "type": "integer",
     "required": false
   },
+
   "name": {
     "type": "string",
     "required": false,
     "nullable": true
   },
+
   "content": {
     "type": "string",
     "required": false,
     "nullable": true
   },
+
   "status": {
     "type": "integer",
     "required": false,
     "nullable": true
   },
+
   "priority": {
     "type": "integer",
     "required": false,
     "nullable": true
   },
+
   "date_creation": {
     "type": "string",
     "required": false,
     "nullable": true
   },
+
   "date_mod": {
     "type": "string",
     "required": false,
     "nullable": true
   },
+
   "entity": {
     "type": "dict",
+    "required": false,
+    "nullable": true,
+
     "schema": {
       "id": {
         "type": "integer",
         "required": false
       },
+
       "name": {
         "type": "string",
-        "required": false
+        "required": false,
+        "nullable": true
       },
+
       "completename": {
         "type": "string",
-        "required": false
+        "required": false,
+        "nullable": true
       }
     },
-    "allow_unknown": true,
-    "required": false,
-    "nullable": true
+
+    "allow_unknown": true
   }
 }

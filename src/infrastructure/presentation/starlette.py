@@ -317,6 +317,7 @@ def attrs(tag_key, input_data, classe=None):
     
     classe = raw_attrs.get("class", "")
 
+
     if tag_key not in [presentation.Tag.TEXT.value] and (any(attr in raw_attrs for attr in [presentation.Attribute.JUSTIFY.value, presentation.Attribute.ALIGN.value,presentation.Attribute.EXPAND.value,presentation.Attribute.SPACING.value]) or tag_key in [presentation.Tag.ROW.value, presentation.Tag.COLUMN.value]):
         classe += " flex"
 
@@ -505,7 +506,12 @@ class Adapter(presentation.Port):
             "button": lambda x: htpy.button(**attrs("button", x, "px-4 py-2 hover:opacity-80 transition-opacity"))[[Markup(i) for i in x['inner']]], 
             "submit": lambda x: htpy.button(type="submit",**attrs("submit", x, "btn btn-primary"))[[Markup(i) for i in x['inner']]], 
             "reset": lambda x: htpy.button(type="reset",**attrs("reset", x, "btn btn-secondary"))[[Markup(i) for i in x['inner']]],
-            "link": lambda x: htpy.a(**attrs("link", x, "btn link"))[[Markup(i) for i in x['inner']]],
+            "link": lambda x: htpy.a(
+                **attrs("link", {**x, "attrs": {
+                    **{k: v for k, v in x.get("attrs", {}).items() if k not in ("route", "action", "href")},
+                    "href": x.get("attrs", {}).get("route") or x.get("attrs", {}).get("action") or x.get("attrs", {}).get("href", "#")
+                }}, "btn link")
+            )[[Markup(i) for i in x['inner']]],
         },
         presentation.Tag.MEDIA.value: {
             "media": lambda x: htpy.img(**attrs("media", x)), 

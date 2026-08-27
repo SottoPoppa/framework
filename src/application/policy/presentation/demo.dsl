@@ -56,7 +56,7 @@ routes: {
     route:GET_ECOMMERCE := { path:"/shop"; method:"GET"; "type":"view"; view:"ecommerce.xml"; controller:"catalog" };
     route:GET_PROFILE := { path:"/profile"; method:"GET"; "type":"view"; view:"profile.xml" };
     // Auth
-    route:GET_LOGIN := { path:"/login"; method:"GET"; "type":"view"; view:"auth/login.xml" };
+    route:GET_LOGIN := { path:"/login"; method:"GET"; "type":"view"; view:"login.xml" };
     route:GET_LOGOUT := { path:"/logout"; method:"GET"; "type":"view"; view:"auth/logout.xml" };
     route:POST_LOGIN := { path:"/login"; method:"POST"; "type":"authenticate"; view:"auth/login.xml" };
     route:POST_LOGOUT := { path:"/logout"; method:"POST"; "type":"terminate"; view:"auth/logout.xml" };

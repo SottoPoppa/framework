@@ -1,46 +1,4 @@
 <Window type="page" title="NOVA MARKET | Catalogo locale" background="#f4f1ea,#e9f0ed" font="sans">
-    <Navigation width="full" background="#16211f" padding="18px,6%" shadow="medium">
-        <Row justify="between" align="center">
-            <Column spacing="2px">
-                <Text type="h4" font="extrabold" color="#f8f6ef">NOVA MARKET</Text>
-                <Text size="11px" color="#d5f36b" uppercase="true" font="bold">Catalogo locale</Text>
-            </Column>
-            <Action type="button" click="catalog.add_to_cart" background="#d5f36b" radius="full" padding="9px,15px">
-                <Row align="center" spacing="8px"><Icon name="bi-bag" color="#16211f" /><Text color="#16211f" font="bold">Carrello {{ catalog.catalog_logic.cart_count }}</Text></Row>
-            </Action>
-        </Row>
-    </Navigation>
-
-    <Column width="full" padding="65px,6%,35px" spacing="24px">
-        <Text size="13px" color="#e2603d" font="bold" uppercase="true">Selezione 2026</Text>
-        <Text type="h1" font="extrabold" size="48px" color="#16211f">Oggetti scelti per una vita più semplice.</Text>
-        <Text type="p" size="17px" color="#596661">Un catalogo locale gestito interamente dal controller DSL dell'applicazione.</Text>
-    </Column>
-
-    <Row width="full" padding="15px,6%" background="#ffffff" border="1px solid #dfe7e1" justify="between" align="center">
-        <Text size="13px" color="#718078">Disponibilità immediata</Text>
-        <Text size="13px" color="#718078">{{ catalog.catalog_logic.products | length }} prodotti disponibili</Text>
-    </Row>
-
-    <Column width="full" padding="45px,6%,80px" spacing="25px">
-        <Text type="h2" font="extrabold" color="#16211f">In evidenza</Text>
-        <Grid class="grid-cols-1 md:grid-cols-2 lg:grid-cols-3" spacing="20px">
-            {% for product in catalog.catalog_logic.products %}
-            <Column background="#ffffff" radius="large" shadow="medium" border="1px solid #dfe7e1" padding="20px" spacing="12px">
-                <Row justify="between" align="center"><Text size="11px" color="#e2603d" font="bold" uppercase="true">{{ product.category }}</Text><Text size="12px" color="#718078">{{ product.sku }}</Text></Row>
-                <Text type="h3" font="bold" color="#16211f">{{ product.name }}</Text>
-                <Text size="13px" color="#718078">{{ product.description }}</Text>
-                <Row justify="between" align="center" margin="8px,0,0,0">
-                    <Text size="22px" font="extrabold" color="#16211f">€ {{ product.price }}</Text>
-                    <Action type="button" click="catalog.add_to_cart" background="#d5f36b" radius="full" padding="9px,13px"><Icon name="bi-plus-lg" color="#16211f" /></Action>
-                </Row>
-            </Column>
-            {% endfor %}
-        </Grid>
-    </Column>
-
-    <Row width="full" background="#16211f" padding="22px,6%" justify="between" align="center">
-        <Text color="#d6ded8" size="13px">Dati locali dell'applicazione</Text>
-        <Text color="#d5f36b" size="13px" font="bold">NOVA MARKET / 01</Text>
-    </Row>
+    <Text>{{catalog.tickets.0.name | escape}}</Text>
+    <Text>{{session}}</Text>
 </Window>

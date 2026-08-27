@@ -115,7 +115,7 @@ class Manager(manager.Port):
                 return merge_error
         return flow.success(session)
 
-    @flow.result(outputs=('session',))
+    @flow.result(inputs=('session',))
     async def authenticate(self, session, **constants):
         """
         Autentica un utente utilizzando i provider configurati.
