@@ -46,7 +46,7 @@ class Manager(manager.Port):
     async def get_view(self, session, path):
         return await self.loader.resource(path)
 
-    @flow.result(safe_kwargs=True)
+    @flow.result()
     async def get_attribute(self, session, **constants):
         driver = self._get_driver()
         return await driver.get_attribute(constants.get('widget'),constants.get('field')) if driver else None
@@ -54,7 +54,7 @@ class Manager(manager.Port):
     def _get_driver(self):
         return self.presentations[-1] if self.presentations else None
 
-    @flow.result(safe_kwargs=True)
+    @flow.result()
     async def selector(self, session, **constants):
         driver = self._get_driver()
         return await driver.selector(**constants) if driver else None
@@ -66,7 +66,7 @@ class Manager(manager.Port):
             return await driver.rebuild(node_id, context)
         return None
     
-    @flow.result(safe_kwargs=True)
+    @flow.result()
     async def navigate(self, session, **constants):
         driver = self._get_driver()
         return await driver.apply_route(**constants) if driver else None

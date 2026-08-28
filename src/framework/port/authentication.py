@@ -9,7 +9,7 @@ class Port(ABC):
         "sign_in":      flow.result(inputs=("email", "password")),
         "sign_up":      flow.result(inputs=("email", "password")),
         "sign_out":     flow.result(inputs=("session",),          outputs=("session",)),
-        "sign_aid":     flow.result(safe_kwargs=True),
+        "sign_aid":     flow.result(),
         "get_user": flow.result(inputs=("session",)),
     }
 

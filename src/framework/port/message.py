@@ -5,9 +5,9 @@ import framework.core.flow as flow
 class Port(Protocol):
 
     _method_decorators = {
-        "read": flow.result(safe_kwargs=True),
-        "post": flow.result(safe_kwargs=True),
-        "can": flow.result(safe_kwargs=True),
+        "read": flow.result(),
+        "post": flow.result(),
+        "can": flow.result(),
     }
 
     def __init_subclass__(cls, **kwargs):

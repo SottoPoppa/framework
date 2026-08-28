@@ -1619,7 +1619,7 @@ class Adapter(persistence.Port):
     # REQUEST
     # ==================================================================
 
-    @flow.result(safe_kwargs=True)
+    @flow.result()
     async def request(
         self,
         session=None,

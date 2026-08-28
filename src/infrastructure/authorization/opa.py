@@ -7,7 +7,7 @@ class adapter:
         self.url = self.config.get('url')
 
     
-    @flow.result(safe_kwargs=True)
+    @flow.result()
     async def whoami(self, **data):
         """
         Recupera le informazioni del profilo utente da GitHub utilizzando l'access_token.
@@ -40,11 +40,11 @@ class adapter:
                     print(f"Errore durante whoami: {response.status} - {await response.text()}")
                     return None
     
-    @flow.result(safe_kwargs=True)
+    @flow.result()
     async def logout(self,**data):
         pass
 
-    @flow.result(safe_kwargs=True)
+    @flow.result()
     async def registration(self,**data):
         pass
 
@@ -65,7 +65,7 @@ class adapter:
                 else:
                     return None'''
     
-    @flow.result(safe_kwargs=True)
+    @flow.result()
     async def authenticate(self, **data):
         """
         Esegue l'autenticazione con GitHub (OAuth) e restituisce una sessione normalizzata.

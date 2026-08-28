@@ -100,7 +100,7 @@ class Manager(manager.Port):
 
         return flow.success(session)
 
-    @flow.result(outputs=('session',), safe_kwargs=True)
+    @flow.result(outputs=('session',))
     async def regenerate(self, session, **constants):
         """
         Autentica un utente utilizzando i provider configurati.

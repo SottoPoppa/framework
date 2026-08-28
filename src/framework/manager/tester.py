@@ -139,12 +139,12 @@ class Manager(manager.Port):
     async def shutdown(self, session=None):
         pass
 
-    @flow.result(safe_kwargs=True)
+    @flow.result()
     async def run(self, session, **constants):
         """Esegue i test di contract DSL filtrati secondo il prefisso configurato."""
         return await self._run_suites(session, integration=False, **constants)
 
-    @flow.result(safe_kwargs=True)
+    @flow.result()
     async def run_integration(self, session, **constants):
         """Esegue gli scenari DSL sul runtime gia costruito dal Loader."""
         return await self._run_suites(session, integration=True, **constants)

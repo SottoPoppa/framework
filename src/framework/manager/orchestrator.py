@@ -124,7 +124,7 @@ class Manager(manager.Port):
 
     # ── API ────────────────────────────────────────────────────────────────
 
-    @flow.result(safe_kwargs=True)
+    @flow.result()
     async def first_completed(self, session, **constants):
         """Attende il primo task completato e restituisce il suo risultato."""
         operations = constants.get('operations', [])
@@ -153,7 +153,7 @@ class Manager(manager.Port):
             #await messenger.post(domain='debug',message=error_msg)
             return flow.error(error_msg)
 
-    @flow.result(safe_kwargs=True)
+    @flow.result()
     async def all_completed(self, session, **constants) -> Dict[str, Any]:
         tasks: List[asyncio.Future] = constants.get('tasks', [])
     
@@ -186,7 +186,7 @@ class Manager(manager.Port):
         
         return flow.success({"results": results})
 
-    @flow.result(safe_kwargs=True)
+    @flow.result()
     async def chain_completed(self, session, **constants) -> Dict[str, Any]:
         """Esegue i task in sequenza, aspettando il completamento di ciascuno prima di passare al successivo."""
         tasks = constants.get('tasks', [])
@@ -211,7 +211,7 @@ class Manager(manager.Port):
             #await messenger.post(domain='debug', message=error_msg)
             return flow.error(error_msg)
 
-    @flow.result(safe_kwargs=True)
+    @flow.result()
     async def together_completed(self, session, **constants) -> Dict[str, Any]:
         """Esegue tutti i task contemporaneamente senza attendere il completamento di tutti."""
         tasks = constants.get('tasks', [])

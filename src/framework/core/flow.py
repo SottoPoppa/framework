@@ -284,3 +284,25 @@ def result(
         return wrapper
 
     return decorator
+
+
+def is_result(value: Any) -> bool:
+    return isinstance(value, Result)
+
+
+def output(value: Any) -> Any:
+    if not is_result(value):
+        return value
+    return value.output.value if value.is_success else value.output.error
+
+
+def success(value: Any = None) -> Result:
+    return Result(output=Success(value))
+
+
+def error(value: Any = None) -> Result:
+    return Result(output=Failure(value))
+
+
+def check(value: Any) -> bool:
+    return not is_result(value) or value.is_success

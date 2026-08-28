@@ -284,13 +284,13 @@ class Port(ABC):
     tags = {}
 
     _method_decorators = {
-        "start": flow.result(safe_kwargs=True),
-        "stop": flow.result(safe_kwargs=True),
-        "shutdown": flow.result(safe_kwargs=True),
-        "mount_view": flow.result(safe_kwargs=True),
-        "mount_route": flow.result(safe_kwargs=True),
-        "mount_css": flow.result(safe_kwargs=True),
-        "node_update": flow.result(safe_kwargs=True),
+        "start": flow.result(),
+        "stop": flow.result(),
+        "shutdown": flow.result(),
+        "mount_view": flow.result(),
+        "mount_route": flow.result(),
+        "mount_css": flow.result(),
+        "node_update": flow.result(),
     }
 
     def __init_subclass__(cls, **kwargs):

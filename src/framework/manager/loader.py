@@ -24,6 +24,21 @@ except ImportError:
     import tomli as tomllib
 
 
+def _is_result(value: Any) -> bool:
+    return hasattr(value, "is_success") and hasattr(value, "output")
+
+
+def _result_succeeded(value: Any) -> bool:
+    return bool(getattr(value, "is_success", True))
+
+
+def _result_output(value: Any) -> Any:
+    if not _is_result(value):
+        return value
+    payload = value.output
+    return getattr(payload, "value", getattr(payload, "error", payload))
+
+
 # ============================================================
 # RESOURCE
 # ============================================================
@@ -443,8 +458,6 @@ class Application:
 
     async def _message_consumer_worker(self):
         """Worker in background per la gestione degli eventi di reload."""
-        import framework.core.flow as flow
-
         try:
             while not self._stop_event.is_set():
                 messenger = self._loader.get_managers().get("messenger")
@@ -453,11 +466,11 @@ class Application:
                     continue
 
                 message_result = await messenger.receive(self._session, domain="event")
-                if not flow.is_result(message_result):
+                if not _is_result(message_result):
                     continue
-                if not message_result.get("success"):
+                if not _result_succeeded(message_result):
                     continue
-                message = flow.output(message_result)
+                message = _result_output(message_result)
                 for name, mgr in list(self._loader.get_managers().items()):
                     if hasattr(mgr, "reload"):
                         try:
@@ -469,8 +482,6 @@ class Application:
 
     async def startup(self):
         """Avvia l'applicazione e gestisce i segnali di arresto."""
-        import framework.core.flow as flow
-
         print("[*] Avvio dei manager del framework...")
         if self._loader.kwargs.get("dev"):
             self._running_tasks.append(
@@ -488,10 +499,10 @@ class Application:
             if not hasattr(manager, "startup"):
                 continue
             result = await manager.startup(self._session)
-            if flow.is_result(result):
-                if not result.get("success"):
+            if _is_result(result):
+                if not _result_succeeded(result):
                     continue
-                result = flow.output(result)
+                result = _result_output(result)
             if not result:
                 continue
 
@@ -505,14 +516,12 @@ class Application:
 
     async def shutdown(self):
         """Esegue il graceful shutdown di tutti i componenti registrati."""
-        import framework.core.flow as flow
-
         print("\n[*] Spegnimento controllato dei servizi...")
         for manager in reversed(self._managers):
             if hasattr(manager, "shutdown"):
                 result = await manager.shutdown(self._session)
-                if flow.is_result(result) and not result.get("success"):
-                    print(f"[!] Shutdown fallito per {manager}: {result.get('errors')}")
+                if _is_result(result) and not _result_succeeded(result):
+                    print(f"[!] Shutdown fallito per {manager}: {_result_output(result)}")
 
         for task in self._running_tasks:
             if not task.done():
@@ -528,11 +537,18 @@ class Application:
 class Loader:
     """Composition Root responsabile dell'infezione delle dipendenze e del wiring."""
 
+    cores = {
+
+        "flow": "src/framework/core/flow.py",
+        "language": "src/framework/core/language.py",
+        "scheme": "src/framework/core/scheme.py",
+    }
+
     services = {
-        "flow": "src/framework/service/flow.py",
+        #"flow": "src/framework/service/flow.py",
         "factory": "src/framework/service/factory.py",
-        "language": "src/framework/service/language.py",
-        "scheme": "src/framework/service/scheme.py",
+        #"language": "src/framework/service/language.py",
+        #"scheme": "src/framework/service/scheme.py",
         "manage": "src/framework/port/manage.py",
         "container": "src/framework/service/container.py",
         "introspection": "src/framework/service/introspection.py",
@@ -832,6 +848,9 @@ class Loader:
         schemes = await self.load_schemes(
             ["src/framework/scheme", "src/application/model"]
         )
+        core_scheme = importlib.import_module("framework.core.scheme")
+        core_scheme.schemes = schemes
+        core_scheme.jinja_env = self.infra.jinja_env
         await self.framework.load_core(
             self.services,
             self.ports,
@@ -868,8 +887,7 @@ class Loader:
         )
         config_file = kwargs.get("config", "pyproject.toml")
         self.kwargs = kwargs
-        import framework.core.flow as flow
-        flow.set_replay_capture(bool(kwargs.get("dev")))
+        
         self.framework.strict = not (
             kwargs.get("dev")
             or kwargs.get("test") is not None
@@ -906,10 +924,10 @@ class Loader:
         if defender:
             if hasattr(defender, "startup"):
                 startup_result = await defender.startup()
-                if flow.is_result(startup_result) and not startup_result.get("success"):
-                    raise RuntimeError(startup_result.get("errors"))
+                if _is_result(startup_result) and not _result_succeeded(startup_result):
+                    raise RuntimeError(_result_output(startup_result))
             if hasattr(defender, "session_create"):
-                session = flow.output(await defender.session_create())
+                session = _result_output(await defender.session_create())
                 print(f"[*] Sessione creata: {session}")
 
         app = Application(self, managers, session)
@@ -932,16 +950,13 @@ class Loader:
             print("[!] Manager 'tester' non trovato nel container")
             return False
         
-        # Passa il filtro come constant al metodo run()
-        import framework.core.flow as flow
-
         session = getattr(self.app, "_session", None)
         method = getattr(tester, method_name, None)
         if method is None:
             print(f"[!] Metodo Tester '{method_name}' non trovato nel container")
             return False
         result = await method(session, filter=filter_value)
-        return flow.output(result) if flow.is_result(result) else result
+        return _result_output(result)
 
     async def verify_contracts(self, config_toml_path: Any) -> bool:
         """Verifica i contract senza costruire o avviare l'applicazione."""
