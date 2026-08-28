@@ -3,46 +3,38 @@ framework.service.flow
 ======================
 
 Orchestrazione async e metadati sopra ``returns.result.Result``.
- Programmazione DATA-DRIVEN con tracciamento completo Input/Output.
+Programmazione DATA-DRIVEN con tracciamento completo Input/Output.
 """
 
 from typing import Generic, TypeVar, Any, Sequence, Callable
+from functools import wraps
 import inspect
 import time
+import asyncio
 
 T = TypeVar("T")
 F = TypeVar("F")
 
 
 class Scheme(dict):
-    """Dict immutabile che genera l'__init__ in automatico dallo SCHEMA."""
+    """Dict immutabile basato su schema nativo."""
 
     SCHEME: dict[str, dict[str, Any]] = {}
 
     def __init__(self, *args, **kwargs):
-        if args and isinstance(args[0], dict) and not kwargs:
-            input_data = args[0]
-        else:
-            input_data = kwargs
-
+        input_data = args[0] if (args and isinstance(args[0], dict) and not kwargs) else kwargs
         validated_data = self._validate_and_clean(input_data)
+        super().__init__(validated_data)
 
-        # Deep Freeze senza ricorsione infinita su istanze Scheme già create
-        frozen_data = {}
-        for key, value in validated_data.items():
-            if isinstance(value, Scheme):
-                frozen_data[key] = value
-            elif isinstance(value, dict):
-                frozen_data[key] = Scheme(value)
-            elif isinstance(value, (list, tuple)):
-                frozen_data[key] = tuple(
-                    v if isinstance(v, Scheme) else (Scheme(v) if isinstance(v, dict) else v)
-                    for v in value
-                )
-            else:
-                frozen_data[key] = value
-
-        super().__init__(frozen_data)
+    @classmethod
+    def _freeze_value(cls, value: Any) -> Any:
+        if isinstance(value, Scheme):
+            return value
+        if isinstance(value, dict):
+            return Scheme(value)
+        if isinstance(value, (list, tuple)):
+            return tuple(cls._freeze_value(v) for v in value)
+        return value
 
     @classmethod
     def _validate_and_clean(cls, data: dict[str, Any]) -> dict[str, Any]:
@@ -71,7 +63,7 @@ class Scheme(dict):
 
             expected_type = rules.get("type")
             if expected_type and not isinstance(value, Scheme):
-                if expected_type == "number" and isinstance(value, (int, float)):
+                if expected_type == "number" and isinstance(value, (int, float)) and not isinstance(value, bool):
                     pass
                 elif isinstance(expected_type, tuple) and not isinstance(value, expected_type):
                     raise TypeError(
@@ -84,7 +76,7 @@ class Scheme(dict):
                         f"ricevuto {type(value).__name__}"
                     )
 
-            cleaned[field] = value
+            cleaned[field] = cls._freeze_value(value)
 
         return cleaned
 
@@ -132,19 +124,16 @@ class Result(Scheme, Generic[T, F]):
 
     @property
     def is_success(self) -> bool:
-        """Restituisce True se l'output finale è un Success."""
         return self.output.is_success
 
     @property
     def failed_step(self) -> "Result | None":
-        """Restituisce la transazione che ha causato l'errore (se presente)."""
         if self.is_success:
             return None
         return self.transactions[-1] if self.transactions else None
 
     @property
     def successful_transactions(self) -> tuple["Result", ...]:
-        """Restituisce solo le transazioni che si sono concluse con successo (utili per il Rollback)."""
         return tuple(tx for tx in self.transactions if tx.output.is_success)
 
 
@@ -166,32 +155,63 @@ def _normalize_result(raw: Any) -> Valor:
     return Success(value=raw)
 
 
-async def _invoke(step: Step, *args: Any, **kwargs: Any) -> Valor:
+def _dispatch_args(step: Step, value: Any) -> tuple[tuple, dict]:
+    """
+    Dispatching STRICT e deterministico.
+    Nessun fallback magico: i dizionari si mappano SOLO per chiave o tramite **options.
+    """
     try:
+        sig = inspect.signature(step)
+    except (ValueError, TypeError):
+        return (value,), {}
+
+    params = sig.parameters
+    num_params = len(params)
+
+    # 1. La funzione non accetta parametri
+    if num_params == 0:
+        return (), {}
+
+    # 2. Gestione Input Dict / Scheme
+    if isinstance(value, dict):
+        has_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
+        matching_kwargs = {k: v for k, v in value.items() if k in params}
+
+        # CASO A: Ha **options / **kwargs -> passa tutto il dict in modo esplicito
+        if has_kwargs:
+            return (), dict(value)
+
+        # CASO B: Esistono chiavi del dict corrispondenti AI PARAMETRI -> passa solo quelle
+        if matching_kwargs:
+            return (), matching_kwargs
+
+        # CASO C: Nessun parametro corrisponde e non c'è **options -> ERRORE TASSATIVO
+        step_name = getattr(step, "__name__", str(step))
+        raise ValueError(
+            f"[{step_name}] Impossibile eseguire lo step: le chiavi del dizionario {list(value.keys())} "
+            f"non corrispondono ai parametri richiesti dalla funzione {list(params.keys())}."
+        )
+
+    # 3. Gestione Tupla / Lista
+    if isinstance(value, (tuple, list)):
+        has_varargs = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params.values())
+        if has_varargs:
+            return tuple(value), {}
+        return tuple(value[:num_params]), {}
+
+    # 4. Valore singolo primitivo o Istanza (NON dict)
+    return (value,), {}
+
+
+async def _invoke(step: Step, value: Any) -> Valor:
+    try:
+        args, kwargs = _dispatch_args(step, value)
         out = step(*args, **kwargs)
         if inspect.isawaitable(out):
             out = await out
         return _normalize_result(out)
     except Exception as exc:
         return Failure(error=exc)
-
-
-def _as_raw_step(fn: Step) -> Step:
-    setattr(fn, "__flow_raw__", True)
-    return fn
-
-
-async def _call_step(step: Step, value: Any) -> Valor:
-    if getattr(step, "__flow_raw__", False):
-        return await _invoke(step, value)
-
-    if isinstance(value, dict) and all(isinstance(k, str) for k in value.keys()):
-        return await _invoke(step, **value)
-
-    if isinstance(value, tuple):
-        return await _invoke(step, *value)
-
-    return await _invoke(step, value)
 
 
 async def pipe(
@@ -211,15 +231,11 @@ async def pipe(
             
         step_started_at = time.perf_counter()
         step_name = getattr(step, "__name__", str(step))
-        
-        # L'input di QUESTO step è il valore corrente
         step_input = current_valor.value
         
-        # Esecuzione
-        current_valor = await _call_step(step, step_input)
+        current_valor = await _invoke(step, step_input)
         step_time = (time.perf_counter() - step_started_at) * 1000
         
-        # Registriamo SOLO gli step effettivi
         transactions.append(Result(
             input=step_input,
             output=current_valor,
@@ -228,7 +244,6 @@ async def pipe(
             component=component
         ))
 
-    # Il Result finale contiene l'input iniziale globale e la lista delle transazioni reali
     return Result(
         input=value,
         output=current_valor,
@@ -238,9 +253,6 @@ async def pipe(
         transactions=tuple(transactions)
     )
 
-from functools import wraps
-from typing import Sequence, Callable, Any
-import asyncio
 
 def result(
     inputs: Sequence[str] | str | None = None,
@@ -249,20 +261,24 @@ def result(
     """Decoratore di confine che incapsula l'esecuzione di una funzione in un Result tramite pipe."""
 
     def decorator(func: Callable) -> Callable:
-        
-        async def _execute_wrapped_func(*args: Any, **kwargs: Any) -> Any:
-            if asyncio.iscoroutinefunction(func):
-                return await func(*args, **kwargs)
-            return func(*args, **kwargs)
 
         @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Result:
-            # Prepariamo l'input da tracciare per la pipe
-            input_payload = args if args and not kwargs else (kwargs if kwargs and not args else (args, kwargs) if args and kwargs else None)
+            input_keys = [inputs] if isinstance(inputs, str) else (inputs or [])
+            output_keys = [outputs] if isinstance(outputs, str) else (outputs or [])
             
+            input_payload = args if args and not kwargs else (kwargs if kwargs and not args else (args, kwargs) if args and kwargs else None)
+
+            async def _main_step(_):
+                if asyncio.iscoroutinefunction(func):
+                    return await func(*args, **kwargs)
+                return func(*args, **kwargs)
+
+            _main_step.__name__ = getattr(func, "__name__", "main_step")
+
             return await pipe(
                 input_payload if input_payload is not None else {},
-                _as_raw_step(lambda _: _execute_wrapped_func(*args, **kwargs)),
+                _main_step,
                 action=getattr(func, "__qualname__", repr(func)),
                 component=getattr(func, "__module__", None),
             )
