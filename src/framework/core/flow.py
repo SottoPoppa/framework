@@ -30,8 +30,6 @@ class Scheme(dict):
     def _freeze_value(cls, value: Any) -> Any:
         if isinstance(value, Scheme):
             return value
-        if isinstance(value, dict):
-            return Scheme(value)
         if isinstance(value, (list, tuple)):
             return tuple(cls._freeze_value(v) for v in value)
         return value

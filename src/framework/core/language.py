@@ -12,7 +12,7 @@ Cambiamenti principali
 
 3. **`invoke()` diventa `_invoke()` (privato)** — l'unico punto di entrata
     esterno per chiamare funzioni DSL diventa `call()`, che restituisce il Flow
-    completo; il payload si ottiene con `flow.output()`.
+    completo; il payload si ottiene da `result.output.value`.
 
 4. **`create_session` + `run_session` → `open_session()` + `run()`** — nomi più
    chiari, firma coerente; `open_session` restituisce un `SessionHandle`
@@ -59,6 +59,7 @@ _visit_stack: contextvars.ContextVar[List[dict]] = contextvars.ContextVar(
 from lark import Lark, Token, Transformer, v_args
 
 import framework.core.flow as flow
+import framework.core.runner as runner
 import framework.core.scheme as scheme
 
 # ── Grammar (invariata) ───────────────────────────────────────────────────────
@@ -136,10 +137,6 @@ TYPE_MAP = {
 
 DSL_FUNCTIONS: Dict[str, Any] = {
     'random':    random.randint,
-    'foreach':   flow.foreach,
-    'switch':    flow.switch,
-    'branch':    flow.branch,
-    'reset':     flow.reset,
     'transform': scheme.transform,
     'get':       scheme.get,
     'normalize': scheme.normalize,
@@ -244,6 +241,57 @@ DSL_FUNCTIONS.update({
     "map_records": map_records,
     "variants": variants,
     "tag_variants": tag_variants,
+})
+
+
+def _flow_output(result: flow.Result) -> Any:
+    """Estrae il valore di successo dal contratto Result di flow."""
+    if isinstance(result.output, flow.Success):
+        return result.output.value
+    return result.output.error
+
+
+def _flow_result(value: Any, *, action: str = "language") -> flow.Result:
+    return flow.Result(
+        input=value,
+        output=flow.Success(value),
+        action=action,
+        component=__name__,
+    )
+
+
+def _flow_error(error: Any, *, action: str = "language") -> flow.Result:
+    return flow.Result(
+        input=None,
+        output=flow.Failure(error),
+        action=action,
+        component=__name__,
+    )
+
+
+def _foreach(values, fn):
+    return [fn(value) for value in values]
+
+
+def _switch(value, cases, default=None):
+    fn = cases.get(value, default) if isinstance(cases, Mapping) else default
+    return fn(value) if callable(fn) else fn
+
+
+def _branch(condition, when_true, when_false=None):
+    selected = when_true if condition else when_false
+    return selected() if callable(selected) else selected
+
+
+def _reset(value=None):
+    return value
+
+
+DSL_FUNCTIONS.update({
+    'foreach': _foreach,
+    'switch': _switch,
+    'branch': _branch,
+    'reset': _reset,
 })
 
 
@@ -406,7 +454,7 @@ class LazyBinOp:
 @dataclass(frozen=True)
 class ContextVar:
     name: str
-    def __call__(self, *_, **ctx): return flow.output(scheme.get(ctx, self.name))
+    def __call__(self, *_, **ctx): return scheme.get(ctx, self.name)
     def __repr__(self):            return self.name
 
 @dataclass(frozen=True)
@@ -556,7 +604,7 @@ class Interpreter:
     """
 
     def __init__(self, custom_types: Optional[Dict] = None):
-        self._runner:       flow.DagRunner    = flow.DagRunner()
+        self._runner:       runner.DagRunner  = runner.DagRunner()
         self._parser:       Lark              = create_parser()
         self._ast_cache:    Dict[str, dict]   = {}
         self._file_tasks:   Dict[str, List]   = {}
@@ -639,6 +687,45 @@ class Interpreter:
     def session_exists(self, sid: str) -> bool:
         return sid in self._runner.sessions 
 
+    def open_session(
+        self,
+        env: Optional[Dict[str, Any]] = None,
+        sid: Optional[str] = None,
+    ) -> SessionHandle:
+        """Apre o riusa una sessione contestuale."""
+        session_id = sid or str(uuid.uuid4())
+        self.session_create(session_id, env or {})
+        return SessionHandle(self, session_id)
+
+    async def run_once(
+        self,
+        name: str,
+        source: str,
+        env: Optional[Dict[str, Any]] = None,
+    ) -> flow.Result:
+        """Carica ed esegue un file in una sessione effimera."""
+        await self.load_file(name, source)
+        session = self.open_session(env=env)
+        try:
+            return await session.run(name)
+        finally:
+            await session.close()
+
+    async def run_session(
+        self,
+        session: str | dict,
+        file: str,
+        env: Optional[Dict[str, Any]] = None,
+    ) -> flow.Result:
+        """Alias compatibile per eseguire un file su una sessione esistente."""
+        sid = session if isinstance(session, str) else session.get("id")
+        if not sid:
+            raise ValueError("Una sessione deve contenere un id.")
+        if sid not in self._runner.sessions:
+            self.session_create(session, env or {})
+        handle = SessionHandle(self, sid)
+        return await handle.run(file, env)
+
     # ── direct function call ──────────────────────────────────────────────────
 
     async def call(
@@ -649,9 +736,9 @@ class Interpreter:
     ) -> Any:
         """
         Invoca una funzione (Python callable, DSL tuple, o LazyCall) e
-        restituisce il dict Result completo.
+        restituisce il ``flow.Result`` completo.
 
-        Per ottenere il payload usare ``flow.output(result)``. Il risultato
+        Per ottenere il payload usare ``result.output.value``. Il risultato
         conserva anche ``transactions`` e la traccia delle chiamate interne.
 
         Solleva ``DSLRuntimeError`` in caso di errore.
@@ -662,8 +749,8 @@ class Interpreter:
         :returns:      risultato Flow della funzione
         """
         res = await self._invoke(fn, args, kwargs or {})
-        if not res["success"]:
-            raise DSLRuntimeError(f"Errore in call: {res['errors']}")
+        if not res.is_success:
+            raise DSLRuntimeError(f"Errore in call: {res.output.error}")
         return res
 
     # ── internals ─────────────────────────────────────────────────────────────
@@ -681,23 +768,38 @@ class Interpreter:
         dag_results = await self._runner.run_file(sid, file, ast_result)
         
         # Conserva i Result dei nodi nel payload e nella catena transazionale.
-        result = flow.success(ast_result | dag_results)
-        result["transactions"] = list(dag_results.values())
-        return result
+        return flow.Result(
+            input=ast_result,
+            output=flow.Success(ast_result | dag_results),
+            action=f"{file}.run",
+            component=__name__,
+            transactions=tuple(dag_results.values()),
+        )
 
     async def _invoke(self, fn: Any, args: tuple, kwargs: Dict, path: str = "") -> Dict:
-        """Esegue fn e restituisce sempre un dict Result."""
+        """Esegue fn e restituisce sempre un flow.Result."""
         if isinstance(fn, LazyCall):
             merged = ChainMap(kwargs, fn.env)
             res, _ = await self.visit_call(fn.call_node, merged, path=path)
-            return flow.success(res)
+            return _flow_result(res, action=path or "language.lazy_call")
         if callable(fn):
-            s = flow.step(fn, *args, **kwargs)
+            step = fn
+            value = kwargs if kwargs else args
         elif isinstance(fn, tuple) and len(fn) in (3, 4):
-            s = flow.step(self._call_dsl_fn, fn, args, kwargs, path)
+            step = self._call_dsl_fn
+            value = (fn, args, kwargs, path)
         else:
             raise DSLRuntimeError(f"Valore non invocabile: {fn!r}")
-        return await flow.act(s)
+
+        result = await flow.pipe(
+            value,
+            step,
+            action=path or getattr(step, "__name__", "language.invoke"),
+            component=__name__,
+        )
+        if not result.is_success:
+            return _flow_error(result.output.error, action=result.action)
+        return _flow_result(_flow_output(result), action=result.action)
 
     # ── visita generica ───────────────────────────────────────────────────────
 
@@ -812,7 +914,7 @@ class Interpreter:
     async def visit_bool(self, n, e, path=""):        return n["value"], e
     async def visit_any(self, n, e, path=""):         return None, e
     async def visit_identifier(self, n, e, path=""):  return n["name"], e
-    async def visit_var(self, n, e, path=""):         return flow.output(scheme.get(e, n["name"], n["name"])), e
+    async def visit_var(self, n, e, path=""):         return scheme.get(e, n["name"], n["name"]), e
     async def visit_context_var(self, n, e, path=""): return ContextVar(n["name"]), e
 
     async def visit_function_def(self, n, e, path=""):
@@ -943,9 +1045,9 @@ class Interpreter:
         all_kwargs = {**kwargs, **ast_kwargs}
         fn = scheme.get(env, str(name))
         res = await self._invoke(fn, all_args, all_kwargs, path=call_path)
-        if not res["success"]:
+        if not res.is_success:
             return res, env
-        return res["outputs"], env
+        return _flow_output(res), env
 
     async def _call_dsl_fn(self, fn_triple, args, kwargs, path=""):
         params_ast, body_ast, return_ast = fn_triple[:3]
@@ -982,7 +1084,7 @@ class Interpreter:
         return value
 
     async def _build_flow_nodes_from(self, tasks: List[dict]) -> List[dict]:
-        """Costruisce la lista di flow.node() a partire dai task raccolti."""
+        """Costruisce la lista di runner.Node a partire dai task raccolti."""
         flow_nodes = []
         available = frozenset(t["path"] for t in tasks)  # frozenset: hashable per _scope_cache
 
@@ -1002,14 +1104,14 @@ class Interpreter:
 
             kw["deps"] = [] if kw.get("deps") is False else list(deps) + kw.get("deps", [])
             flow_nodes.append(
-                flow.node(name=t_path, fn=self._make_task_fn(action, t_path), path=t_path, **kw)
+                runner.Node(name=t_path, fn=self._make_task_fn(action, t_path), path=t_path, **kw)
             )
 
         return flow_nodes
 
     def _make_task_fn(self, ast: dict, t_path: str):
         """Factory per la funzione di nodo; evita la closure-in-loop."""
-        async def task_fn(env_dict):
+        async def task_fn(**env_dict):
             try:
                 t = ast.get("type")
                 if t == "pipe":
@@ -1022,14 +1124,14 @@ class Interpreter:
                     kwargs = {k: (await self.visit(v, env_dict, path=f"{t_path}.{k}"))[0]
                                for k, v in ast.get("kwargs", {}).items()}
                     res    = await self._invoke(call, args, kwargs, path=t_path)
-                    return res.get("outputs", res)
+                    return _flow_output(res)
                 val, _ = await self.visit(ast, env_dict, path=t_path)
                 if callable(val):
                     res = await self._invoke(val, [], {}, path=t_path)
-                    return res.get("outputs", res)
+                    return _flow_output(res)
                 return val
             except Exception as e:
-                return flow.error(str(e))
+                return _flow_error(str(e), action=t_path)
         return task_fn
 
 
