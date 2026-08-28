@@ -1,6 +1,6 @@
 from typing import Any
 
-import framework.service.flow as flow
+import framework.core.flow as flow
 
 
 class Adapter:

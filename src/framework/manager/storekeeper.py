@@ -2,7 +2,7 @@ import asyncio
 
 import framework.port.persistence as persistence
 import framework.port.manager as manager
-import framework.service.flow as flow
+import framework.core.flow as flow
 from framework.service.factory import Repository
 
 from framework.manager.messenger import Manager as Messenger

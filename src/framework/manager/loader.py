@@ -443,7 +443,7 @@ class Application:
 
     async def _message_consumer_worker(self):
         """Worker in background per la gestione degli eventi di reload."""
-        import framework.service.flow as flow
+        import framework.core.flow as flow
 
         try:
             while not self._stop_event.is_set():
@@ -469,7 +469,7 @@ class Application:
 
     async def startup(self):
         """Avvia l'applicazione e gestisce i segnali di arresto."""
-        import framework.service.flow as flow
+        import framework.core.flow as flow
 
         print("[*] Avvio dei manager del framework...")
         if self._loader.kwargs.get("dev"):
@@ -505,7 +505,7 @@ class Application:
 
     async def shutdown(self):
         """Esegue il graceful shutdown di tutti i componenti registrati."""
-        import framework.service.flow as flow
+        import framework.core.flow as flow
 
         print("\n[*] Spegnimento controllato dei servizi...")
         for manager in reversed(self._managers):
@@ -868,7 +868,7 @@ class Loader:
         )
         config_file = kwargs.get("config", "pyproject.toml")
         self.kwargs = kwargs
-        import framework.service.flow as flow
+        import framework.core.flow as flow
         flow.set_replay_capture(bool(kwargs.get("dev")))
         self.framework.strict = not (
             kwargs.get("dev")
@@ -933,7 +933,7 @@ class Loader:
             return False
         
         # Passa il filtro come constant al metodo run()
-        import framework.service.flow as flow
+        import framework.core.flow as flow
 
         session = getattr(self.app, "_session", None)
         method = getattr(tester, method_name, None)

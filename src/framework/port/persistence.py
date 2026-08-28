@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-import framework.service.flow as flow
+import framework.core.flow as flow
 
 class Port(ABC):
     """Contratto comune per gli adapter di persistenza.

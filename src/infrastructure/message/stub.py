@@ -4,7 +4,7 @@ import fnmatch
 from typing import Any
 
 import framework.port.message as message
-import framework.service.flow as flow
+import framework.core.flow as flow
 
 
 class Adapter(message.Port):

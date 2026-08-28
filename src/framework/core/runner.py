@@ -30,7 +30,7 @@ from typing import Any, Dict, List, Optional
 
 import networkx as nx
 
-import framework.service.flow as flow
+import framework.core.flow as flow
 
 
 # =============================================================================

@@ -10,7 +10,7 @@ from urllib.parse import urlencode, urljoin
 import aiohttp
 
 import framework.port.persistence as persistence
-import framework.service.flow as flow
+import framework.core.flow as flow
 
 
 # ======================================================================

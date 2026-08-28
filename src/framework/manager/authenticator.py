@@ -3,9 +3,9 @@ from typing import Dict, Any
 from urllib.parse import urlparse, parse_qs, urljoin
 
 
-import framework.service.language as language
-import framework.service.scheme as scheme
-import framework.service.flow as flow
+import framework.core.language as language
+import framework.core.scheme as scheme
+import framework.core.flow as flow
 import framework.manager.loader as loader
 import framework.port.authentication as authentication
 import framework.port.manager as manager

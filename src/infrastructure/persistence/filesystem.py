@@ -6,7 +6,7 @@ from pathlib import Path
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import framework.port.persistence as persistence
-import framework.service.flow as flow
+import framework.core.flow as flow
 from framework.manager.messenger import Manager as Messenger
 
 

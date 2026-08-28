@@ -58,8 +58,8 @@ _visit_stack: contextvars.ContextVar[List[dict]] = contextvars.ContextVar(
 
 from lark import Lark, Token, Transformer, v_args
 
-import framework.service.flow as flow
-import framework.service.scheme as scheme
+import framework.core.flow as flow
+import framework.core.scheme as scheme
 
 # ── Grammar (invariata) ───────────────────────────────────────────────────────
 

@@ -3,9 +3,9 @@ from typing import List, Dict, Any, Callable
 import re
 import traceback
 
-import framework.service.language as language
-import framework.service.flow as flow
-import framework.service.scheme as scheme
+import framework.core.language as language
+import framework.core.flow as flow
+import framework.core.scheme as scheme
 import framework.manager.messenger as messenger
 import framework.port.manager as manager
 

@@ -1,5 +1,5 @@
 from typing import Protocol, Any, runtime_checkable
-import framework.service.flow as flow
+import framework.core.flow as flow
 
 @runtime_checkable
 class Port(Protocol):

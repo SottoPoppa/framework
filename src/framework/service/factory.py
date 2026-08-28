@@ -4,8 +4,8 @@ from jinja2 import Environment, meta, nodes
 import asyncio 
 import signal
 
-import framework.service.scheme as scheme
-import framework.service.flow as flow
+import framework.core.scheme as scheme
+import framework.core.flow as flow
 
 class Repository:
     def __init__(self, **constants):

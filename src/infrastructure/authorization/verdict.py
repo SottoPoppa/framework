@@ -97,7 +97,7 @@ class adapter():
     # ------------------------------
 
     async def load_policies(self):
-        import framework.service.language as language
+        import framework.core.language as language
         for domain,name in self.config.get('project').get('policy',{}).items():
             text = await language.resource(path=f"application/policy/{domain}/{name}")
             ok = await language.convert(text,dict,'toml')

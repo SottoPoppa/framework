@@ -1,5 +1,5 @@
 import aiohttp
-import framework.service.flow as flow
+import framework.core.flow as flow
 
 class adapter:
     def __init__(self, **constants):

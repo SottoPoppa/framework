@@ -1,6 +1,6 @@
 import framework.port.network as network
 import framework.port.manager as manager
-import framework.service.flow as flow
+import framework.core.flow as flow
 
 class Manager(manager.Port):
     def __init__(self, networks: list[network.Port], **constants):

@@ -2,7 +2,7 @@ from copy import deepcopy
 from typing import Any
 
 import framework.port.persistence as persistence
-import framework.service.flow as flow
+import framework.core.flow as flow
 
 
 class Adapter(persistence.Port):

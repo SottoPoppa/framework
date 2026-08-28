@@ -1,7 +1,7 @@
 import xml.etree.ElementTree as ET
 
 from jinja2 import DebugUndefined, Environment, FileSystemLoader, select_autoescape
-import framework.service.flow as flow
+import framework.core.flow as flow
 
 
 async def render(loader, runtime_session, render_node, text=None, file=None, controllers=None, **constants):

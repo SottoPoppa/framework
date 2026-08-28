@@ -4,9 +4,9 @@ import uuid
 from typing import Optional
 
 import framework.service.diagnostic as diagnostic
-import framework.service.language as language
+import framework.core.language as language
 import framework.port.manager as manager
-import framework.service.flow as flow
+import framework.core.flow as flow
 import framework.manager.loader as loader_module
 
 

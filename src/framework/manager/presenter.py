@@ -1,6 +1,6 @@
 import framework.port.presentation as presentation
 import framework.port.manager as manager
-import framework.service.flow as flow
+import framework.core.flow as flow
 from framework.manager.loader import Loader
 
 import re
