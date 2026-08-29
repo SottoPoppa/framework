@@ -20,56 +20,21 @@ def _named(fn: Callable, name: str) -> Callable:
 # STRUTTURE DATI IMMUTABILI E RISULTATI
 # ==============================================================================
 
-class Scheme(dict):
-    """Dict immutabile basato su schema nativo."""
-    SCHEME: dict[str, dict[str, Any]] = {}
+class Immutable(dict):
 
     def __init__(self, *args, **kwargs):
         input_data = args[0] if (args and isinstance(args[0], dict) and not kwargs) else kwargs
-        super().__init__(self._validate_and_clean(input_data))
+        super().__init__(self._freeze(input_data))
 
     @classmethod
     def _freeze(cls, val: Any) -> Any:
-        if isinstance(val, Scheme):
+        if isinstance(val, Immutable):
             return val
         if isinstance(val, dict):
             return {k: cls._freeze(v) for k, v in val.items()}
         if isinstance(val, (list, tuple)):
             return tuple(cls._freeze(v) for v in val)
         return val
-
-    @classmethod
-    def _validate_and_clean(cls, data: dict[str, Any]) -> dict[str, Any]:
-        if not cls.SCHEME and isinstance(data, dict):
-            return {k: cls._freeze(v) for k, v in data.items()}
-
-        cleaned = {}
-        for field, rules in cls.SCHEME.items():
-            req, nullable, has_def = rules.get("required", False), rules.get("nullable", False), "default" in rules
-
-            if field in data:
-                val = data[field]
-            elif has_def:
-                def_val = rules["default"]
-                val = def_val.copy() if isinstance(def_val, (dict, list)) else def_val
-            elif not req:
-                val = None
-            else:
-                raise ValueError(f"[{cls.__name__}] Campo obbligatorio mancante: '{field}'")
-
-            if val is None:
-                if req and not nullable:
-                    raise ValueError(f"[{cls.__name__}] Il campo '{field}' non può essere None")
-                cleaned[field] = None
-                continue
-
-            expected_type = rules.get("type")
-            if expected_type and not isinstance(val, Scheme):
-                if isinstance(expected_type, (type, tuple)) and not isinstance(val, expected_type):
-                    raise TypeError(f"[{cls.__name__}] '{field}' deve essere {expected_type}, ricevuto {type(val).__name__}")
-
-            cleaned[field] = cls._freeze(val)
-        return cleaned
 
     def __getattr__(self, item: str) -> Any:
         try:
@@ -82,7 +47,7 @@ class Scheme(dict):
     def __delitem__(self, k): raise TypeError(f"{self.__class__.__name__} è immutabile")
 
 
-class Success(Scheme, Generic[T]):
+class Success(Immutable, Generic[T]):
     SCHEME = {
         "is_success": {"type": bool, "required": True, "default": True},
         "value": {"required": True, "nullable": True}
@@ -91,7 +56,7 @@ class Success(Scheme, Generic[T]):
         super().__init__(is_success=True, value=value)
 
 
-class Failure(Scheme, Generic[F]):
+class Failure(Immutable, Generic[F]):
     SCHEME = {
         "is_success": {"type": bool, "required": True, "default": False},
         "error": {"required": True, "nullable": True},
@@ -101,7 +66,7 @@ class Failure(Scheme, Generic[F]):
         super().__init__(is_success=False, error=error, traceback=tb)
 
 
-class Result(Scheme, Generic[T, F]):
+class Result(Immutable, Generic[T, F]):
     SCHEME = {
         "output": {"required": True},
         "input": {"required": False, "nullable": True, "default": None},
@@ -188,7 +153,7 @@ async def pipe(value: Any, *steps: Step, action: str = "flow.pipe", component: s
                 ))
 
             # 3. Fallback di sicurezza per istanze generiche con is_success=False
-            case Scheme(is_success=False):
+            case Immutable(is_success=False):
                 break
 
     return Result(
@@ -244,16 +209,55 @@ def check(value) -> bool:
 # 1. MAP / DICT (map_*) - Impatto su Dizionari e Schemi
 # ==============================================================================
 
-def map_get(key_or_index: Any, default: Any = None) -> Callable:
-    """Estrae una chiave da un dict o un indice da una sequenza."""
-    def _get(data: Any) -> Any:
-        if isinstance(data, dict):
-            return data.get(key_or_index, default)
-        try:
-            return data[key_or_index]
-        except (IndexError, TypeError):
+def map_get(path: str | int, default: Any = None) -> Callable:
+    """
+    Estrae valori annidati tramite dot-notation:
+    - 'data.id' -> naviga nei dizionari o Scheme
+    - 'data.0' -> naviga nelle liste/tuple
+    - 'users.*.id' -> estrae 'id' da tutti gli elementi di 'users'
+    """
+    def _resolve(current: Any, tokens: list[str]) -> Any:
+        if not tokens:
+            return current
+        
+        token = tokens[0]
+        rest = tokens[1:]
+
+        # Wildcard '*' per sequenze e dizionari
+        if token == "*":
+            if isinstance(current, (list, tuple)):
+                res = tuple(_resolve(item, rest) for item in current)
+                return res if any(x is not None for x in res) else default
+            elif isinstance(current, dict):
+                res = tuple(_resolve(val, rest) for val in current.values())
+                return res if any(x is not None for x in res) else default
             return default
-    return _named(_get, f"map_get({key_or_index})")
+
+        # Indice numerico per liste e tuple
+        if token.isdigit() and isinstance(current, (list, tuple)):
+            idx = int(token)
+            if 0 <= idx < len(current):
+                return _resolve(current[idx], rest)
+            return default
+
+        # Chiave per Dict / Scheme / Attributo
+        if isinstance(current, dict):
+            if token in current:
+                return _resolve(current[token], rest)
+            return default
+        elif hasattr(current, token):
+            return _resolve(getattr(current, token), rest)
+
+        return default
+
+    def _get(data: Any) -> Any:
+        if isinstance(path, int):
+            tokens = [str(path)]
+        else:
+            tokens = str(path).split(".")
+        return _resolve(data, tokens)
+
+    return _named(_get, f"map_get({path})")
 
 def map_mutate(**transforms: Callable[[Any], Any]) -> Callable:
     """Modifica o aggiunge chiavi a un dict/Scheme tramite trasformazioni."""
@@ -261,17 +265,23 @@ def map_mutate(**transforms: Callable[[Any], Any]) -> Callable:
         new_data = dict(data)
         for key, fn in transforms.items():
             new_data[key] = fn(data)
-        return Scheme(new_data) if isinstance(data, Scheme) else new_data
+        return Immutable(new_data) if isinstance(data, Immutable) else new_data
     return _named(_mutate, f"map_mutate({', '.join(transforms.keys())})")
 
 def map_pick(*keys: str) -> Callable:
     """Estrae solo un sottoinsieme di chiavi da un dict/Scheme."""
     return _named(lambda data: {k: data[k] for k in keys if k in data}, f"map_pick({', '.join(keys)})")
 
+def map_keys(fn: Callable[[Any], Any]) -> Callable:
+    """Trasforma le chiavi di un dict/Scheme tramite una funzione."""
+    def _key_transform(data: dict) -> dict:
+        return {fn(k): v for k, v in data.items()}
+    return _named(_key_transform, f"map_key({getattr(fn, '__name__', str(fn))})")
 
 # ==============================================================================
 # 2. LIST / SEQUENZE (list_*) - Impatto su Liste e Collezioni
 # ==============================================================================
+
 
 def tuple_transform(fn: Callable[[Any], Any]) -> Callable:
     """Applica 'fn' a ciascun elemento di una tupla/sequenza."""
