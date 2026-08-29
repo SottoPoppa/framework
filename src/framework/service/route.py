@@ -80,6 +80,87 @@ def match(routes, path, method="GET"):
             return entry, route_match.groupdict()
     return None, {}
 
+import copy
+
+def route(
+    url: dict,
+    new_part: str,
+) -> str:
+    """
+    Aggiorna path/query di una URL.
+
+    Restituisce la sola parte route:
+
+        /users/10?active=true#details
+    """
+
+    url_data = copy.deepcopy(url)
+
+    path = url_data.get(
+        "path",
+        [],
+    )
+
+    query_params = copy.deepcopy(
+        url_data.get(
+            "query",
+            {},
+        )
+    )
+
+    fragment = url_data.get(
+        "fragment",
+        "",
+    )
+
+    parsed = urlparse(new_part)
+
+    if parsed.path:
+        path = [
+            part
+            for part in parsed.path.split("/")
+            if part
+        ]
+
+    if parsed.query:
+
+        for param in parsed.query.split("&"):
+
+            if "=" not in param:
+                continue
+
+            key, value = param.split(
+                "=",
+                1,
+            )
+
+            query_params.setdefault(
+                key,
+                [],
+            ).append(value)
+
+    query_parts = []
+
+    for key, values in query_params.items():
+
+        if values:
+            query_parts.append(
+                f"{key}={values[-1]}"
+            )
+
+    result = ""
+
+    if path:
+        result += "/" + "/".join(path)
+
+    if query_parts:
+        result += "?" + "&".join(query_parts)
+
+    if fragment:
+        result += f"#{fragment}"
+
+    return result
+
 def resolve_route(risorse, request_url, request_method, base_url=None,**kargs):
         
         try:
