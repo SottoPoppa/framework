@@ -887,9 +887,6 @@ class Loader:
             config=config,
         )
 
-    async def _load_manager_resource(self, resource: Resource) -> Resource:
-        return await self._load_resource(resource)
-
     async def _discover_manager_resources(self, context: dict) -> dict:
         config = context["config"]
         manager_config = config.get("manager", {})
@@ -900,7 +897,7 @@ class Loader:
         resources = await flow.pipe(
             specs,
             flow.tuple_map_tuple(self._manager_resource),
-            flow.tuple_map_async_tuple(self._load_manager_resource),
+            flow.tuple_map_async_tuple(self._load_resource),
             action="loader.discover_managers",
         )
         return {**context, "manager_resources": flow.unwrap(resources)}
@@ -911,6 +908,61 @@ class Loader:
 
     def _discovery_result(self, context: dict) -> tuple[dict, tuple[Resource, ...]]:
         return context["config"], tuple(context["manager_resources"])
+
+    def _bootstrap_context(self, config_toml_path: Any) -> dict:
+        kwargs = (
+            config_toml_path
+            if isinstance(config_toml_path, dict)
+            else {"config": str(config_toml_path)}
+        )
+        self.kwargs = kwargs
+        self.framework.strict = not (
+            kwargs.get("dev")
+            or kwargs.get("test") is not None
+            or kwargs.get("test_integration") is not None
+            or kwargs.get("skip_verify")
+        )
+        return {"config_path": config_toml_path}
+
+    async def _prepare_container(self, context: dict) -> dict:
+        container_mod = sys.modules.get("framework.service.container")
+        if not container_mod or not hasattr(container_mod, "Container"):
+            raise RuntimeError(
+                "Impossibile trovare la classe Container in 'framework.service.container'"
+            )
+        container_cls = getattr(container_mod, "Container")
+        self.container = container_cls()
+        self.container.put(container_cls, self.container, singleton=True)
+        return context
+
+    async def _discover_bootstrap(self, context: dict) -> dict:
+        discovery = await self._discover_components(context["config_path"])
+        return {**context, "discovery": flow.unwrap(discovery)}
+
+    def _build_runtime(self, context: dict) -> dict:
+        config, mgr_resources = context["discovery"]
+        print("\n[*] Discovery...")
+        print("\n[*] Build...")
+        managers = flow.unwrap(self._build_managers(mgr_resources))
+        flow.unwrap(self._build_adapters(self.framework.components_ports()))
+        return {**context, "config": config, "managers": managers}
+
+    async def _start_runtime(self, context: dict) -> dict:
+        def_res = self.framework.component("framework.manager.defender")
+        def_cls = getattr(def_res.module, "Manager", None) if def_res else None
+        defender = self.container.get(def_cls) if def_cls else None
+        session = None
+
+        if defender:
+            if hasattr(defender, "startup"):
+                startup_result = await defender.startup()
+                if flow.is_result(startup_result) and not flow.check(startup_result):
+                    raise RuntimeError(flow.output(startup_result))
+            if hasattr(defender, "session_create"):
+                session = flow.output(await defender.session_create())
+                print(f"[*] Sessione creata: {session}")
+
+        return {**context, "session": session}
 
     async def _discover_components(self, config_toml_path: Any) -> flow.Result:
         """Carica core, manager e adapter senza istanziarli."""
@@ -927,60 +979,23 @@ class Loader:
 
     async def bootstrap(self, config_toml_path: Any) -> Application:
         """Inizializza il framework caricando configurazione e risorse."""
-        kwargs = (
-            config_toml_path
-            if isinstance(config_toml_path, dict)
-            else {"config": str(config_toml_path)}
-        )
-        config_file = kwargs.get("config", "pyproject.toml")
-        self.kwargs = kwargs
-        
-        self.framework.strict = not (
-            kwargs.get("dev")
-            or kwargs.get("test") is not None
-            or kwargs.get("test_integration") is not None
-            or kwargs.get("skip_verify")
-        )
-
-        discovery = await self._discover_components(config_toml_path)
-        config, mgr_resources = flow.unwrap(discovery)
-
-        # Risoluzione dinamica di Container dopo il caricamento del core.
-        container_mod = sys.modules.get("framework.service.container")
-        if not container_mod or not hasattr(container_mod, "Container"):
-            raise RuntimeError(
-                "Impossibile trovare la classe Container in 'framework.service.container'"
+        return flow.output(
+            await flow.pipe(
+                config_toml_path,
+                self._bootstrap_context,
+                self._discover_bootstrap,
+                self._prepare_container,
+                self._build_runtime,
+                self._start_runtime,
+                flow.map_construct_value(
+                    partial(Application, self),
+                    "managers",
+                    "session",
+                ),
+                flow.pipe_tap_value(partial(setattr, self, "app")),
+                action="loader.bootstrap",
             )
-
-        container_cls = getattr(container_mod, "Container")
-        self.container = container_cls()
-
-        # 3. Registrazione del container nel container stesso (per DI)
-        self.container.put(container_cls, self.container, singleton=True)
-
-        print("\n[*] Discovery...")
-
-        print("\n[*] Build...")
-        managers = flow.unwrap(self._build_managers(mgr_resources))
-        flow.unwrap(self._build_adapters(self.framework.components_ports()))
-
-        def_res = self.framework.component("framework.manager.defender")
-        def_cls = getattr(def_res.module, "Manager", None) if def_res else None
-        defender = self.container.get(def_cls) if def_cls else None
-        session = None
-
-        if defender:
-            if hasattr(defender, "startup"):
-                startup_result = await defender.startup()
-                if flow.is_result(startup_result) and not flow.check(startup_result):
-                    raise RuntimeError(flow.output(startup_result))
-            if hasattr(defender, "session_create"):
-                session = flow.output(await defender.session_create())
-                print(f"[*] Sessione creata: {session}")
-
-        app = Application(self, managers, session)
-        self.app = app
-        return app
+        )
 
     async def run_tests(self, filter_value: str | None = None) -> bool:
         """Esegue i test di contract DSL tramite il Manager del Tester."""

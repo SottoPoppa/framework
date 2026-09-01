@@ -415,6 +415,15 @@ def map_compute_value(key: str, transform: Callable[[Any], Any]) -> Callable:
         return Immutable(new_data) if isinstance(data, Immutable) else new_data
     return _named(_compute, f"map_compute_value({key})")
 
+def map_construct_value(factory: Callable[..., Any], *paths: str) -> Callable:
+    """Costruisce un valore passando a ``factory`` i valori indicati nei path."""
+    getters = tuple(map_get_value(path) for path in paths)
+
+    def _construct(data: Any) -> Any:
+        return factory(*(getter(data) for getter in getters))
+
+    return _named(_construct, f"map_construct_value({_fn_label(factory)})")
+
 def map_pick_map(*keys: str) -> Callable:
     """Estrae solo un sottoinsieme di chiavi da un dict/Scheme."""
     # FIX(5): preserva l'Immutable-ness dell'input, coerente con map_compute_value.
