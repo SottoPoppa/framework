@@ -635,7 +635,7 @@ class Loader:
 
     def _adapter_specs(self, item: tuple[str, Any]) -> tuple[tuple[str, str, dict], ...]:
         port_key, enabled = item
-        if port_key in {"project", "manager"} or not isinstance(enabled, dict):
+        if port_key in {"project", "manager", "tool"} or not isinstance(enabled, dict):
             return ()
         return tuple(
             (
@@ -1021,7 +1021,7 @@ class Loader:
 
     async def bootstrap(self, config_toml_path: Any) -> Application:
         """Inizializza il framework caricando configurazione e risorse."""
-        return flow.output(
+        return flow.unwrap(
             await flow.pipe(
                 config_toml_path,
                 self._bootstrap_context,
@@ -1108,7 +1108,7 @@ class Loader:
         enabled = [
             (port_name, adapter_name)
             for port_name, port_config in context["config"].items()
-            if port_name not in {"project", "manager"}
+            if port_name not in {"project", "manager", "tool"}
             and isinstance(port_config, dict)
             for adapter_name in port_config
         ]
@@ -1139,10 +1139,16 @@ class Loader:
 
     def _install_sources(self, context: InstallContext) -> InstallContext:
         sources = [
+            ("core", name, path)
+            for name, path in self.cores.items()
+        ]
+        sources.extend(
+            (
             ("service", name, path)
             for name, path in self.services.items()
             if name != "contract"
-        ]
+            )
+        )
         sources.extend(("port", name, path) for name, path in self.ports.items())
         sources.extend(
             (
