@@ -56,6 +56,19 @@ class LoaderContext(TypedDict, total=False):
     session: Any
 
 
+class InstallContext(TypedDict, total=False):
+    """Stato condiviso dagli step della pipe di installazione."""
+
+    config_file: str
+    config: dict
+    enabled_adapters: list[tuple[str, str]]
+    contract_cls: Type
+    sources: list[tuple[str, str, str]]
+    all_requires: set[str]
+    contracts_found: int
+    requirements: list[str]
+
+
 # ============================================================
 # HANDLE
 # ============================================================
@@ -1073,418 +1086,164 @@ class Loader:
         """Importa un modulo Python dinamicamente tramite l'infrastruttura."""
         return await self.infra.import_module(module_path)
 
-    async def install(self, config_or_path: Any = "pyproject.toml") -> bool:
-        """
-        Analizza i contract del framework e degli adapter/port attivi
-        e installa tutte le dipendenze dichiarate tramite 'requires'.
-
-        NON esegue il bootstrap completo del framework.
-        NON istanzia container, manager o adapter.
-
-        Utilizza il normale Framework.load_module() per caricare
-        autonomamente Contract.
-        """
-
-        # ============================================================
-        # 1. CONFIGURAZIONE
-        # ============================================================
-
+    def _install_context(self, config_or_path: Any) -> InstallContext:
         config_file = (
             config_or_path.get("config", "pyproject.toml")
             if isinstance(config_or_path, dict)
             else str(config_or_path)
         )
+        print(f"\n[*] Caricamento configurazione da '{config_file}'...")
+        return {"config_file": config_file}
 
-        print(
-            f"\n[*] Caricamento configurazione da "
-            f"'{config_file}'..."
-        )
-
+    def _read_install_config(self, context: InstallContext) -> InstallContext:
         try:
-            config = self.infra.load_toml_config(config_file)
+            config = self.infra.load_toml_config(context["config_file"])
         except Exception as exc:
-            print(
-                f"[!] Errore nel caricare "
-                f"'{config_file}': {exc}"
-            )
-            return False
+            raise RuntimeError(
+                f"Errore nel caricare '{context['config_file']}': {exc}"
+            ) from exc
+        return {**context, "config": config}
 
-        # ============================================================
-        # 2. ADAPTER ATTIVI
-        # ============================================================
-
-        enabled_adapters = []
-
-        for port_name, port_config in config.items():
-
-            if port_name in ("project", "manager"):
-                continue
-
-            if not isinstance(port_config, dict):
-                continue
-
-            for adapter_name in port_config:
-                enabled_adapters.append(
-                    (port_name, adapter_name)
-                )
-
-        if enabled_adapters:
-
-            print(
-                f"[*] Adapter abilitati attivi "
-                f"({len(enabled_adapters)}):"
-            )
-
-            for port_name, adapter_name in enabled_adapters:
-                print(
-                    f"  - [{port_name}] "
-                    f"{adapter_name}"
-                )
-
+    def _find_enabled_adapters(self, context: InstallContext) -> InstallContext:
+        enabled = [
+            (port_name, adapter_name)
+            for port_name, port_config in context["config"].items()
+            if port_name not in {"project", "manager"}
+            and isinstance(port_config, dict)
+            for adapter_name in port_config
+        ]
+        if enabled:
+            print(f"[*] Adapter abilitati attivi ({len(enabled)}):")
+            for port_name, adapter_name in enabled:
+                print(f"  - [{port_name}] {adapter_name}")
         else:
-            print(
-                "[*] Nessun adapter abilitato trovato."
-            )
+            print("[*] Nessun adapter abilitato trovato.")
+        return {**context, "enabled_adapters": enabled}
 
-        # ============================================================
-        # 3. CARICA CONTRACT
-        # ============================================================
-
+    async def _load_install_contract(self, context: InstallContext) -> InstallContext:
         contract_name = "framework.service.contract"
-
         contract_mod = sys.modules.get(contract_name)
-
         if contract_mod is None:
-
             contract_path = self.services.get("contract")
-
             if not contract_path:
-                print(
-                    "[!] Contract non disponibile."
-                )
-                return False
-
-            print(
-                "\n[*] Caricamento autonomo di "
-                "'framework.service.contract'..."
-            )
-
-            try:
-                contract_mod = await self.framework.load_module(
-                    contract_name,
-                    contract_path,
-                )
-            except Exception as exc:
-                print(
-                    f"[!] Impossibile caricare Contract: "
-                    f"{exc}"
-                )
-                return False
-
-        contract_cls = getattr(
-            contract_mod,
-            "Contract",
-            None,
-        )
-
+                raise RuntimeError("Contract non disponibile.")
+            print("\n[*] Caricamento autonomo di 'framework.service.contract'...")
+            contract_mod = await self.framework.load_module(contract_name, contract_path)
+        contract_cls = getattr(contract_mod, "Contract", None)
         if contract_cls is None:
-            print(
-                "[!] Il modulo "
-                "'framework.service.contract' "
-                "non contiene la classe Contract."
+            raise RuntimeError(
+                "Il modulo 'framework.service.contract' non contiene la classe Contract."
             )
-            return False
-
         print("[✓] Contract caricato.")
+        return {**context, "contract_cls": contract_cls}
 
-        # ============================================================
-        # 4. COSTRUISCI LE SORGENTI DA ANALIZZARE
-        # ============================================================
-
-        sources = []
-
-        # ------------------------------------------------------------
-        # SERVICES
-        # ------------------------------------------------------------
-
-        for service_name, service_path in self.services.items():
-
-            if service_name == "contract":
-                continue
-
-            sources.append(
-                (
-                    "service",
-                    service_name,
-                    service_path,
-                )
+    def _install_sources(self, context: InstallContext) -> InstallContext:
+        sources = [
+            ("service", name, path)
+            for name, path in self.services.items()
+            if name != "contract"
+        ]
+        sources.extend(("port", name, path) for name, path in self.ports.items())
+        sources.extend(
+            (
+                "adapter",
+                f"{port_name}.{adapter_name}",
+                f"src/infrastructure/{port_name}/{adapter_name}.py",
             )
+            for port_name, adapter_name in context["enabled_adapters"]
+        )
+        return {**context, "sources": sources}
 
-        # ------------------------------------------------------------
-        # PORTS
-        # ------------------------------------------------------------
-
-        for port_name, port_path in self.ports.items():
-
-            sources.append(
-                (
-                    "port",
-                    port_name,
-                    port_path,
-                )
-            )
-
-        # ------------------------------------------------------------
-        # ADAPTER ATTIVI
-        # ------------------------------------------------------------
-
-        for port_name, adapter_name in enabled_adapters:
-
-            adapter_path = (
-                f"src/infrastructure/"
-                f"{port_name}/"
-                f"{adapter_name}.py"
-            )
-
-            sources.append(
-                (
-                    "adapter",
-                    f"{port_name}.{adapter_name}",
-                    adapter_path,
-                )
-            )
-
-        # ============================================================
-        # 5. ANALISI CONTRACT
-        # ============================================================
-
-        all_requires = set()
+    def _analyze_install_contracts(self, context: InstallContext) -> InstallContext:
+        contract_cls = context["contract_cls"]
+        all_requires: set[str] = set()
         contracts_found = 0
-
         print("\n[*] Analisi dei contract...")
-
-        for component_type, component_name, source_path in sources:
-
+        for component_type, component_name, source_path in context["sources"]:
             source = Path(source_path)
-
             if not source.exists():
-
-                print(
-                    f"  [!] [{component_type}] "
-                    f"{component_name}: "
-                    f"sorgente non trovato: "
-                    f"{source_path}"
-                )
+                print(f"  [!] [{component_type}] {component_name}: sorgente non trovato: {source_path}")
                 continue
-
-            # --------------------------------------------------------
-            # Trova contract
-            # --------------------------------------------------------
-
             try:
-                contract_path = contract_cls.for_source(
-                    source_path
-                )
+                contract_path = contract_cls.for_source(source_path)
+                data = contract_cls.read(contract_path) if contract_path and Path(contract_path).exists() else None
             except Exception as exc:
-                print(
-                    f"  [!] [{component_type}] "
-                    f"{component_name}: "
-                    f"errore nel trovare contract: "
-                    f"{exc}"
-                )
+                print(f"  [!] [{component_type}] {component_name}: errore lettura contract: {exc}")
                 continue
-
-            # --------------------------------------------------------
-            # Nessun contract
-            # --------------------------------------------------------
-
-            if not contract_path or not Path(contract_path).exists():
-
-                print(
-                    f"  - [{component_type}] "
-                    f"{component_name}: "
-                    f"nessun contract"
-                )
-                continue
-
-            # --------------------------------------------------------
-            # Leggi contract
-            # --------------------------------------------------------
-
-            try:
-                data = contract_cls.read(
-                    contract_path
-                )
-            except Exception as exc:
-                print(
-                    f"  [!] [{component_type}] "
-                    f"{component_name}: "
-                    f"errore lettura contract: "
-                    f"{exc}"
-                )
-                continue
-
             if not data:
-
-                print(
-                    f"  - [{component_type}] "
-                    f"{component_name}: "
-                    f"contract vuoto"
-                )
+                print(f"  - [{component_type}] {component_name}: nessun contract")
                 continue
-
             contracts_found += 1
-
-            # --------------------------------------------------------
-            # Requires
-            # --------------------------------------------------------
-
-            requires = data.get(
-                "requires",
-                [],
-            )
-
+            requires = data.get("requires", [])
             if isinstance(requires, str):
                 requires = [requires]
-
             if not isinstance(requires, list):
-
-                print(
-                    f"  [!] [{component_type}] "
-                    f"{component_name}: "
-                    f"'requires' deve essere una "
-                    f"stringa o una lista."
-                )
+                print(f"  [!] [{component_type}] {component_name}: 'requires' deve essere una stringa o una lista.")
                 continue
-
             if not requires:
-
-                print(
-                    f"  - [{component_type}] "
-                    f"{component_name}: "
-                    f"nessun contract"
-                    if component_type == "service"
-                    else
-                    f"  - [{component_type}] "
-                    f"{component_name}: "
-                    f"nessuna dipendenza"
-                )
+                label = "nessun contract" if component_type == "service" else "nessuna dipendenza"
+                print(f"  - [{component_type}] {component_name}: {label}")
                 continue
-
-            print(
-                f"  - [{component_type}] "
-                f"{component_name}: "
-                f"{len(requires)} requires"
-            )
-
+            print(f"  - [{component_type}] {component_name}: {len(requires)} requires")
             for requirement in requires:
-
-                if not isinstance(
-                    requirement,
-                    str,
-                ):
-                    print(
-                        f"    [!] Dipendenza non valida: "
-                        f"{requirement!r}"
-                    )
+                if not isinstance(requirement, str):
+                    print(f"    [!] Dipendenza non valida: {requirement!r}")
                     continue
+                if requirement.strip():
+                    all_requires.add(requirement.strip())
+        return {**context, "all_requires": all_requires, "contracts_found": contracts_found}
 
-                requirement = requirement.strip()
+    def _prepare_installation(self, context: InstallContext) -> InstallContext:
+        requirements = sorted(context["all_requires"])
+        if not requirements:
+            print("\n[*] Nessuna dipendenza 'requires' trovata.")
+            if context["contracts_found"] == 0:
+                print("[!] Nessun contract trovato.")
+            print("\n[✓] Procedura --install completata.\n")
+        else:
+            print(f"\n[*] Dipendenze 'requires' rilevate ({len(requirements)}):")
+            for requirement in requirements:
+                print(f"  - {requirement}")
+        return {**context, "requirements": requirements}
 
-                if requirement:
-                    all_requires.add(requirement)
-
-        # ============================================================
-        # 6. NESSUNA DIPENDENZA
-        # ============================================================
-
-        if not all_requires:
-
-            print(
-                "\n[*] Nessuna dipendenza "
-                "'requires' trovata."
-            )
-
-            if contracts_found == 0:
-                print(
-                    "[!] Nessun contract trovato."
-                )
-
-            print(
-                "\n[✓] Procedura --install completata.\n"
-            )
-
+    def _run_installation(self, context: InstallContext) -> bool:
+        requirements = context["requirements"]
+        if not requirements:
             return True
-
-        # ============================================================
-        # 7. LISTA FINALE
-        # ============================================================
-
-        requirements = sorted(all_requires)
-
-        print(
-            f"\n[*] Dipendenze 'requires' rilevate "
-            f"({len(requirements)}):"
-        )
-
-        for requirement in requirements:
-            print(f"  - {requirement}")
-
-        # ============================================================
-        # 8. INSTALLAZIONE
-        # ============================================================
-
-        print(
-            "\n[*] Installazione pacchetti "
-            "in corso via pip..."
-        )
-
+        print("\n[*] Installazione pacchetti in corso via pip...")
         try:
             result = subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "pip",
-                    "install",
-                    *requirements,
-                ],
+                [sys.executable, "-m", "pip", "install", *requirements],
                 capture_output=True,
                 text=True,
             )
         except Exception as exc:
-
-            print(
-                f"[!] Impossibile eseguire pip: "
-                f"{exc}"
-            )
-            return False
-
-        # ============================================================
-        # 9. OUTPUT PIP
-        # ============================================================
-
+            raise RuntimeError(f"Impossibile eseguire pip: {exc}") from exc
         if result.stdout.strip():
             print(result.stdout)
-
         if result.returncode != 0:
-
-            print(
-                "[!] Errore durante "
-                "l'installazione delle dipendenze:"
-            )
-
             if result.stderr.strip():
                 print(result.stderr)
-
-            return False
-
-        print(
-            "[✓] Dipendenze installate "
-            "con successo!"
-        )
-
-        print(
-            "\n[✓] Procedura --install completata.\n"
-        )
-
+            raise RuntimeError("Errore durante l'installazione delle dipendenze.")
+        print("[✓] Dipendenze installate con successo!")
+        print("\n[✓] Procedura --install completata.\n")
         return True
+
+    async def install(self, config_or_path: Any = "pyproject.toml") -> bool:
+        """Analizza i contract e installa le dipendenze dichiarate in 'requires'."""
+        result = await flow.pipe(
+            config_or_path,
+            self._install_context,
+            self._read_install_config,
+            self._find_enabled_adapters,
+            self._load_install_contract,
+            self._install_sources,
+            self._analyze_install_contracts,
+            self._prepare_installation,
+            self._run_installation,
+            action="loader.install",
+        )
+        if not flow.check(result):
+            print(f"[!] Install fallita: {flow.output(result)}")
+            return False
+        return flow.output(result)
