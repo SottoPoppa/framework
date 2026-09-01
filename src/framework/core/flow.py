@@ -1,4 +1,5 @@
 import asyncio
+import copy
 from functools import reduce as _reduce, wraps
 import inspect
 import time
@@ -8,6 +9,39 @@ from typing import Any, Callable, Dict, Generic, Iterable, List, Tuple, TypeVar
 T = TypeVar("T")
 F = TypeVar("F")
 Step = Callable[[Any], Any]
+
+# ==============================================================================
+# CHANGELOG rispetto all'originale
+# ==============================================================================
+# 1. Immutable._freeze ora e' davvero ricorsiva: i dict annidati diventano
+#    Immutable (non dict "nudi" mutabili) e Immutable e' ora hashable.
+# 2. tuple_unique_tuple() beneficia automaticamente del fix (1): tuple di Success/
+#    Failure/Result/Immutable ora sono hashabili con la key_fn di default.
+# 3. tuple_reduce_value usa un sentinel dedicato invece di None per "initial",
+#    cosi' None e' un valore iniziale legittimo.
+# 4. pipe_tap_value / pipe_foreach_tuple ora supportano correttamente funzioni async
+#    (prima la coroutine veniva creata e scartata senza essere awaitata).
+# 5. map_pick_map preserva l'Immutable-ness dell'input, come fa gia' map_mutate_map.
+# 6. tuple_merge_map solleva TypeError su elementi non-dict invece di
+#    ignorarli in silenzio (con opzione skip_invalid per il vecchio comportamento).
+# 7. tuple_zip_tuple materializza l'iterable passato (niente piu' generatori che si
+#    esauriscono al primo uso) e puo' segnalare mismatch di lunghezza.
+# 8. _named prova a ricavare un nome leggibile anche per le lambda, per
+#    step tracing/debug piu' utili in result.transactions.
+# ==============================================================================
+
+
+def _fn_label(fn: Callable) -> str:
+    """Restituisce un'etichetta leggibile per una funzione, incluse le lambda."""
+    name = getattr(fn, "__name__", None)
+    if name and name != "<lambda>":
+        return name
+    try:
+        src = inspect.getsource(fn).strip()
+        # tiene solo la parte della lambda su una riga, troncata
+        return (src[:40] + "...") if len(src) > 40 else src
+    except (OSError, TypeError):
+        return repr(fn)
 
 
 def _named(fn: Callable, name: str) -> Callable:
@@ -30,8 +64,23 @@ class Immutable(dict):
     def _freeze(cls, val: Any) -> Any:
         if isinstance(val, Immutable):
             return val
+        # FIX(1): il ramo dict ora avvolge ricorsivamente in Immutable, non
+        # produce piu' un dict "nudo" mutabile ai livelli annidati.
+        #
+        # NB: qui NON si puo' scrivere `cls({...})` (o `Immutable({...})`):
+        # invocare il costruttore rientrerebbe in __init__, che richiama di
+        # nuovo _freeze sullo stesso contenuto gia' processato, causando una
+        # ricorsione infinita. Si costruisce quindi l'oggetto direttamente
+        # con dict.__new__/dict.__init__, bypassando __init__ di Immutable.
+        # I livelli annidati diventano sempre Immutable "puro" (non Success/
+        # Failure/Result, anche se cls e' un loro sottotipo), perche' quelle
+        # sottoclassi hanno uno SCHEME specifico che non ha senso imporre a
+        # un dizionario annidato arbitrario.
         if isinstance(val, dict):
-            return {k: cls._freeze(v) for k, v in val.items()}
+            frozen_items = {k: cls._freeze(v) for k, v in val.items()}
+            obj = dict.__new__(Immutable)
+            dict.__init__(obj, frozen_items)
+            return obj
         if isinstance(val, (list, tuple)):
             return tuple(cls._freeze(v) for v in val)
         return val
@@ -45,6 +94,33 @@ class Immutable(dict):
     def __setattr__(self, k, v): raise TypeError(f"{self.__class__.__name__} è immutabile")
     def __setitem__(self, k, v): raise TypeError(f"{self.__class__.__name__} è immutabile")
     def __delitem__(self, k): raise TypeError(f"{self.__class__.__name__} è immutabile")
+
+    def __copy__(self):
+        return dict(self)
+
+    def __deepcopy__(self, memo):
+        copied = {}
+        memo[id(self)] = copied
+        for key, value in self.items():
+            copied[copy.deepcopy(key, memo)] = copy.deepcopy(value, memo)
+        return copied
+
+    # FIX(1): rende Immutable davvero hashable (era dict, quindi __hash__
+    # era None nonostante il nome della classe). Il contenuto non puo'
+    # cambiare dopo __init__ (vedi __setitem__/__setattr__ sopra), quindi
+    # e' sicuro calcolare e cachare l'hash una sola volta.
+    def __hash__(self) -> int:  # type: ignore[override]
+        cached = self.__dict__.get("_hash_cache")
+        if cached is None:
+            try:
+                cached = hash(tuple(sorted(self.items(), key=lambda kv: kv[0])))
+            except TypeError as exc:
+                raise TypeError(
+                    f"{self.__class__.__name__} non è hashable: contiene un valore "
+                    f"non hashable non gestito da _freeze ({exc})"
+                ) from exc
+            object.__setattr__(self, "_hash_cache", cached)
+        return cached
 
 
 class Success(Immutable, Generic[T]):
@@ -209,7 +285,7 @@ def check(value) -> bool:
 # 1. MAP / DICT (map_*) - Impatto su Dizionari e Schemi
 # ==============================================================================
 
-def map_get(path: str | int, default: Any = None) -> Callable:
+def map_get_value(path: str | int, default: Any = None) -> Callable:
     """
     Estrae valori annidati tramite dot-notation:
     - 'data.id' -> naviga nei dizionari o Scheme
@@ -257,37 +333,41 @@ def map_get(path: str | int, default: Any = None) -> Callable:
             tokens = str(path).split(".")
         return _resolve(data, tokens)
 
-    return _named(_get, f"map_get({path})")
+    return _named(_get, f"map_get_value({path})")
 
-def map_mutate(**transforms: Callable[[Any], Any]) -> Callable:
+def map_mutate_map(**transforms: Callable[[Any], Any]) -> Callable:
     """Modifica o aggiunge chiavi a un dict/Scheme tramite trasformazioni."""
     def _mutate(data: dict) -> dict:
         new_data = dict(data)
         for key, fn in transforms.items():
             new_data[key] = fn(data)
         return Immutable(new_data) if isinstance(data, Immutable) else new_data
-    return _named(_mutate, f"map_mutate({', '.join(transforms.keys())})")
+    return _named(_mutate, f"map_mutate_map({', '.join(transforms.keys())})")
 
-def map_pick(*keys: str) -> Callable:
+def map_pick_map(*keys: str) -> Callable:
     """Estrae solo un sottoinsieme di chiavi da un dict/Scheme."""
-    return _named(lambda data: {k: data[k] for k in keys if k in data}, f"map_pick({', '.join(keys)})")
+    # FIX(5): preserva l'Immutable-ness dell'input, coerente con map_mutate_map.
+    def _pick(data: dict) -> dict:
+        picked = {k: data[k] for k in keys if k in data}
+        return Immutable(picked) if isinstance(data, Immutable) else picked
+    return _named(_pick, f"map_pick_map({', '.join(keys)})")
 
-def map_keys(fn: Callable[[Any], Any]) -> Callable:
+def map_keys_map(fn: Callable[[Any], Any]) -> Callable:
     """Trasforma le chiavi di un dict/Scheme tramite una funzione."""
     def _key_transform(data: dict) -> dict:
         return {fn(k): v for k, v in data.items()}
-    return _named(_key_transform, f"map_key({getattr(fn, '__name__', str(fn))})")
+    return _named(_key_transform, f"map_keys_map({_fn_label(fn)})")
 
 # ==============================================================================
 # 2. LIST / SEQUENZE (list_*) - Impatto su Liste e Collezioni
 # ==============================================================================
 
 
-def tuple_transform(fn: Callable[[Any], Any]) -> Callable:
+def tuple_map_tuple(fn: Callable[[Any], Any]) -> Callable:
     """Applica 'fn' a ciascun elemento di una tupla/sequenza."""
-    return _named(lambda data: tuple(fn(x) for x in data), f"tuple_transform({getattr(fn, '__name__', str(fn))})")
+    return _named(lambda data: tuple(fn(x) for x in data), f"tuple_map_tuple({_fn_label(fn)})")
 
-def tuple_transform_async(async_fn: Callable[[Any], Any], concurrency: int | None = None) -> Callable:
+def tuple_map_async_tuple(async_fn: Callable[[Any], Any], concurrency: int | None = None) -> Callable:
     """Applica una funzione asincrona in parallelo su una tupla di elementi."""
     async def _map_async(data: Iterable[Any]) -> tuple:
         sem = asyncio.Semaphore(concurrency) if concurrency else None
@@ -301,30 +381,40 @@ def tuple_transform_async(async_fn: Callable[[Any], Any], concurrency: int | Non
             return await res if inspect.isawaitable(res) else res
 
         return tuple(await asyncio.gather(*[worker(x) for x in data]))
-    return _named(_map_async, f"tuple_transform_async({getattr(async_fn, '__name__', str(async_fn))})")
+    return _named(_map_async, f"tuple_map_async_tuple({_fn_label(async_fn)})")
 
-def tuple_filter(predicate: Callable[[Any], bool]) -> Callable:
+def tuple_filter_tuple(predicate: Callable[[Any], bool]) -> Callable:
     """Filtra gli elementi di una tupla in base al predicato."""
-    return _named(lambda data: tuple(x for x in data if predicate(x)), f"tuple_filter({getattr(predicate, '__name__', str(predicate))})")
+    return _named(lambda data: tuple(x for x in data if predicate(x)), f"tuple_filter_tuple({_fn_label(predicate)})")
 
-def tuple_reduce(fn: Callable[[Any, Any], Any], initial: Any = None) -> Callable:
+def tuple_reduce_value(fn: Callable[[Any, Any], Any], initial: Any = "__no_initial__") -> Callable:
     """Aggrega gli elementi di una tupla in un singolo valore."""
+    # FIX(3): sentinel dedicato invece di None, cosi' None e' un initial legittimo.
+    _NO_INITIAL = object()
+    _initial = _NO_INITIAL if initial == "__no_initial__" else initial
     return _named(
-        lambda data: _reduce(fn, data) if initial is None else _reduce(fn, data, initial),
-        f"tuple_reduce({getattr(fn, '__name__', str(fn))})"
+        lambda data: _reduce(fn, data) if _initial is _NO_INITIAL else _reduce(fn, data, _initial),
+        f"tuple_reduce_value({_fn_label(fn)})"
     )
 
-def tuple_flatten() -> Callable:
+def tuple_flatten_tuple() -> Callable:
     """Appiattisce sequenze o liste annidate di un solo livello."""
     def _flatten(data: Iterable[Any]) -> tuple:
         flat = []
         for item in data:
             flat.extend(item) if isinstance(item, (list, tuple, set)) else flat.append(item)
         return tuple(flat)
-    return _named(_flatten, "tuple_flatten")
+    return _named(_flatten, "tuple_flatten_tuple")
 
-def tuple_dedup(key_fn: Callable[[Any], Any] = lambda x: x) -> Callable:
-    """Rimuove i duplicati da una tupla mantenendo l'ordine originale."""
+def tuple_unique_tuple(key_fn: Callable[[Any], Any] = lambda x: x) -> Callable:
+    """Rimuove i duplicati da una tupla mantenendo l'ordine originale.
+
+    Nota: con key_fn di default (identita'), l'elemento deve essere hashable.
+    Grazie al fix su Immutable._freeze, tuple di Success/Failure/Result/
+    Immutable sono ora hashabili automaticamente. Per dati custom non
+    hashabili, passa una key_fn che proietti su un valore hashable
+    (es. key_fn=lambda x: x.id).
+    """
     def _unique(data: Iterable[Any]) -> tuple:
         seen, res = set(), []
         for item in data:
@@ -333,39 +423,106 @@ def tuple_dedup(key_fn: Callable[[Any], Any] = lambda x: x) -> Callable:
                 seen.add(val)
                 res.append(item)
         return tuple(res)
-    return _named(_unique, "tuple_dedup")
+    return _named(_unique, f"tuple_unique_tuple({_fn_label(key_fn)})")
 
-def tuple_group(key_fn: Callable[[Any], Any]) -> Callable:
+def tuple_group_by_map(key_fn: Callable[[Any], Any]) -> Callable:
     """Raggruppa una tupla di elementi in un dizionario basandosi su key_fn."""
     def _group_by(data: Iterable[Any]) -> Dict[Any, tuple]:
         grouped: Dict[Any, List[Any]] = {}
         for item in data:
             grouped.setdefault(key_fn(item), []).append(item)
         return {k: tuple(v) for k, v in grouped.items()}  # Convert lists to tuples
-    return _named(_group_by, f"tuple_group({getattr(key_fn, '__name__', str(key_fn))})")
+    return _named(_group_by, f"tuple_group_by_map({_fn_label(key_fn)})")
 
-def tuple_zip(iterable: Iterable[Any]) -> Callable:
-    """Accoppia gli elementi della lista corrente con un'altra lista/sequenza."""
-    return _named(lambda data: tuple(zip(data, iterable)), "tuple_zip")
+def tuple_merge_map(skip_invalid: bool = False):
+    """Unisce una tupla di dizionari in un singolo dizionario.
+
+    FIX(6): per default solleva TypeError se un elemento non e' un dict,
+    invece di ignorarlo in silenzio (un bug a monte diventava invisibile).
+    Passa skip_invalid=True per il vecchio comportamento permissivo.
+    """
+    def _union(data: Iterable[dict]) -> dict:
+        result = {}
+        for d in data:
+            if isinstance(d, dict):
+                result.update(d)
+            elif not skip_invalid:
+                raise TypeError(
+                    f"tuple_merge_map: atteso un dict, ricevuto {type(d).__name__}: {d!r}"
+                )
+        return result
+    return _named(_union, "tuple_merge_map")
+
+def tuple_validate_each_tuple(
+    predicate: Callable[[Any], bool],
+    error_message: Callable[[Any], str] | str = "Validazione fallita",
+) -> Callable:
+    """Valida ogni elemento di una tupla con 'predicate'.
+
+    E' l'equivalente per-elemento di flow_ensure_value (che valida l'intero dato
+    in un colpo solo): al PRIMO elemento che non soddisfa il predicate,
+    solleva un errore. _invoke lo cattura e trasforma l'intero step in
+    Failure, facendo fermare il pipe li' (fail-fast), esattamente come
+    flow_ensure_value - nessuna gestione manuale di Success/Failure necessaria.
+
+    'error_message' puo' essere:
+    - una stringa fissa, oppure
+    - una funzione che riceve l'elemento fallito e ritorna il messaggio.
+      Utile per leggere uno stato dinamico (es. validator.errors) popolato
+      proprio dalla chiamata a 'predicate' un istante prima.
+
+    Esempio (validazione di un dict costruito al volo per ogni chiave):
+        tuple_map_tuple(lambda k: {k: value[k]}),
+        tuple_validate_each_tuple(validator.validate, lambda kv: str(validator.errors)),
+    """
+    def _step(data: Iterable[Any]) -> tuple:
+        data = tuple(data)
+        for item in data:
+            if not predicate(item):
+                msg = error_message(item) if callable(error_message) else error_message
+                raise ValueError(msg)
+        return data
+    return _named(_step, f"tuple_validate_each_tuple({_fn_label(predicate)})")
+    
+def tuple_zip_tuple(iterable: Iterable[Any], strict: bool = False) -> Callable:
+    """Accoppia gli elementi della lista corrente con un'altra lista/sequenza.
+
+    FIX(7): l'iterable viene materializzato subito in una tupla, cosi' un
+    generatore non si esaurisce silenziosamente se lo step viene riusato
+    su piu' chiamate a pipe(). Con strict=True, solleva ValueError se le
+    due sequenze hanno lunghezza diversa (zip() tronca silenziosamente
+    di default).
+    """
+    fixed = tuple(iterable)
+
+    def _zip(data: Iterable[Any]) -> tuple:
+        data = tuple(data)
+        if strict and len(data) != len(fixed):
+            raise ValueError(
+                f"tuple_zip_tuple: lunghezze diverse ({len(data)} vs {len(fixed)}) "
+                f"con strict=True"
+            )
+        return tuple(zip(data, fixed))
+    return _named(_zip, "tuple_zip_tuple")
 
 
 # ==============================================================================
 # 3. FLOW / CONTROLLO (flow_*) - Impatto sul Flusso ed Eccezioni
 # ==============================================================================
 
-def flow_ensure(predicate: Callable[[Any], bool], error_message: str = "Validation failed") -> Callable:
+def flow_ensure_value(predicate: Callable[[Any], bool], error_message: str = "Validation failed") -> Callable:
     """Valida il dato nel flusso; solleva un errore se la condizione fallisce."""
     def _ensure(data: Any) -> Any:
         if not predicate(data):
             raise ValueError(f"[{_ensure.__name__}] {error_message}")
         return data
-    return _named(_ensure, f"flow_ensure({getattr(predicate, '__name__', 'cond')})")
+    return _named(_ensure, f"flow_ensure_value({_fn_label(predicate)})")
 
-def flow_branch(condition: Callable, if_true: Callable, if_false: Callable = lambda x: x) -> Callable:
+def flow_branch_value(condition: Callable, if_true: Callable, if_false: Callable = lambda x: x) -> Callable:
     """Esegue una biforcazione condizionale del flusso (if-then-else)."""
-    return _named(lambda data: if_true(data) if condition(data) else if_false(data), f"flow_branch({getattr(condition, '__name__', 'cond')})")
+    return _named(lambda data: if_true(data) if condition(data) else if_false(data), f"flow_branch_value({_fn_label(condition)})")
 
-def flow_match(*cases: Tuple[Callable, Callable], default: Callable | None = None) -> Callable:
+def flow_match_value(*cases: Tuple[Callable, Callable], default: Callable | None = None) -> Callable:
     """Esegue pattern matching multi-ramo sul valore corrente."""
     def _match(data: Any) -> Any:
         for condition, action in cases:
@@ -374,24 +531,38 @@ def flow_match(*cases: Tuple[Callable, Callable], default: Callable | None = Non
         if default:
             return default(data)
         raise ValueError(f"Nessun pattern corrisponde al valore: {data}")
-    return _named(_match, "flow_match")
+    return _named(_match, "flow_match_value")
 
 
 # ==============================================================================
 # 4. PIPE / GLOBALE & SIDE-EFFECTS (pipe_*) - Operazioni Trasversali
 # ==============================================================================
 
-def pipe_tap(fn: Callable[[Any], None]) -> Callable:
-    """Ispeziona o esegue side-effect sul dato passante senza modificarlo."""
-    def _tap(data: Any) -> Any:
-        fn(data)
-        return data
-    return _named(_tap, f"pipe_tap({getattr(fn, '__name__', str(fn))})")
+def pipe_tap_value(fn: Callable[[Any], None]) -> Callable:
+    """Ispeziona o esegue side-effect sul dato passante senza modificarlo.
 
-def pipe_foreach(fn: Callable[[Any], None]) -> Callable:
-    """Esegue un side-effect su ogni elemento di una lista senza alterarne il contenuto."""
-    def _foreach(data: Iterable[Any]) -> Iterable[Any]:
-        for item in data:
-            fn(item)
+    FIX(4): supporta ora anche fn asincrone. Prima, se fn era una coroutine
+    function, veniva creata e mai awaitata: il side-effect non veniva mai
+    eseguito, senza alcun errore visibile.
+    """
+    async def _tap(data: Any) -> Any:
+        res = fn(data)
+        if inspect.isawaitable(res):
+            await res
         return data
-    return _named(_foreach, f"pipe_foreach({getattr(fn, '__name__', str(fn))})")
+    return _named(_tap, f"pipe_tap_value({_fn_label(fn)})")
+
+def pipe_foreach_tuple(fn: Callable[[Any], None]) -> Callable:
+    """Esegue un side-effect su ogni elemento di una lista senza alterarne il contenuto.
+
+    FIX(4): supporta ora anche fn asincrone (eseguite in sequenza, in ordine,
+    per preservare la semantica "foreach"; usa tuple_map_async se serve
+    concorrenza).
+    """
+    async def _foreach(data: Iterable[Any]) -> Iterable[Any]:
+        for item in data:
+            res = fn(item)
+            if inspect.isawaitable(res):
+                await res
+        return data
+    return _named(_foreach, f"pipe_foreach_tuple({_fn_label(fn)})")

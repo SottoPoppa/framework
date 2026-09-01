@@ -77,14 +77,16 @@ async def transform(data_dict: dict, mapper: dict, values: dict, input_data: dic
     )
 
 
-@flow.result()
+@flow.result(action="normalize")
 async def normalize(value: Any, schema: dict) -> flow.Result:
     """Normalizza e valida dizionari o liste tramite pipeline ricorsiva."""
     validator = Validator(schema)
     return await flow.pipe(
-        value.keys() if isinstance(value, dict) else [],
-        flow.tuple_transform(lambda k: {k: value[k]}),
-        #await flow.tuple_transform(lambda kv: validator.validate(kv) and kv or flow.Failure(validator.errors)),
+        tuple(value.keys()) if isinstance(value, dict) else (),
+        flow.tuple_filter_tuple(lambda k: k in schema),                                # solo campi nello schema
+        flow.tuple_map_tuple(lambda k: {k: value[k]}),                                  # costruisce {k: value[k]}
+        flow.tuple_validate_each_tuple(validator.validate, lambda kv: str(validator.errors)), # valida, fail-fast
+        flow.tuple_merge_map(),                                                         # unisce in un unico map
     )
 
 class Scheme(flow.Immutable):
