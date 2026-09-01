@@ -26,10 +26,10 @@ async def get(data: Any = None, path: str = "", default: Any = None) -> flow.Res
     Estrae un valore da strutture annidate.
     Supporta l'uso diretto `await get(data, path)` o curried per le pipe.
     """
-    return await pipe(
-        {"data": data, "path": path, "default": default},
-        _get_path_step,
-        action="get_pipeline"
+    return await flow.pipe(
+        data,
+        flow.map_get_value(path, default),
+        action="get_pipeline",
     )
 
 
@@ -39,54 +39,83 @@ async def put(data: Any = None, path: str = "", value: Any = None) -> flow.Resul
     Imposta un valore in modo immutabile.
     Supporta l'uso diretto `await set(data, path, value)` o curried per le pipe.
     """
-    return await pipe(
-        {"data": data, "path": path, "value": value},
-        _set_path_step,
-        action="set_pipeline"
+    return await flow.pipe(
+        data,
+        flow.map_put_map(path, value),
+        action="put_pipeline",
     )
 
 @flow.result(action="data.transform", component="transformer")
-async def transform(data_dict: dict, mapper: dict, values: dict, input_data: dict, output_data: dict) -> flow.Result:
+async def transform(
+    data_dict: dict,
+    mapper: dict,
+    source: str,
+    direction: str = "external_to_model",
+) -> flow.Result:
     """
-    Trasforma e proietta dizionari riutilizzando direttamente l'API pubblica get().
+    Traduce i dati tra un provider esterno e il modello interno.
+
+    `mapper` usa il campo del modello interno come chiave e associa a ogni
+    provider il path del campo esterno:
+
+        {
+            "username": {"github": "login", "google": "email"},
+            "email": {"github": "email"}
+        }
+
+    Con `direction="external_to_model"` (default), legge i path esterni e
+    restituisce il modello interno. Con `direction="model_to_external",
+    inverte il mapping e restituisce i campi del provider.
     """
-    async def _project(ctx: dict) -> dict:
-        d, m, out = ctx["data"], ctx["mapper"], ctx["output"]
-        translated = {}
+    if direction not in {"external_to_model", "model_to_external"}:
+        raise ValueError(
+            "direction deve essere 'external_to_model' o 'model_to_external'"
+        )
 
-        for k, v in m.items():
-            res = await get(d, k)
-            val = res.output.value if res.is_success else None
-            
-            if val is not None and isinstance(v, dict):
-                out_key = v.get("out") or k
-                translated[out_key] = val
-                
-        for f in d.keys():
-            if f in out:
-                res = await get(d, f)
-                if res.is_success and res.output.value is not None:
-                    translated[f] = res.output.value
+    return await flow.pipe(
+        # Crea il contesto con i dati, il mapper, il provider e la direzione.
+        {"data": data_dict, "mapper": mapper, "source": source, "direction": direction},
 
-        return translated
+        # Isola il mapper e seleziona il provider richiesto.
+        flow.map_get_value("mapper"),
+        # Normalizza ogni regola nella coppia (chiave_output, path_input):
+        # (campo_interno, path_esterno) in ingresso e (path_esterno,
+        # campo_interno) in uscita.
+        flow.map_select_key_tuple(
+            source,
+            reverse=direction == "model_to_external",
+        ),
 
-    return await pipe(
-        {"data": data_dict, "mapper": mapper, "output": output_data},
-        _project,
+        # Mantiene solo le coppie il cui path di input esiste nei dati.
+        flow.tuple_filter_tuple(
+            lambda item: flow.map_get_value(item[1])(data_dict) is not None
+        ),
+
+        # Converte ogni coppia in {chiave_output: valore_input}.
+        flow.tuple_map_tuple(
+            lambda item: {item[0]: flow.map_get_value(item[1])(data_dict)}
+        ),
+
+        # Fonde i campi adattati nel modello interno finale.
+        flow.tuple_merge_map(),
         action="transform_pipeline"
     )
 
 
-@flow.result(action="normalize")
-async def normalize(value: Any, schema: dict) -> flow.Result:
-    """Normalizza e valida dizionari o liste tramite pipeline ricorsiva."""
+def normalize(value: Any, schema: dict) -> flow.Result:
+    """Normalizza e valida un dizionario tramite pipeline sincrona."""
     validator = Validator(schema)
-    return await flow.pipe(
-        tuple(value.keys()) if isinstance(value, dict) else (),
-        flow.tuple_filter_tuple(lambda k: k in schema),                                # solo campi nello schema
-        flow.tuple_map_tuple(lambda k: {k: value[k]}),                                  # costruisce {k: value[k]}
-        flow.tuple_validate_each_tuple(validator.validate, lambda kv: str(validator.errors)), # valida, fail-fast
-        flow.tuple_merge_map(),                                                         # unisce in un unico map
+    return flow.pipe_sync(
+        tuple(schema.keys()) if isinstance(value, dict) else (),
+        flow.tuple_filter_tuple(lambda key: key in value),
+        flow.tuple_map_tuple(lambda key: {key: value[key]}),
+        flow.tuple_validate_each_tuple(
+            validator.validate,
+            lambda item: str(validator.errors),
+        ),
+        flow.tuple_merge_map(),
+        flow.map_freeze_map(),
+        action="normalize_pipeline",
     )
 
 class Scheme(flow.Immutable):
@@ -95,37 +124,7 @@ class Scheme(flow.Immutable):
 
     def __init__(self, *args, **kwargs):
         input_data = args[0] if (args and isinstance(args[0], dict) and not kwargs) else kwargs
-        super().__init__(self._validate_and_clean(input_data))
-
-    @classmethod
-    def _validate_and_clean(cls, data: dict[str, Any]) -> dict[str, Any]:
-        if not cls.SCHEME and isinstance(data, dict):
-            return {k: cls._freeze(v) for k, v in data.items()}
-
-        cleaned = {}
-        for field, rules in cls.SCHEME.items():
-            req, nullable, has_def = rules.get("required", False), rules.get("nullable", False), "default" in rules
-
-            if field in data:
-                val = data[field]
-            elif has_def:
-                def_val = rules["default"]
-                val = def_val.copy() if isinstance(def_val, (dict, list)) else def_val
-            elif not req:
-                val = None
-            else:
-                raise ValueError(f"[{cls.__name__}] Campo obbligatorio mancante: '{field}'")
-
-            if val is None:
-                if req and not nullable:
-                    raise ValueError(f"[{cls.__name__}] Il campo '{field}' non può essere None")
-                cleaned[field] = None
-                continue
-
-            expected_type = rules.get("type")
-            if expected_type and not isinstance(val, flow.Immutable):
-                if isinstance(expected_type, (type, tuple)) and not isinstance(val, expected_type):
-                    raise TypeError(f"[{cls.__name__}] '{field}' deve essere {expected_type}, ricevuto {type(val).__name__}")
-
-            cleaned[field] = cls._freeze(val)
-        return cleaned
+        result = normalize(input_data, self.SCHEME)
+        if not result.is_success:
+            raise result.output.error
+        super().__init__(result.output.value)

@@ -21,7 +21,7 @@ Step = Callable[[Any], Any]
 #    cosi' None e' un valore iniziale legittimo.
 # 4. pipe_tap_value / pipe_foreach_tuple ora supportano correttamente funzioni async
 #    (prima la coroutine veniva creata e scartata senza essere awaitata).
-# 5. map_pick_map preserva l'Immutable-ness dell'input, come fa gia' map_mutate_map.
+# 5. map_pick_map preserva l'Immutable-ness dell'input, come fa gia' map_compute_value.
 # 6. tuple_merge_map solleva TypeError su elementi non-dict invece di
 #    ignorarli in silenzio (con opzione skip_invalid per il vecchio comportamento).
 # 7. tuple_zip_tuple materializza l'iterable passato (niente piu' generatori che si
@@ -241,6 +241,42 @@ async def pipe(value: Any, *steps: Step, action: str = "flow.pipe", component: s
         transactions=tuple(transactions)
     )
 
+def pipe_sync(value: Any, *steps: Step, action: str = "flow.pipe_sync", component: str | None = None) -> Result:
+    """Esegue una pipeline composta da step sincroni."""
+    start = time.perf_counter()
+    transactions: list[Result] = []
+    current: Valor = _normalize(value, transactions)
+
+    for step in steps:
+        match current:
+            case Failure():
+                break
+            case Success(value=step_input):
+                step_start = time.perf_counter()
+                step_name = getattr(step, "__name__", str(step))
+                try:
+                    current = _normalize(step(step_input), transactions)
+                except Exception as exc:
+                    current = Failure(error=exc, tb=traceback.format_exc())
+                transactions.append(Result(
+                    input=step_input,
+                    output=current,
+                    execution_time_ms=(time.perf_counter() - step_start) * 1000,
+                    action=step_name,
+                    component=component
+                ))
+            case Immutable(is_success=False):
+                break
+
+    return Result(
+        input=value,
+        output=current,
+        execution_time_ms=(time.perf_counter() - start) * 1000,
+        action=action,
+        component=component,
+        transactions=tuple(transactions)
+    )
+
 def result(inputs=[], outputs=[], action: str | None = None, component: str | None = None) -> Callable:
     def decorator(func: Callable) -> Callable:
         @wraps(func)
@@ -335,18 +371,43 @@ def map_get_value(path: str | int, default: Any = None) -> Callable:
 
     return _named(_get, f"map_get_value({path})")
 
-def map_mutate_map(**transforms: Callable[[Any], Any]) -> Callable:
-    """Modifica o aggiunge chiavi a un dict/Scheme tramite trasformazioni."""
-    def _mutate(data: dict) -> dict:
+def map_put_map(path: str, value: Any) -> Callable:
+    """Inserisce un valore in un map tramite dot-notation senza mutare l'input."""
+    def _put(data: dict) -> dict:
+        if not isinstance(data, dict):
+            raise TypeError(f"map_put_map: atteso un dict, ricevuto {type(data).__name__}")
+        if not path:
+            raise ValueError("map_put_map: il path non può essere vuoto")
+
+        result = copy.deepcopy(dict(data))
+        current = result
+        parts = str(path).split(".")
+        for part in parts[:-1]:
+            nested = current.get(part)
+            if not isinstance(nested, dict):
+                nested = {}
+                current[part] = nested
+            current = nested
+        current[parts[-1]] = value
+        return Immutable(result) if isinstance(data, Immutable) else result
+
+    return _named(_put, f"map_put_map({path})")
+
+def map_freeze_map() -> Callable:
+    """Congela ricorsivamente un map e i suoi valori."""
+    return _named(lambda data: Immutable(data), "map_freeze_map")
+
+def map_compute_value(key: str, transform: Callable[[Any], Any]) -> Callable:
+    """Calcola e aggiunge un campo a un dict usando l'intero dict in input."""
+    def _compute(data: dict) -> dict:
         new_data = dict(data)
-        for key, fn in transforms.items():
-            new_data[key] = fn(data)
+        new_data[key] = transform(data)
         return Immutable(new_data) if isinstance(data, Immutable) else new_data
-    return _named(_mutate, f"map_mutate_map({', '.join(transforms.keys())})")
+    return _named(_compute, f"map_compute_value({key})")
 
 def map_pick_map(*keys: str) -> Callable:
     """Estrae solo un sottoinsieme di chiavi da un dict/Scheme."""
-    # FIX(5): preserva l'Immutable-ness dell'input, coerente con map_mutate_map.
+    # FIX(5): preserva l'Immutable-ness dell'input, coerente con map_compute_value.
     def _pick(data: dict) -> dict:
         picked = {k: data[k] for k in keys if k in data}
         return Immutable(picked) if isinstance(data, Immutable) else picked
@@ -357,6 +418,25 @@ def map_keys_map(fn: Callable[[Any], Any]) -> Callable:
     def _key_transform(data: dict) -> dict:
         return {fn(k): v for k, v in data.items()}
     return _named(_key_transform, f"map_keys_map({_fn_label(fn)})")
+
+def map_select_key_tuple(key: Any, reverse: bool = False) -> Callable:
+    """Seleziona una chiave dai map annidati e restituisce coppie in una tuple.
+
+    Per esempio, dato ``{"name": {"github": "login"}}`` e ``key="github"``,
+    restituisce ``(("name", "login"),)``. Con ``reverse=True`` restituisce
+    ``(("login", "name"),)``. E' indipendente da provider e mapper, quindi
+    riutilizzabile per qualunque map di configurazioni annidate.
+    """
+    def _select(data: dict) -> tuple:
+        entries = []
+        for outer_key, nested in data.items():
+            if not isinstance(nested, dict) or key not in nested:
+                continue
+            pair = (outer_key, nested[key])
+            entries.append(pair[::-1] if reverse else pair)
+        return tuple(entries)
+
+    return _named(_select, f"map_select_key_tuple({key}, reverse={reverse})")
 
 # ==============================================================================
 # 2. LIST / SEQUENZE (list_*) - Impatto su Liste e Collezioni
