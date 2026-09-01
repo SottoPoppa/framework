@@ -312,6 +312,16 @@ def output(value: Any) -> Any:
         return value
     return value.output.value if value.is_success else value.output.error
 
+
+def unwrap(value: Any) -> Any:
+    """Restituisce il valore di un Result oppure solleva il suo errore."""
+    if not is_result(value):
+        return value
+    if not value.is_success:
+        raise value.output.error
+    return value.output.value
+
+
 def check(value) -> bool:
     """Controlla se il valore è un Result e se è un Success."""
     return is_result(value) and value.is_success
@@ -418,6 +428,10 @@ def map_keys_map(fn: Callable[[Any], Any]) -> Callable:
     def _key_transform(data: dict) -> dict:
         return {fn(k): v for k, v in data.items()}
     return _named(_key_transform, f"map_keys_map({_fn_label(fn)})")
+
+def map_items_tuple() -> Callable:
+    """Converte gli elementi di una mappa in una tupla di coppie."""
+    return _named(lambda data: tuple(data.items()), "map_items_tuple")
 
 def map_select_key_tuple(key: Any, reverse: bool = False) -> Callable:
     """Seleziona una chiave dai map annidati e restituisce coppie in una tuple.

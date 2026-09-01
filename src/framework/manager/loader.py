@@ -11,32 +11,19 @@ import sys
 import types
 import uuid
 from dataclasses import dataclass, field
+from functools import partial
 from graphlib import TopologicalSorter
 from pathlib import Path
 from typing import Any, Optional, Type, get_args, get_type_hints
 
 from jinja2 import BaseLoader, Environment
+import framework.core.flow as flow
 
 # Python 3.11+ native TOML support with fallback for older versions
 try:
     import tomllib
 except ImportError:
     import tomli as tomllib
-
-
-def _is_result(value: Any) -> bool:
-    return hasattr(value, "is_success") and hasattr(value, "output")
-
-
-def _result_succeeded(value: Any) -> bool:
-    return bool(getattr(value, "is_success", True))
-
-
-def _result_output(value: Any) -> Any:
-    if not _is_result(value):
-        return value
-    payload = value.output
-    return getattr(payload, "value", getattr(payload, "error", payload))
 
 
 # ============================================================
@@ -466,11 +453,11 @@ class Application:
                     continue
 
                 message_result = await messenger.receive(self._session, domain="event")
-                if not _is_result(message_result):
+                if not flow.is_result(message_result):
                     continue
-                if not _result_succeeded(message_result):
+                if not flow.check(message_result):
                     continue
-                message = _result_output(message_result)
+                message = flow.output(message_result)
                 for name, mgr in list(self._loader.get_managers().items()):
                     if hasattr(mgr, "reload"):
                         try:
@@ -499,10 +486,10 @@ class Application:
             if not hasattr(manager, "startup"):
                 continue
             result = await manager.startup(self._session)
-            if _is_result(result):
-                if not _result_succeeded(result):
+            if flow.is_result(result):
+                if not flow.check(result):
                     continue
-                result = _result_output(result)
+                result = flow.output(result)
             if not result:
                 continue
 
@@ -520,8 +507,8 @@ class Application:
         for manager in reversed(self._managers):
             if hasattr(manager, "shutdown"):
                 result = await manager.shutdown(self._session)
-                if _is_result(result) and not _result_succeeded(result):
-                    print(f"[!] Shutdown fallito per {manager}: {_result_output(result)}")
+                if flow.is_result(result) and not flow.check(result):
+                    print(f"[!] Shutdown fallito per {manager}: {flow.output(result)}")
 
         for task in self._running_tasks:
             if not task.done():
@@ -618,91 +605,120 @@ class Loader:
         module = sys.modules.get(f"framework.port.{port_key}")
         return getattr(module, "Port", None) if module else None
 
-    async def _discover_adapters(self, config: dict):
-        """Scopre e carica tutti gli adapter configurati."""
-        for port_key in self.ports:
-            if port_key == "manager":
-                continue
-            enabled = config.get(port_key, {})
-            if not isinstance(enabled, dict):
-                continue
+    def _adapter_specs(self, item: tuple[str, Any]) -> tuple[tuple[str, str, dict], ...]:
+        port_key, enabled = item
+        if port_key in {"project", "manager"} or not isinstance(enabled, dict):
+            return ()
+        return tuple(
+            (
+                port_key,
+                adapter_name,
+                {
+                    key: value.casefold()
+                    if key in ("name", "auth") and isinstance(value, str)
+                    else value
+                    for key, value in (cfg.items() if isinstance(cfg, dict) else [])
+                },
+            )
+            for adapter_name, adapter_config in enabled.items()
+            for cfg in (
+                adapter_config
+                if isinstance(adapter_config, list)
+                else [adapter_config]
+            )
+        )
 
-            for adapter_name, adapter_cfg in enabled.items():
-                configs = adapter_cfg if isinstance(adapter_cfg, list) else [adapter_cfg]
-                normalized_configs = []
-                for cfg in configs:
-                    cfg = dict(cfg) if isinstance(cfg, dict) else {}
-                    for key in ("name", "auth"):
-                        if isinstance(cfg.get(key), str):
-                            cfg[key] = cfg[key].casefold()
-                    normalized_configs.append(cfg)
-                resource = Resource(
-                    name=f"framework.adapter.{port_key}.{adapter_name}",
-                    path=f"src/infrastructure/{port_key}/{adapter_name}.py",
-                    kind="ADAPTER",
-                    config=normalized_configs,
-                )
-                await self.framework.load(resource)
+    def _adapter_resource(self, spec: tuple[str, str, dict]) -> Resource:
+        port_key, adapter_name, config = spec
+        return Resource(
+            name=f"framework.adapter.{port_key}.{adapter_name}",
+            path=f"src/infrastructure/{port_key}/{adapter_name}.py",
+            kind="ADAPTER",
+            config=[config],
+        )
+
+    def _manager_entry(self, resource: Resource) -> tuple[Type, Resource] | None:
+        manager = getattr(resource.module, "Manager", None)
+        return (manager, resource) if manager else None
+
+    def _adapter_entries(self, resource: Resource) -> tuple[tuple[Resource, dict], ...]:
+        if not resource.module or not getattr(resource.module, "Adapter", None):
+            return ()
+        configs = resource.config if isinstance(resource.config, list) else [resource.config]
+        return tuple((resource, config or {}) for config in configs)
+
+    async def _discover_adapters(self, config: dict) -> flow.Result:
+        """Scopre e carica tutti gli adapter configurati."""
+        return await flow.pipe(
+            config,
+            flow.map_items_tuple(),
+            flow.tuple_map_tuple(self._adapter_specs),
+            flow.tuple_flatten_tuple(),
+            flow.tuple_map_tuple(self._adapter_resource),
+            flow.pipe_foreach_tuple(self._load_resource),
+            action="loader.discover_adapters",
+        )
+
+    async def _load_resource(self, resource: Resource) -> Resource:
+        await self.framework.load(resource)
+        return resource
 
     def _build(self, cls: Type, config: dict = None) -> Handle:
         config = config or {}
         args = self._resolve_dependencies(cls)
         return Handle(cls(*args, **config))
 
-    def _build_managers(self, resources: list[Resource]) -> list[Handle]:
+    def _build_managers(self, resources: list[Resource]) -> flow.Result:
         """Costruisce e registra i manager rispettando l'ordine di dipendenza."""
-        discovered = [
-            (getattr(res.module, "Manager", None), res)
-            for res in resources
-            if hasattr(res.module, "Manager")
-        ]
-        if not discovered:
-            return []
+        return flow.pipe_sync(
+            resources,
+            flow.tuple_map_tuple(self._manager_entry),
+            flow.tuple_filter_tuple(lambda entry: entry is not None),
+            self._order_manager_entries,
+            flow.tuple_map_tuple(self._build_manager_entry),
+            action="loader.build_managers",
+        )
 
-        classes = [cls for cls, _ in discovered]
+    def _order_manager_entries(self, entries: tuple) -> tuple:
+        classes = [cls for cls, _ in entries]
         dependencies = {}
         for cls in classes:
             dependencies.update(self.framework.dependencies_from_class(cls))
-
         order = self.framework.resolve_order(classes, dependencies)
-        res_map = {cls: res for cls, res in discovered}
-        instances = []
+        resources = {cls: resource for cls, resource in entries}
+        return tuple((cls, resources[cls]) for cls in order if cls is not Loader)
 
-        for cls in order:
-            if cls is Loader:
-                continue
-            res = res_map[cls]
-            obj = self._build(cls, res.config or {})
-            self.container.put(cls, obj, singleton=True)
-            instances.append(obj)
-            print(f"[✓] Manager {cls.__module__}.{cls.__name__}")
-
-        return instances
+    def _build_manager_entry(self, entry: tuple[Type, Resource]) -> Handle:
+        cls, resource = entry
+        obj = self._build(cls, resource.config or {})
+        self.container.put(cls, obj, singleton=True)
+        print(f"[✓] Manager {cls.__module__}.{cls.__name__}")
+        return obj
 
     def _build_adapters(
         self, resources: list[Resource], save: bool = True
-    ) -> list[Handle]:
+    ) -> flow.Result:
         """Costruisce gli adapter istanziati e li assegna alle rispettive porte."""
-        created = []
-        for res in resources:
-            parts = res.name.split(".")
-            if len(parts) < 4:
-                continue
-            interface = self._port_interface(parts[2])
-            adapter_cls = getattr(res.module, "Adapter", None)
-            if not interface or not adapter_cls:
-                continue
+        return flow.pipe_sync(
+            resources,
+            flow.tuple_map_tuple(self._adapter_entries),
+            flow.tuple_flatten_tuple(),
+            flow.tuple_map_tuple(partial(self._build_adapter_entry, save=save)),
+            action="loader.build_adapters",
+        )
 
-            configs = res.config if isinstance(res.config, list) else [res.config]
-            for cfg in configs:
-                cfg = cfg or {}
-                obj = self._build(adapter_cls, cfg)
-                created.append(obj)
-                if save:
-                    self.container.add_port(interface, obj)
-                print(f"[✓] Adapter {adapter_cls.__name__} name={cfg.get('name')}")
-
-        return created
+    def _build_adapter_entry(self, entry: tuple[Resource, dict], save: bool) -> Handle:
+        resource, config = entry
+        parts = resource.name.split(".")
+        interface = self._port_interface(parts[2])
+        adapter_cls = getattr(resource.module, "Adapter", None)
+        if not interface or not adapter_cls:
+            raise RuntimeError(f"Adapter non valido: {resource.name}")
+        obj = self._build(adapter_cls, config)
+        if save:
+            self.container.add_port(interface, obj)
+        print(f"[✓] Adapter {adapter_cls.__name__} name={config.get('name')}")
+        return obj
 
     async def reload(self, session: Any, changed_path: str) -> bool:
         """Esegue il reload in-memory di adapter o manager modificati."""
@@ -723,7 +739,7 @@ class Loader:
                     return False
 
                 await self.framework.reload(resource)
-                new_handles = self._build_adapters([resource], save=False)
+                new_handles = flow.unwrap(self._build_adapters([resource], save=False))
                 for old, new in zip(old_handles or [], new_handles):
                     old.swap(new._obj)
                 return True
@@ -837,46 +853,77 @@ class Loader:
                     result[res.name.split(".")[-1]] = obj
         return result
 
-    async def _discover_components(self, config_toml_path: Any) -> tuple[dict, list[Resource]]:
-        """Carica core, manager e adapter senza istanziarli."""
+    def _discovery_context(self, config_toml_path: Any) -> dict:
         kwargs = (
             config_toml_path
             if isinstance(config_toml_path, dict)
             else {"config": str(config_toml_path)}
         )
-        config_file = kwargs.get("config", "pyproject.toml")
-        schemes = await self.load_schemes(
-            ["src/framework/scheme", "src/application/model"]
-        )
+        return {"kwargs": kwargs, "config_file": kwargs.get("config", "pyproject.toml")}
+
+    async def _prepare_core(self, context: dict) -> dict:
+        schemes = await self.load_schemes(["src/framework/scheme", "src/application/model"])
         core_scheme = importlib.import_module("framework.core.scheme")
         core_scheme.schemes = schemes
         core_scheme.jinja_env = self.infra.jinja_env
         await self.framework.load_core(
             self.services,
             self.ports,
-            extra_by_name={
-                "scheme": {
-                    "schemes": schemes,
-                    "jinja_env": self.infra.jinja_env,
-                }
-            },
+            extra_by_name={"scheme": {"schemes": schemes, "jinja_env": self.infra.jinja_env}},
         )
-        config = self.infra.load_toml_config(config_file)
+        return {**context, "schemes": schemes}
+
+    def _read_discovery_config(self, context: dict) -> dict:
+        config = self.infra.load_toml_config(context["config_file"])
         self.current_config = config
+        return {**context, "config": config}
 
-        mgr_resources = []
-        for name, path in self.managers.items():
-            resource = Resource(
-                name=f"framework.manager.{name}",
-                path=path,
-                kind="MANAGER",
-                config=config.get("manager", {}).get(name, {}),
-            )
-            await self.framework.load(resource)
-            mgr_resources.append(resource)
+    def _manager_resource(self, item: tuple[str, str, dict]) -> Resource:
+        name, path, config = item
+        return Resource(
+            name=f"framework.manager.{name}",
+            path=path,
+            kind="MANAGER",
+            config=config,
+        )
 
-        await self._discover_adapters(config)
-        return config, mgr_resources
+    async def _load_manager_resource(self, resource: Resource) -> Resource:
+        return await self._load_resource(resource)
+
+    async def _discover_manager_resources(self, context: dict) -> dict:
+        config = context["config"]
+        manager_config = config.get("manager", {})
+        specs = tuple(
+            (name, path, manager_config.get(name, {}))
+            for name, path in self.managers.items()
+        )
+        resources = await flow.pipe(
+            specs,
+            flow.tuple_map_tuple(self._manager_resource),
+            flow.tuple_map_async_tuple(self._load_manager_resource),
+            action="loader.discover_managers",
+        )
+        return {**context, "manager_resources": flow.unwrap(resources)}
+
+    async def _discover_adapter_resources(self, context: dict) -> dict:
+        result = await self._discover_adapters(context["config"])
+        return {**context, "adapter_resources": flow.unwrap(result)}
+
+    def _discovery_result(self, context: dict) -> tuple[dict, tuple[Resource, ...]]:
+        return context["config"], tuple(context["manager_resources"])
+
+    async def _discover_components(self, config_toml_path: Any) -> flow.Result:
+        """Carica core, manager e adapter senza istanziarli."""
+        return await flow.pipe(
+            config_toml_path,
+            self._discovery_context,
+            self._prepare_core,
+            self._read_discovery_config,
+            self._discover_manager_resources,
+            self._discover_adapter_resources,
+            self._discovery_result,
+            action="loader.discover_components",
+        )
 
     async def bootstrap(self, config_toml_path: Any) -> Application:
         """Inizializza il framework caricando configurazione e risorse."""
@@ -895,7 +942,8 @@ class Loader:
             or kwargs.get("skip_verify")
         )
 
-        config, mgr_resources = await self._discover_components(config_toml_path)
+        discovery = await self._discover_components(config_toml_path)
+        config, mgr_resources = flow.unwrap(discovery)
 
         # Risoluzione dinamica di Container dopo il caricamento del core.
         container_mod = sys.modules.get("framework.service.container")
@@ -913,8 +961,8 @@ class Loader:
         print("\n[*] Discovery...")
 
         print("\n[*] Build...")
-        managers = self._build_managers(mgr_resources)
-        self._build_adapters(self.framework.components_ports())
+        managers = flow.unwrap(self._build_managers(mgr_resources))
+        flow.unwrap(self._build_adapters(self.framework.components_ports()))
 
         def_res = self.framework.component("framework.manager.defender")
         def_cls = getattr(def_res.module, "Manager", None) if def_res else None
@@ -924,10 +972,10 @@ class Loader:
         if defender:
             if hasattr(defender, "startup"):
                 startup_result = await defender.startup()
-                if _is_result(startup_result) and not _result_succeeded(startup_result):
-                    raise RuntimeError(_result_output(startup_result))
+                if flow.is_result(startup_result) and not flow.check(startup_result):
+                    raise RuntimeError(flow.output(startup_result))
             if hasattr(defender, "session_create"):
-                session = _result_output(await defender.session_create())
+                session = flow.output(await defender.session_create())
                 print(f"[*] Sessione creata: {session}")
 
         app = Application(self, managers, session)
@@ -956,7 +1004,7 @@ class Loader:
             print(f"[!] Metodo Tester '{method_name}' non trovato nel container")
             return False
         result = await method(session, filter=filter_value)
-        return _result_output(result)
+        return flow.output(result)
 
     async def verify_contracts(self, config_toml_path: Any) -> bool:
         """Verifica i contract senza costruire o avviare l'applicazione."""
@@ -968,7 +1016,8 @@ class Loader:
         self.framework.strict = True
 
         try:
-            await self._discover_components(config_toml_path)
+            result = await self._discover_components(config_toml_path)
+            flow.unwrap(result)
         except Exception as exc:
             print(f"[!] Verifica contract fallita: {exc}")
             return False
