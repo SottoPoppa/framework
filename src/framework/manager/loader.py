@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from functools import partial
 from graphlib import TopologicalSorter
 from pathlib import Path
-from typing import Any, Optional, Type, get_args, get_type_hints
+from typing import Any, Optional, Type, TypedDict, get_args, get_type_hints
 
 from jinja2 import BaseLoader, Environment
 import framework.core.flow as flow
@@ -39,6 +39,21 @@ class Resource:
     kind: Optional[str] = None
     config: dict = field(default_factory=dict)
     extend: dict = field(default_factory=dict)
+
+
+class LoaderContext(TypedDict, total=False):
+    """Stato condiviso dagli step delle pipe del Loader."""
+
+    config_path: Any
+    kwargs: dict
+    config_file: str
+    schemes: dict
+    config: dict
+    manager_resources: tuple[Resource, ...]
+    adapter_resources: tuple[Resource, ...]
+    discovery: tuple[dict, tuple[Resource, ...]]
+    managers: dict
+    session: Any
 
 
 # ============================================================
@@ -853,7 +868,7 @@ class Loader:
                     result[res.name.split(".")[-1]] = obj
         return result
 
-    def _discovery_context(self, config_toml_path: Any) -> dict:
+    def _discovery_context(self, config_toml_path: Any) -> LoaderContext:
         kwargs = (
             config_toml_path
             if isinstance(config_toml_path, dict)
@@ -861,7 +876,7 @@ class Loader:
         )
         return {"kwargs": kwargs, "config_file": kwargs.get("config", "pyproject.toml")}
 
-    async def _prepare_core(self, context: dict) -> dict:
+    async def _prepare_core(self, context: LoaderContext) -> LoaderContext:
         schemes = await self.load_schemes(["src/framework/scheme", "src/application/model"])
         core_scheme = importlib.import_module("framework.core.scheme")
         core_scheme.schemes = schemes
@@ -873,7 +888,7 @@ class Loader:
         )
         return {**context, "schemes": schemes}
 
-    def _read_discovery_config(self, context: dict) -> dict:
+    def _read_discovery_config(self, context: LoaderContext) -> LoaderContext:
         config = self.infra.load_toml_config(context["config_file"])
         self.current_config = config
         return {**context, "config": config}
@@ -887,8 +902,7 @@ class Loader:
             config=config,
         )
 
-    async def _discover_manager_resources(self, context: dict) -> dict:
-        config = context["config"]
+    async def _discover_manager_resources(self, config: dict) -> tuple[Resource, ...]:
         manager_config = config.get("manager", {})
         specs = tuple(
             (name, path, manager_config.get(name, {}))
@@ -900,11 +914,27 @@ class Loader:
             flow.tuple_map_async_tuple(self._load_resource),
             action="loader.discover_managers",
         )
-        return {**context, "manager_resources": flow.unwrap(resources)}
+        return flow.unwrap(resources)
 
-    async def _discover_adapter_resources(self, context: dict) -> dict:
-        result = await self._discover_adapters(context["config"])
-        return {**context, "adapter_resources": flow.unwrap(result)}
+    async def _discover_adapter_resources(self, config: dict) -> tuple[Resource, ...]:
+        result = await self._discover_adapters(config)
+        return flow.unwrap(result)
+
+    async def _discover_resources(self, context: LoaderContext) -> LoaderContext:
+        resources = await flow.pipe(
+            context["config"],
+            flow.pipe_fork_async_tuple(
+                self._discover_manager_resources,
+                self._discover_adapter_resources,
+            ),
+            action="loader.discover_resources",
+        )
+        manager_resources, adapter_resources = flow.unwrap(resources)
+        return {
+            **context,
+            "manager_resources": manager_resources,
+            "adapter_resources": adapter_resources,
+        }
 
     def _discovery_result(self, context: dict) -> tuple[dict, tuple[Resource, ...]]:
         return context["config"], tuple(context["manager_resources"])
@@ -924,7 +954,7 @@ class Loader:
         )
         return {"config_path": config_toml_path}
 
-    async def _prepare_container(self, context: dict) -> dict:
+    async def _prepare_container(self, context: LoaderContext) -> LoaderContext:
         container_mod = sys.modules.get("framework.service.container")
         if not container_mod or not hasattr(container_mod, "Container"):
             raise RuntimeError(
@@ -935,11 +965,11 @@ class Loader:
         self.container.put(container_cls, self.container, singleton=True)
         return context
 
-    async def _discover_bootstrap(self, context: dict) -> dict:
+    async def _discover_bootstrap(self, context: LoaderContext) -> LoaderContext:
         discovery = await self._discover_components(context["config_path"])
         return {**context, "discovery": flow.unwrap(discovery)}
 
-    def _build_runtime(self, context: dict) -> dict:
+    def _build_runtime(self, context: LoaderContext) -> LoaderContext:
         config, mgr_resources = context["discovery"]
         print("\n[*] Discovery...")
         print("\n[*] Build...")
@@ -947,7 +977,7 @@ class Loader:
         flow.unwrap(self._build_adapters(self.framework.components_ports()))
         return {**context, "config": config, "managers": managers}
 
-    async def _start_runtime(self, context: dict) -> dict:
+    async def _start_runtime(self, context: LoaderContext) -> LoaderContext:
         def_res = self.framework.component("framework.manager.defender")
         def_cls = getattr(def_res.module, "Manager", None) if def_res else None
         defender = self.container.get(def_cls) if def_cls else None
@@ -971,8 +1001,7 @@ class Loader:
             self._discovery_context,
             self._prepare_core,
             self._read_discovery_config,
-            self._discover_manager_resources,
-            self._discover_adapter_resources,
+            self._discover_resources,
             self._discovery_result,
             action="loader.discover_components",
         )

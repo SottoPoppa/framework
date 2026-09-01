@@ -608,6 +608,19 @@ def tuple_zip_tuple(iterable: Iterable[Any], strict: bool = False) -> Callable:
         return tuple(zip(data, fixed))
     return _named(_zip, "tuple_zip_tuple")
 
+def pipe_fork_async_tuple(*branches: Step) -> Callable:
+    """Esegue piu' rami sullo stesso input e raccoglie i loro output."""
+    async def _fork(data: Any) -> tuple:
+        outputs = []
+        for branch in branches:
+            output = branch(data)
+            if inspect.isawaitable(output):
+                output = await output
+            outputs.append(output)
+        return tuple(outputs)
+
+    return _named(_fork, "pipe_fork_async_tuple")
+
 
 # ==============================================================================
 # 3. FLOW / CONTROLLO (flow_*) - Impatto sul Flusso ed Eccezioni
