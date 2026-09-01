@@ -3,6 +3,23 @@ import xml.etree.ElementTree as ET
 from jinja2 import DebugUndefined, Environment, FileSystemLoader, select_autoescape
 import framework.core.flow as flow
 
+'''jinja_env = Environment(
+    loader=FileSystemLoader("src/application/view/layout/"),
+    autoescape=select_autoescape(["html", "xml"]),
+    undefined=DebugUndefined,
+)'''
+
+jinja_env = Environment()
+
+async def format(target, **constants):
+    """Formatta una stringa usando Jinja2 e l'environment condiviso (jinja)."""
+    try:
+        if not target or not isinstance(target, str) or '{' not in target:
+            return target
+        template = jinja_env.from_string(target)
+        return template.render(constants)
+    except Exception as e:
+        raise ValueError(f"Errore formattazione: {e}")
 
 async def render(loader, runtime_session, render_node, text=None, file=None, controllers=None, **constants):
     if text is None and file is None:

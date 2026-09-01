@@ -105,15 +105,14 @@ async def transform(
 def normalize(value: Any, schema: dict) -> flow.Result:
     """Normalizza e valida un dizionario tramite pipeline sincrona."""
     validator = Validator(schema)
+
     return flow.pipe_sync(
-        tuple(schema.keys()) if isinstance(value, dict) else (),
-        flow.tuple_filter_tuple(lambda key: key in value),
-        flow.tuple_map_tuple(lambda key: {key: value[key]}),
-        flow.tuple_validate_each_tuple(
+        value,
+        flow.flow_ensure_value(
             validator.validate,
-            lambda item: str(validator.errors),
+            lambda document: str(validator.errors),
+            lambda document: validator.document,
         ),
-        flow.tuple_merge_map(),
         flow.map_freeze_map(),
         action="normalize_pipeline",
     )

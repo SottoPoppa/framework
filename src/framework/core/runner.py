@@ -31,13 +31,14 @@ from typing import Any, Dict, List, Optional
 import networkx as nx
 
 import framework.core.flow as flow
+import framework.core.scheme as scheme
 
 
 # =============================================================================
 # SCHEME
 # =============================================================================
 
-class Node(flow.Scheme):
+class Node(scheme.Scheme):
     """
     Definizione di un nodo del DAG.
     """
@@ -54,6 +55,7 @@ class Node(flow.Scheme):
         "default": {
             "required": False,
             "nullable": True,
+            "default": None,
         },
         "deps": {
             "required": False,
@@ -73,14 +75,17 @@ class Node(flow.Scheme):
         "trigger": {
             "required": False,
             "nullable": True,
+            "default": None,
         },
         "schedule": {
             "required": False,
             "nullable": True,
+            "default": None,
         },
         "duration": {
             "required": False,
             "nullable": True,
+            "default": None,
         },
         "timeout": {
             "required": False,
@@ -100,6 +105,7 @@ class Node(flow.Scheme):
         "when": {
             "required": False,
             "nullable": True,
+            "default": None,
         },
         "path": {
             "required": False,
@@ -134,7 +140,7 @@ class Node(flow.Scheme):
     }
 
 
-class ExecutionContext(flow.Scheme):
+class ExecutionContext(scheme.Scheme):
     """
     Contesto immutabile di una singola esecuzione di nodo.
 

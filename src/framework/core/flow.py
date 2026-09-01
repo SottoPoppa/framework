@@ -187,7 +187,7 @@ Valor = Success[Any] | Failure[Any]
 
 def _normalize(raw: Any, transactions: list["Result"]) -> Valor:
     if isinstance(raw, Result):
-        transactions.extend(list(raw.transactions))
+        transactions.extend(list(raw.get("transactions", ())))
         return raw.output
     return raw if isinstance(raw, (Success, Failure)) else Success(value=raw)
 
@@ -590,12 +590,17 @@ def tuple_zip_tuple(iterable: Iterable[Any], strict: bool = False) -> Callable:
 # 3. FLOW / CONTROLLO (flow_*) - Impatto sul Flusso ed Eccezioni
 # ==============================================================================
 
-def flow_ensure_value(predicate: Callable[[Any], bool], error_message: str = "Validation failed") -> Callable:
+def flow_ensure_value(
+    predicate: Callable[[Any], bool],
+    error_message: str | Callable[[Any], str] = "Validation failed",
+    transform: Callable[[Any], Any] = lambda data: data,
+) -> Callable:
     """Valida il dato nel flusso; solleva un errore se la condizione fallisce."""
     def _ensure(data: Any) -> Any:
         if not predicate(data):
-            raise ValueError(f"[{_ensure.__name__}] {error_message}")
-        return data
+            message = error_message(data) if callable(error_message) else error_message
+            raise ValueError(f"[{_ensure.__name__}] {message}")
+        return transform(data)
     return _named(_ensure, f"flow_ensure_value({_fn_label(predicate)})")
 
 def flow_branch_value(condition: Callable, if_true: Callable, if_false: Callable = lambda x: x) -> Callable:

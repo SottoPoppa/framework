@@ -141,8 +141,8 @@ DSL_FUNCTIONS: Dict[str, Any] = {
     'get':       scheme.get,
     'normalize': scheme.normalize,
     'put':       scheme.put,
-    'format':    scheme.format,
-    'convert':   scheme.convert,
+    #'format':    scheme.format,
+    #'convert':   scheme.convert,
     'keys':      lambda d: list(d.keys()) if isinstance(d, dict) else [],
     'values':    lambda d: list(d.values()) if isinstance(d, dict) else [],
     'union':     lambda a, b: {**a, **b},
@@ -454,7 +454,7 @@ class LazyBinOp:
 @dataclass(frozen=True)
 class ContextVar:
     name: str
-    def __call__(self, *_, **ctx): return scheme.get(ctx, self.name)
+    def __call__(self, *_, **ctx): return flow.map_get_value(self.name)(ctx)
     def __repr__(self):            return self.name
 
 @dataclass(frozen=True)
@@ -766,11 +766,15 @@ class Interpreter:
         
         # Esegui il motore per i nodi reattivi/task
         dag_results = await self._runner.run_file(sid, file, ast_result)
+        dag_outputs = {
+            name: _flow_output(result)
+            for name, result in dag_results.items()
+        }
         
-        # Conserva i Result dei nodi nel payload e nella catena transazionale.
+        # Il contratto Result resta nel runtime; il DSL riceve solo i payload.
         return flow.Result(
             input=ast_result,
-            output=flow.Success(ast_result | dag_results),
+            output=flow.Success(ast_result | dag_outputs),
             action=f"{file}.run",
             component=__name__,
             transactions=tuple(dag_results.values()),
@@ -911,10 +915,12 @@ class Interpreter:
 
     async def visit_number(self, n, e, path=""):      return n["value"], e
     async def visit_string(self, n, e, path=""):      return n["value"], e
-    async def visit_bool(self, n, e, path=""):        return n["value"], e
+    async def visit_bool(self, n, e, path=""):         return n["value"], e
     async def visit_any(self, n, e, path=""):         return None, e
     async def visit_identifier(self, n, e, path=""):  return n["name"], e
-    async def visit_var(self, n, e, path=""):         return scheme.get(e, n["name"], n["name"]), e
+    async def visit_var(self, n, e, path=""):
+        result = await scheme.get(e, n["name"], n["name"])
+        return _flow_output(result), e
     async def visit_context_var(self, n, e, path=""): return ContextVar(n["name"]), e
 
     async def visit_function_def(self, n, e, path=""):
@@ -1043,7 +1049,8 @@ class Interpreter:
         ast_kwargs = {k: (await self.visit(v, env, path=f"{call_path}.{k}"))[0] for k, v in node.get("kwargs", {}).items()}
         all_args   = list(args) + ast_args
         all_kwargs = {**kwargs, **ast_kwargs}
-        fn = scheme.get(env, str(name))
+        fn_result = await scheme.get(env, str(name))
+        fn = _flow_output(fn_result)
         res = await self._invoke(fn, all_args, all_kwargs, path=call_path)
         if not res.is_success:
             return res, env
@@ -1072,10 +1079,11 @@ class Interpreter:
 
     async def _check(self, value, expected, meta, name, path=""):
         if expected in self.custom_types:
-            ddd = await scheme.normalize(value, self.custom_types[expected])
+            ddd = scheme.normalize(value, self.custom_types[expected])
+            ddd = flow.output(ddd)
             if ddd.get("errors"):
                 raise DSLRuntimeError(f"Tipo errato '{path}': atteso {expected}, ottenuto {type(value).__name__}", meta)
-            return ddd.get("data")
+            return ddd.get("data", ddd)
         py = TYPE_MAP.get(expected)
         if py and not (isinstance(value, py) and not (py is int and isinstance(value, bool))):
             display_name = path if path else name
@@ -1118,7 +1126,8 @@ class Interpreter:
                     val, _ = await self.visit(ast, env_dict, path=t_path)
                     return val
                 if t == "call":
-                    call   = scheme.get(env_dict, ast["name"])
+                    call_result = await scheme.get(env_dict, ast["name"])
+                    call = _flow_output(call_result)
                     args   = [(await self.visit(a, env_dict, path=f"{t_path}.args[{i}]"))[0]
                                for i, a in enumerate(ast.get("args", []))]
                     kwargs = {k: (await self.visit(v, env_dict, path=f"{t_path}.{k}"))[0]

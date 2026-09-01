@@ -153,7 +153,7 @@ class Repository:
         if not model:
             return transaction
 
-        normalized = await scheme.normalize(data, model)
+        normalized = scheme.normalize(data, model)
         if normalized["errors"]:
             return flow.error(normalized["errors"])
         return flow.success(normalized["data"])
