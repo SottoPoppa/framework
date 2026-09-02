@@ -50,16 +50,40 @@ class Manager(manager.Port):
         self.policies = {}
         self.port_configurations = {}
         self.port_capabilities = {}
+        self.port_adapters = {}
 
-    def _register_capabilities(self, session, port, capabilities):
+    def _register_capabilities(self, session, port, capabilities, adapter=None):
+        """Registra capability e istanza concreta di un adapter per una Port."""
         profiles = self.port_capabilities.setdefault(port, [])
         normalized = dict(capabilities)
         if normalized not in profiles:
             profiles.append(normalized)
+        if adapter is not None:
+            adapters = self.port_adapters.setdefault(port, [])
+            if adapter not in adapters:
+                adapters.append(adapter)
         return True
 
-    def security_authorized(self, session, policy, profile=None) -> bool:
-        requirements = policy.get("security", {}) if isinstance(policy, dict) else {}
+    def compatible_adapters(self, session, port, requirements, adapters=None):
+        """Restituisce gli adapter le cui capability soddisfano i requisiti tecnici."""
+        candidates = self.port_adapters.get(port, []) if adapters is None else adapters
+        return [
+            adapter for adapter in candidates
+            if self._profile_satisfies(requirements, getattr(adapter, "capabilities", adapter))
+        ]
+
+    def authorized_adapters(self, session, port, policy, adapters=None):
+        """Seleziona gli adapter compatibili con la sezione security di una policy."""
+        if not isinstance(policy, dict):
+            return []
+        security = policy.get("security", {})
+        return self.compatible_adapters(session, port, security, adapters)
+
+    def capabilities_authorized(self, session, policy, profile=None) -> bool:
+        """Verifica che almeno un profilo adapter soddisfi la sicurezza della policy."""
+        if not isinstance(policy, dict):
+            return False
+        requirements = policy.get("security", {})
         if not requirements:
             return True
         profiles = profile
@@ -67,12 +91,15 @@ class Manager(manager.Port):
             profiles = self.port_capabilities.get(policy.get("port_schema"), [])
         if isinstance(profiles, dict):
             profiles = (profiles,)
-        return bool(profiles) and all(
-            self._profile_satisfies(requirements, candidate)
+        return bool(profiles) and any(
+            self._profile_satisfies(
+                requirements, getattr(candidate, "capabilities", candidate)
+            )
             for candidate in profiles
         )
 
     def _profile_satisfies(self, requirements: dict, profile: dict) -> bool:
+        """Confronta un profilo adapter con i requisiti tecnici richiesti."""
         if requirements.get("tls") is True and profile.get("tls") is not True:
             return False
         versions = {"TLSv1.2": 2, "TLSv1.3": 3}
@@ -87,10 +114,12 @@ class Manager(manager.Port):
 
     @flow.result()
     async def shutdown(self, session):
+        """Arresta l'interprete DSL e chiude il ciclo di vita del Defender."""
         await self.interpreter.stop()
     
     @flow.result()
     async def startup(self, session=None):
+        """Avvia l'interprete e carica policy e controller applicativi."""
         if session is not None:
             return None
         self.managers = self.loader.get_managers()
@@ -135,6 +164,7 @@ class Manager(manager.Port):
         print("[+] Controllers: ",self.controllers)
 
     def _validate_policy(self, port, policy):
+        """Valida configurazione, schema e capability della policy di una Port."""
         if not isinstance(policy, dict):
             return flow.error(f"Policy '{port}' non valida: il risultato DSL non è un dizionario")
         policy = dict(policy)
@@ -149,12 +179,13 @@ class Manager(manager.Port):
         if not normalized.is_success:
             return flow.error(f"Configurazione policy '{port}' non valida: {normalized.output.error}")
         policy["configuration"] = normalized.output.value
-        if not self.security_authorized(None, policy, self.port_capabilities.get(port)):
+        if not self.capabilities_authorized(None, policy, self.port_capabilities.get(port)):
             return flow.error(f"Adapter della Port '{port}' non soddisfa i requisiti di sicurezza")
         return flow.success(policy)
 
     @flow.result()
     async def session_create(self, env=None, **session):
+        """Crea una sessione DSL con un identificatore univoco e l'ambiente runtime."""
         env = env or {}
         env = env | {**self.managers}
         if not session.get("id"):
@@ -163,12 +194,14 @@ class Manager(manager.Port):
         return language.SessionHandle(self.interpreter, session=session)
 
     def session_get(self, sid) -> language.SessionHandle | None:
+        """Restituisce l'handle della sessione DSL esistente, se disponibile."""
         # ricostruisce l'handle senza duplicare stato
         if sid not in self.interpreter._runner.sessions:
             return None
         return language.SessionHandle(self.interpreter, sid)
     
     def get_policy(self, policy):
+        """Restituisce la policy caricata con il nome indicato."""
         return self.policies.get(policy)
 
     def get_configuration(self, port):
@@ -176,15 +209,22 @@ class Manager(manager.Port):
         return self.port_configurations.get(port)
 
     def authorized(self, policy, **constants) -> bool:
+        """Valuta le regole DSL di una policy per azione, risorsa, posizione e sessione."""
         policy_name = policy
         policy = self.get_policy(policy_name)
         if not policy:
             return False
-        if not self.security_authorized(None, policy, self.port_capabilities.get(policy_name)):
+        if not self.capabilities_authorized(None, policy, self.port_capabilities.get(policy_name)):
             return False
         rules = policy.get('rules', {})
         action, resource, location = constants.get('action', ''), constants.get('resource', ''), constants.get('location', '')
-        target = {'action':action, 'resource':resource, 'location':location}
+        session = constants.get("session")
+        target = {
+            'action': action,
+            'resource': resource,
+            'location': location,
+            'session': session,
+        }
         filted_rules = []
         all_resutl = []
         if location in rules:

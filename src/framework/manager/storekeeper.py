@@ -104,7 +104,23 @@ class Manager(manager.Port):
         """Crea i task per tutti i provider compatibili con il repository."""
         tasks = []
         repository_profiles = set(repository.location)
-        for provider in self.persistences:
+        providers = self.persistences
+        policy = self.defender.get_policy("persistence") if self.defender else None
+        security = policy.get("security", {}) if isinstance(policy, dict) else {}
+        if self.defender and not self.defender.authorized(
+            "persistence",
+            session=session,
+            action=str(storekeeper.get("operation", "")).upper(),
+            resource=storekeeper.get("repository", ""),
+        ):
+            return flow.error("Persistence policy denied the operation")
+        if self.defender and security:
+            providers = self.defender.authorized_adapters(
+                session, "persistence", policy, self.persistences
+            )
+            if not providers:
+                return flow.error("Nessun persistence provider autorizzato dalla policy di sicurezza")
+        for provider in providers:
             provider_profile = str(provider.config.get('name', '')).casefold()
             if provider_profile not in repository_profiles:
                 continue

@@ -29,10 +29,10 @@ security: {
 };
 
 policies: {
-    policy:CREATE := { effect: "allow"; target: { action: "CREATE" }; condition: @action == "CREATE" };
-    policy:READ := { effect: "allow"; target: { action: "READ" }; condition: @action == "READ" };
-    policy:UPDATE := { effect: "allow"; target: { action: "UPDATE" }; condition: @action == "UPDATE" };
-    policy:DELETE := { effect: "allow"; target: { action: "DELETE" }; condition: @action == "DELETE" }
+    policy:CREATE := { effect: "allow"; target: { action: "CREATE" }; condition: @action == "CREATE" & @session.user.id != none };
+    policy:READ := { effect: "allow"; target: { action: "READ" }; condition: @action == "READ" & @session.user.id != none };
+    policy:UPDATE := { effect: "allow"; target: { action: "UPDATE" }; condition: @action == "UPDATE" & @session.user.id != none };
+    policy:DELETE := { effect: "allow"; target: { action: "DELETE" }; condition: @action == "DELETE" & @session.user.id != none }
 };
 
 rules: {

@@ -764,7 +764,7 @@ class Loader:
         defender_cls = getattr(defender_resource.module, "Manager", None) if defender_resource else None
         defender = self.container.get(defender_cls) if defender_cls else None
         if defender and hasattr(defender, "_register_capabilities"):
-            defender._register_capabilities(None, port, capabilities)
+            defender._register_capabilities(None, port, capabilities, adapter)
 
     async def reload(self, session: Any, changed_path: str) -> bool:
         """Esegue il reload in-memory di adapter o manager modificati."""
