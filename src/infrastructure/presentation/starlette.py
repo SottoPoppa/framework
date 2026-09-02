@@ -5,6 +5,7 @@ import hmac
 from html import escape
 import re
 import json
+from http.cookies import SimpleCookie
 from datetime import datetime
 from urllib.parse import urlunparse, ParseResult,parse_qs
 import xml.etree.ElementTree as ET
@@ -95,6 +96,47 @@ class ServerSessionMiddleware(BaseHTTPMiddleware):
         if not separator or not hmac.compare_digest(signature, self._signature(session_id)):
             return None, False
         return session_id, True
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "websocket":
+            return await super().__call__(scope, receive, send)
+
+        cookies = SimpleCookie()
+        for name, value in scope.get("headers", []):
+            if name.lower() == b"cookie":
+                cookies.load(value.decode("latin-1"))
+                break
+        cookie = cookies.get(self.cookie_name)
+        session_id, verified = self._session_id(cookie.value if cookie else None)
+        session_id = session_id or secrets.token_urlsafe(32)
+        context = {
+            "session_id": session_id,
+            "session_id_verified": True,
+            "cookie_verified": verified,
+        }
+        session = {"id": session_id}
+        if verified:
+            result = await self.storekeeper.gather(
+                session,
+                repository="sessions",
+                persistence=self.persistence,
+                context=context,
+            )
+            if flow.check(result):
+                stored = flow.output(result)
+                if isinstance(stored, dict):
+                    content = stored.get("content", "")
+                    if isinstance(content, str) and content:
+                        try:
+                            loaded = json.loads(content)
+                        except json.JSONDecodeError:
+                            loaded = {}
+                        if isinstance(loaded, dict):
+                            session.update(loaded)
+        session["id"] = session_id
+        scope["session"] = session
+        scope["security_context"] = context
+        await self.app(scope, receive, send)
 
     async def dispatch(self, request, call_next):
         session_id, verified = self._session_id(request.cookies.get(self.cookie_name))
