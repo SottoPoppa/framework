@@ -146,6 +146,8 @@ class Manager(manager.Port):
 
                 if flow.is_result(transaction):
                     errors.extend(transaction.get('errors', []))
+                    if not flow.check(transaction):
+                        errors.append(flow.output(transaction))
 
                 operations = unfinished
 

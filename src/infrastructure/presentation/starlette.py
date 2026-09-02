@@ -97,6 +97,47 @@ class ServerSessionMiddleware(BaseHTTPMiddleware):
             return None, False
         return session_id, True
 
+    async def _load_session(self, session_id, verified):
+        context = {
+            "session_id": session_id,
+            "cookie_verified": verified,
+        }
+        session = {"id": session_id}
+        if not verified:
+            return session, context
+
+        result = await self.storekeeper.gather(
+            session,
+            repository="sessions",
+            persistence=self.persistence,
+            context=context,
+        )
+        if not flow.check(result):
+            raise RuntimeError(f"Impossibile leggere la sessione: {flow.output(result)}")
+        stored = flow.output(result)
+        if isinstance(stored, dict):
+            content = stored.get("content", "")
+            if isinstance(content, str) and content:
+                try:
+                    loaded = json.loads(content)
+                except json.JSONDecodeError as error:
+                    raise RuntimeError("Sessione persistita non valida") from error
+                if isinstance(loaded, dict):
+                    session.update(loaded)
+        session["id"] = session_id
+        return session, context
+
+    async def _save_session(self, session, context):
+        result = await self.storekeeper.change(
+            session,
+            repository="sessions",
+            persistence=self.persistence,
+            payload={"content": json.dumps(session)},
+            context=context,
+        )
+        if not flow.check(result):
+            raise RuntimeError(f"Impossibile salvare la sessione: {flow.output(result)}")
+
     async def __call__(self, scope, receive, send):
         if scope.get("type") != "websocket":
             return await super().__call__(scope, receive, send)
@@ -109,73 +150,22 @@ class ServerSessionMiddleware(BaseHTTPMiddleware):
         cookie = cookies.get(self.cookie_name)
         session_id, verified = self._session_id(cookie.value if cookie else None)
         session_id = session_id or secrets.token_urlsafe(32)
-        context = {
-            "session_id": session_id,
-            "session_id_verified": True,
-            "cookie_verified": verified,
-        }
-        session = {"id": session_id}
-        if verified:
-            result = await self.storekeeper.gather(
-                session,
-                repository="sessions",
-                persistence=self.persistence,
-                context=context,
-            )
-            if flow.check(result):
-                stored = flow.output(result)
-                if isinstance(stored, dict):
-                    content = stored.get("content", "")
-                    if isinstance(content, str) and content:
-                        try:
-                            loaded = json.loads(content)
-                        except json.JSONDecodeError:
-                            loaded = {}
-                        if isinstance(loaded, dict):
-                            session.update(loaded)
-        session["id"] = session_id
+        session, context = await self._load_session(session_id, verified)
         scope["session"] = session
         scope["security_context"] = context
-        await self.app(scope, receive, send)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            await self._save_session(session, context)
 
     async def dispatch(self, request, call_next):
         session_id, verified = self._session_id(request.cookies.get(self.cookie_name))
         session_id = session_id or secrets.token_urlsafe(32)
-        context = {
-            "session_id": session_id,
-            "session_id_verified": True,
-            "cookie_verified": verified,
-        }
-        session = {"id": session_id}
-        if verified:
-            result = await self.storekeeper.gather(
-                session,
-                repository="sessions",
-                persistence=self.persistence,
-                context=context,
-            )
-            if flow.check(result):
-                stored = flow.output(result)
-                if isinstance(stored, dict):
-                    content = stored.get("content", "")
-                    if isinstance(content, str) and content:
-                        try:
-                            loaded = json.loads(content)
-                        except json.JSONDecodeError:
-                            loaded = {}
-                        if isinstance(loaded, dict):
-                            session.update(loaded)
-        session["id"] = session_id
+        session, context = await self._load_session(session_id, verified)
         request.scope["session"] = session
         request.scope["security_context"] = context
         response = await call_next(request)
-        await self.storekeeper.change(
-            session,
-            repository="sessions",
-            persistence=self.persistence,
-            payload={"content": json.dumps(session)},
-            context=context,
-        )
+        await self._save_session(session, context)
         response.set_cookie(
             self.cookie_name,
             f"{session_id}.{self._signature(session_id)}",

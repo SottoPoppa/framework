@@ -133,8 +133,15 @@ class Adapter(persistence.Port):
                     file.write(data)
                 return flow.success(self._record(path, data))
             case 'GET':
-                with open(path, "r", encoding="utf-8") as file:
-                    data = file.read()
+                try:
+                    with open(path, "r", encoding="utf-8") as file:
+                        data = file.read()
+                except FileNotFoundError:
+                    return flow.error({
+                        "code": "not_found",
+                        "message": "File non trovato",
+                        "path": path,
+                    })
 
                 return flow.success(self._record(path, data))
             case 'VIEW':
