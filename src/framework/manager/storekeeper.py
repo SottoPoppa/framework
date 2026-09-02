@@ -79,7 +79,7 @@ class Manager(manager.Port):
         operation = storekeeper.get('operation')
         try:
             task_args = await repository.parameters(
-                **storekeeper | {'provider': profile}
+                **storekeeper | {'provider': profile, 'session': session}
             )
         except Exception as error:
             return flow.error(
@@ -110,6 +110,7 @@ class Manager(manager.Port):
         if self.defender and not self.defender.authorized(
             "persistence",
             session=session,
+            context=storekeeper.get("context", {}),
             action=str(storekeeper.get("operation", "")).upper(),
             resource=storekeeper.get("repository", ""),
         ):
@@ -128,7 +129,7 @@ class Manager(manager.Port):
                 task = await self._prepare_provider(
                     provider, repository, storekeeper, session
                 )
-                if not task.get('success'):
+                if not flow.check(task):
                     for pending in tasks:
                         pending.cancel()
                     return task
@@ -155,19 +156,19 @@ class Manager(manager.Port):
             return flow.error("Nome del repository non specificato.")
 
         repository_result = await self._load_repository(repository_name)
-        if not repository_result.get('success'):
+        if not flow.check(repository_result):
             return repository_result
         repository = flow.output(repository_result)
 
         preparation = await self._prepare_operations(repository, storekeeper, session)
-        if not preparation.get('success'):
+        if not flow.check(preparation):
             return preparation
         return flow.success((repository, flow.output(preparation)))
     
     @flow.result()
     async def _execute(self, operation, session, constants):
         state = await self.preparation(session, constants | {'operation': operation})
-        if not state.get('success'):
+        if not flow.check(state):
             return state
 
         repository, operations = flow.output(state)

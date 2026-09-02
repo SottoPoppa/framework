@@ -6,6 +6,7 @@ import signal
 
 import framework.core.scheme as scheme
 import framework.core.flow as flow
+import framework.service.template as template_service
 
 class Repository:
     def __init__(self, **constants):
@@ -112,7 +113,7 @@ class Repository:
         """
         best_t, max_score = None, -1
         
-        for t in (templates if isinstance(templates, list) else [templates]):
+        for t in (templates if isinstance(templates, (list, tuple)) else [templates]):
             reqs = self.get_requirements(t)
             score = 0
             
@@ -120,7 +121,7 @@ class Repository:
                 score = 0.1 # Template statico
             else:
                 # Verifichiamo quali requisiti sono presenti nei dati tramite il servizio Scheme
-                met = [r for r in reqs if scheme.get(data, r) is not None]
+                met = [r for r in reqs if flow.map_get_value(r)(data) is not None]
                 if len(met) == len(reqs):
                     # Calcoliamo lo score: numero requisiti ponderato per la profondità dei path
                     # Ogni segmento del path conta come precisione aggiuntiva
@@ -177,13 +178,12 @@ class Repository:
         templates = self.location.get(profile, [])
         
         template = self.select(templates, combined)
-
         
         if not template:
             raise ValueError(f"Nessun template compatibile trovato per {profile}. Dati: {list(combined.keys())}")
 
         # 3. Formattazione e Encoding
-        path = await scheme.format(template, **combined)
+        path = await template_service.format(template, **combined)
         if '?' in path:
             base, query = path.split('?', 1)
             path = f"{base}?{quote(query, safe='=&%')}"

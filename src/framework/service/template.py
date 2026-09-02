@@ -14,10 +14,14 @@ jinja_env = Environment()
 async def format(target, **constants):
     """Formatta una stringa usando Jinja2 e l'environment condiviso (jinja)."""
     try:
-        if not target or not isinstance(target, str) or '{' not in target:
+        if not target:
+            return target
+        if not isinstance(target, str):
+            target = str(target)
+        if '{' not in target:
             return target
         template = jinja_env.from_string(target)
-        return template.render(constants)
+        return template.render(**constants)
     except Exception as e:
         raise ValueError(f"Errore formattazione: {e}")
 

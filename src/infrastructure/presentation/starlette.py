@@ -1,5 +1,7 @@
 import uuid
 import asyncio
+import hashlib
+import hmac
 from html import escape
 import re
 import json
@@ -8,6 +10,7 @@ from urllib.parse import urlunparse, ParseResult,parse_qs
 import xml.etree.ElementTree as ET
 import htpy
 from markupsafe import Markup
+import secrets
 
 import framework.port.presentation as presentation
 import framework.core.flow as flow
@@ -17,6 +20,7 @@ from framework.manager.defender import Manager as Defender
 from framework.manager.presenter import Manager as Presenter
 from framework.manager.messenger import Manager as Messenger
 from framework.manager.authenticator import Manager as Authenticator
+from framework.manager.storekeeper import Manager as Storekeeper
 from framework.manager.loader import Loader
 
 try:
@@ -26,7 +30,6 @@ try:
     from starlette.routing import Route,Mount,WebSocketRoute
     from starlette.middleware import Middleware
     from starlette.websockets import WebSocket, WebSocketDisconnect
-    from starlette.middleware.sessions import SessionMiddleware
     from starlette.middleware.cors import CORSMiddleware
     #from starlette.middleware.csrf import CSRFMiddleware
     from starlette.middleware.base import BaseHTTPMiddleware
@@ -41,7 +44,6 @@ try:
     # Auth 
     #from starlette.middleware.sessions import SessionMiddleware
     from datetime import timedelta
-    import secrets
     #from starlette_login.middleware import AuthenticationMiddleware
 
     #
@@ -72,6 +74,77 @@ except Exception as e:
     import xml.etree.ElementTree as ET
     from xml.sax.saxutils import escape
 
+class ServerSessionMiddleware(BaseHTTPMiddleware):
+    """Mantiene i dati di sessione sul server e nel cookie conserva solo un riferimento opaco."""
+
+    def __init__(self, app, secret_key, storekeeper, persistence="workfolder", cookie_name="session_state", secure=False):
+        super().__init__(app)
+        self.secret_key = secret_key.encode("utf-8")
+        self.storekeeper = storekeeper
+        self.persistence = persistence
+        self.cookie_name = cookie_name
+        self.secure = secure
+
+    def _signature(self, session_id):
+        return hmac.new(self.secret_key, session_id.encode(), hashlib.sha256).hexdigest()
+
+    def _session_id(self, cookie):
+        if not cookie:
+            return None, False
+        session_id, separator, signature = cookie.partition(".")
+        if not separator or not hmac.compare_digest(signature, self._signature(session_id)):
+            return None, False
+        return session_id, True
+
+    async def dispatch(self, request, call_next):
+        session_id, verified = self._session_id(request.cookies.get(self.cookie_name))
+        session_id = session_id or secrets.token_urlsafe(32)
+        context = {
+            "session_id": session_id,
+            "session_id_verified": True,
+            "cookie_verified": verified,
+        }
+        session = {"id": session_id}
+        if verified:
+            result = await self.storekeeper.gather(
+                session,
+                repository="sessions",
+                persistence=self.persistence,
+                context=context,
+            )
+            if flow.check(result):
+                stored = flow.output(result)
+                if isinstance(stored, dict):
+                    content = stored.get("content", "")
+                    if isinstance(content, str) and content:
+                        try:
+                            loaded = json.loads(content)
+                        except json.JSONDecodeError:
+                            loaded = {}
+                        if isinstance(loaded, dict):
+                            session.update(loaded)
+        session["id"] = session_id
+        request.scope["session"] = session
+        request.scope["security_context"] = context
+        response = await call_next(request)
+        await self.storekeeper.change(
+            session,
+            repository="sessions",
+            persistence=self.persistence,
+            payload={"content": json.dumps(session)},
+            context=context,
+        )
+        response.set_cookie(
+            self.cookie_name,
+            f"{session_id}.{self._signature(session_id)}",
+            httponly=True,
+            secure=self.secure,
+            samesite="lax",
+            path="/",
+        )
+        return response
+
+
 class DefenderMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, defender, routes):
         super().__init__(app)
@@ -80,14 +153,16 @@ class DefenderMiddleware(BaseHTTPMiddleware):
     
 
     async def dispatch(self, request, call_next):
+        configuration = self.defender.get_configuration("presentation") or {}
+        security = configuration.get("security_and_waf", {})
+        authentication = configuration.get("authentication_guards", {})
+        if security.get("tls_enabled") and request.url.scheme != "https":
+            return HTMLResponse(status_code=400, content="HTTPS required")
+
         # Esempio: decidiamo se accettare la richiesta in base al path
-        if "id" not in request.session:
-            session = await self.defender.session_create(request.session.copy())
-            if session.get('success'):
-                request.session.update(session.get('outputs', {}))
-            else:
-                request.session["errors"] = session.get('errors', [])
         request.session["ip"] = request.client.host
+        if security.get("csrf_protection"):
+            request.session.setdefault("csrf_token", secrets.token_urlsafe(32))
         #print(request.session)
         #request.session["user"] = await self.defender.whoami(session_id=request.session["id"],ip=request.session["ip"])
         
@@ -105,8 +180,28 @@ class DefenderMiddleware(BaseHTTPMiddleware):
         request.state.metadata = data.get('metadata', {})
         request.state.url = request.state.metadata.get('url_details', {})
         request.state.params = data.get('params', {})
+        route_type = request.state.metadata.get("type")
+        anonymous_route = route_type in {"authenticate", "activate", "reinstate"}
+        user = request.session.get("user", {})
+        authenticated = isinstance(user, dict) and bool(user.get("id"))
+        if authentication.get("auth_required") and not authenticated and not anonymous_route:
+            return HTMLResponse(status_code=401, content="Authentication required")
+
+        csrf_required = security.get("csrf_protection")
+        if csrf_required and method in {"POST", "PUT", "PATCH", "DELETE"}:
+            csrf_token = request.headers.get("x-csrf-token")
+            if not csrf_token and request.headers.get("content-type", "").startswith(
+                "application/x-www-form-urlencoded"
+            ):
+                body = await request.body()
+                fields = parse_qs(body.decode("utf-8", errors="replace"))
+                csrf_token = fields.get("csrf_token", [None])[0]
+            if not csrf_token or not hmac.compare_digest(
+                csrf_token, request.session.get("csrf_token", "")
+            ):
+                return HTMLResponse(status_code=403, content="CSRF validation failed")
         # Logica di decisione (senza scomodare il resolve del router)
-        authorized = self.defender.authorized('presentation', action=method, resource=request.state.metadata.get('view'), location=request.state.metadata.get('path'))
+        authorized = self.defender.authorized('presentation', session=request.session, context=request.scope.get("security_context", {}), action=method, resource=request.state.metadata.get('view'), location=request.state.metadata.get('path'))
                     
         if not authorized:
             # Rifiutiamo la richiesta con un 403 Forbidden o 404
@@ -114,6 +209,11 @@ class DefenderMiddleware(BaseHTTPMiddleware):
 
         # Se va bene, procediamo
         response = await call_next(request)
+        if security.get("enable_hsts"):
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        content_security_policy = security.get("content_security_policy")
+        if content_security_policy:
+            response.headers["Content-Security-Policy"] = content_security_policy
         return response
 
 # --- Configurazione Programmatica Attributi ---
@@ -603,21 +703,26 @@ class Adapter(presentation.Port):
         presentation.Tag.PATTERN.value: {"pattern": lambda x: htpy.Element("pattern")(**attrs(presentation.Tag.PATTERN.value, x))[[Markup(i) for i in x['inner']]]},
     }
 
-    def __init__(self, loader: Loader, defender: Defender, presenter: Presenter, messenger: Messenger, authenticator: Authenticator, **constants):
+    def __init__(self, loader: Loader, defender: Defender, presenter: Presenter, messenger: Messenger, authenticator: Authenticator, storekeeper: Storekeeper, **constants):
         super().__init__(loader, defender, presenter, messenger, authenticator, **constants)
+        self.storekeeper = storekeeper
         self.ssh = {}
         cwd = os.getcwd()
         self.routes_static=[
             Mount('/static', app=StaticFiles(directory=f'{cwd}/public/'), name="static"),
-            Mount('/framework', app=StaticFiles(directory=f'{cwd}/src/framework'), name="y"),
-            Mount('/application', app=StaticFiles(directory=f'{cwd}/src/application'), name="z"),
-            Mount('/infrastructure', app=StaticFiles(directory=f'{cwd}/src/infrastructure'), name="x"),
             #WebSocketRoute("/messenger", self.websocket, name="messenger"),
             #WebSocketRoute("/ssh", self.websocketssh, name="ssh"),
         ]
         
         self.middleware_static = [
-            Middleware(SessionMiddleware, session_cookie="session_state", secret_key=self._session_secret()),
+            Middleware(
+                ServerSessionMiddleware,
+                cookie_name="session_state",
+                secret_key=self._session_secret(),
+                storekeeper=self.storekeeper,
+                persistence=self.config.get("persistence", "workfolder"),
+                secure=bool(self.config.get("ssl_certfile")),
+            ),
             Middleware(
                 CORSMiddleware,
                 allow_origins=self.config.get('cors_origins', []),
@@ -672,13 +777,24 @@ class Adapter(presentation.Port):
     async def start(self, session):
         self.session = session
         loop = asyncio.get_event_loop()
+        security = (self.defender.get_configuration("presentation") or {}).get(
+            "security_and_waf", {}
+        )
+        tls_required = security.get("tls_enabled", False)
+        if tls_required and not {
+            "ssl_keyfile",
+            "ssl_certfile",
+        }.issubset(self.config):
+            raise RuntimeError(
+                "TLS richiesto dalla policy: configurare ssl_keyfile e ssl_certfile"
+            )
         await self.parse_route()
         self.routes_static += [
             WebSocketRoute("/reactive", self.render_reactive, name="reactive")
         ]
         await self.mount_route(self.routes_static) # 'routes' deve essere accessibile qui
         # Inizializza l'applicazione Starlette con rotte e middleware
-        self.app = Starlette(debug=True, routes=self.routes_static, exception_handlers={HTTPException: self.http_exception_handler}, middleware=self.middleware_static)
+        self.app = Starlette(debug=False, routes=self.routes_static, exception_handlers={HTTPException: self.http_exception_handler}, middleware=self.middleware_static)
         #print(di['message'][0].logger,'###########')
         # Parametri di configurazione base per Uvicorn
         uvicorn_config_params = {
@@ -828,6 +944,15 @@ class Adapter(presentation.Port):
             html = flow.output(html)
         if not isinstance(html, (str, bytes, memoryview)):
             html = str(html)
+        if (self.defender.get_configuration("presentation") or {}).get(
+            "security_and_waf", {}
+        ).get("csrf_protection"):
+            document = BeautifulSoup(html, "html.parser")
+            for form in document.find_all("form"):
+                token = document.new_tag("input", type="hidden", name="csrf_token")
+                token["value"] = request.session["csrf_token"]
+                form.insert(0, token)
+            html = str(document)
         return HTMLResponse(html)
 
     async def mount_view(self, url, metadata, session):

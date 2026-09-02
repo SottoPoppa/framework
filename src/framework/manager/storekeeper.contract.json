@@ -57,8 +57,8 @@
         "production": "a97fdd10454da4b3c895908b0ec13db534a6143bf149033e238b93f52b35d8f0"
       },
       "preparation": {
-        "test": "d18ef7037412d139d2f640600e5adbccce638682cd2b21e1414c377231b61386",
-        "production": "d18ef7037412d139d2f640600e5adbccce638682cd2b21e1414c377231b61386"
+        "test": "30cf4071ebef18b2e50135fabee16f8686f8b8bc9eb8058f73ab01ac1779f805",
+        "production": "30cf4071ebef18b2e50135fabee16f8686f8b8bc9eb8058f73ab01ac1779f805"
       }
     }
   }

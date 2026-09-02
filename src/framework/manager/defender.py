@@ -224,6 +224,7 @@ class Manager(manager.Port):
             'resource': resource,
             'location': location,
             'session': session,
+            'context': constants.get('context', {}),
         }
         filted_rules = []
         all_resutl = []
@@ -231,6 +232,8 @@ class Manager(manager.Port):
             filted_rules = rules.get(location)
         elif resource in rules:
             filted_rules = rules.get(resource)
+        elif action in rules:
+            filted_rules = rules.get(action)
         else:
             pass
 

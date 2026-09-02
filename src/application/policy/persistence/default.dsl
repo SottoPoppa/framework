@@ -29,6 +29,7 @@ security: {
 };
 
 policies: {
+    policy:SESSION_ACCESS := { effect: "allow"; target: { resource: "sessions" }; condition: (@action == "READ" | @action == "UPDATE") & @resource == "sessions" & @context.session_id_verified == true & @context.session_id == @session.id };
     policy:CREATE := { effect: "allow"; target: { action: "CREATE" }; condition: @action == "CREATE" & @session.user.id != none };
     policy:READ := { effect: "allow"; target: { action: "READ" }; condition: @action == "READ" & @session.user.id != none };
     policy:UPDATE := { effect: "allow"; target: { action: "UPDATE" }; condition: @action == "UPDATE" & @session.user.id != none };
@@ -36,6 +37,7 @@ policies: {
 };
 
 rules: {
+    "sessions": [policies.SESSION_ACCESS];
     "CREATE": [policies.CREATE];
     "READ": [policies.READ];
     "UPDATE": [policies.UPDATE];
