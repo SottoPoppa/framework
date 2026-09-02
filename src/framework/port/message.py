@@ -3,6 +3,13 @@ import framework.core.flow as flow
 
 @runtime_checkable
 class Port(Protocol):
+    capabilities = {
+        "tls": False,
+        "encryption": False,
+        "audit": False,
+        "rate_limiting": False,
+        "authentication": [],
+    }
 
     _method_decorators = {
         "read": flow.result(),

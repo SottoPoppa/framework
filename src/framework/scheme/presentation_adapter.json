@@ -1,0 +1,27 @@
+{
+  "tls": {
+    "type": "boolean",
+    "required": true
+  },
+  "min_tls_version": {
+    "type": "string",
+    "required": true,
+    "allowed": ["TLSv1.2", "TLSv1.3"]
+  },
+  "csrf": {
+    "type": "boolean",
+    "required": true
+  },
+  "authentication": {
+    "type": "list",
+    "required": true,
+    "schema": {
+      "type": "string",
+      "allowed": ["jwt", "oauth2", "session_cookie", "api_key", "basic"]
+    }
+  },
+  "rate_limiting": {
+    "type": "boolean",
+    "required": true
+  }
+}

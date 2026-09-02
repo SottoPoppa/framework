@@ -52,6 +52,13 @@ class FileWatcherHandler(FileSystemEventHandler):
 
 
 class Adapter(persistence.Port):
+    capabilities = {
+        "encryption_at_rest": False,
+        "audit": False,
+        "soft_delete": False,
+        "authentication": ["filesystem_permissions"],
+    }
+
     def __init__(self, messenger: Messenger, **constants):
         self.messenger = messenger
         self.config = constants

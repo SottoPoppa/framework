@@ -1,0 +1,103 @@
+{
+  "presentation_type": {
+    "type": "string",
+    "required": true,
+    "allowed": [
+      "rest_api",
+      "graphql",
+      "websocket",
+      "grpc",
+      "web_server_html"
+    ]
+  },
+  "cors_policy": {
+    "type": "dict",
+    "required": true,
+    "schema": {
+      "enabled": { "type": "boolean", "required": true },
+      "allowed_origins": {
+        "type": "list",
+        "required": false,
+        "schema": { "type": "string" }
+      },
+      "allowed_methods": {
+        "type": "list",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "allowed": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
+        }
+      },
+      "allowed_headers": {
+        "type": "list",
+        "required": false,
+        "schema": { "type": "string" }
+      },
+      "allow_credentials": { "type": "boolean", "required": false },
+      "max_age_seconds": { "type": "integer", "min": 0, "required": false }
+    }
+  },
+  "security_and_waf": {
+    "type": "dict",
+    "required": true,
+    "schema": {
+      "tls_enabled": { "type": "boolean", "required": true },
+      "min_tls_version": {
+        "type": "string",
+        "required": false,
+        "allowed": ["TLSv1.2", "TLSv1.3"]
+      },
+      "enable_hsts": { "type": "boolean", "required": false },
+      "csrf_protection": { "type": "boolean", "required": true },
+      "content_security_policy": { "type": "string", "nullable": true, "required": false },
+      "request_body_limit_mb": { "type": "integer", "min": 1, "required": false }
+    }
+  },
+  "authentication_guards": {
+    "type": "dict",
+    "required": true,
+    "schema": {
+      "auth_required": { "type": "boolean", "required": true },
+      "methods": {
+        "type": "list",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "allowed": ["jwt", "oauth2", "session_cookie", "api_key", "basic"]
+        }
+      },
+      "identity_provider_url": { "type": "string", "nullable": true, "required": false }
+    }
+  },
+  "rate_limiting": {
+    "type": "dict",
+    "required": false,
+    "schema": {
+      "enabled": { "type": "boolean", "required": true },
+      "max_requests_per_minute": { "type": "integer", "min": 1, "required": true },
+      "burst_limit": { "type": "integer", "min": 1, "required": false },
+      "key_by": {
+        "type": "string",
+        "required": false,
+        "allowed": ["ip", "jwt_user_id", "api_key", "session_id"]
+      }
+    }
+  },
+  "caching_and_cdn": {
+    "type": "dict",
+    "required": false,
+    "schema": {
+      "enabled": { "type": "boolean", "required": true },
+      "cache_control_header": { "type": "string", "required": false },
+      "default_ttl_seconds": { "type": "integer", "min": 0, "required": false }
+    }
+  },
+  "documentation": {
+    "type": "dict",
+    "required": false,
+    "schema": {
+      "swagger_ui_enabled": { "type": "boolean", "required": true },
+      "openapi_spec_path": { "type": "string", "nullable": true, "required": false }
+    }
+  }
+}

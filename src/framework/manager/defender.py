@@ -17,6 +17,7 @@ class Manager(manager.Port):
         "get_policy",
         "authorized",
         "resolve_route",
+        "get_configuration",
     }
     def __init__(self, loader: loader.Loader, authentications: list[authentication.Port], **constants):
         """
@@ -47,6 +48,42 @@ class Manager(manager.Port):
 
         # Policy caricate e valutate dall'interprete, indicizzate per nome.
         self.policies = {}
+        self.port_configurations = {}
+        self.port_capabilities = {}
+
+    def _register_capabilities(self, session, port, capabilities):
+        profiles = self.port_capabilities.setdefault(port, [])
+        normalized = dict(capabilities)
+        if normalized not in profiles:
+            profiles.append(normalized)
+        return True
+
+    def security_authorized(self, session, policy, profile=None) -> bool:
+        requirements = policy.get("security", {}) if isinstance(policy, dict) else {}
+        if not requirements:
+            return True
+        profiles = profile
+        if profiles is None:
+            profiles = self.port_capabilities.get(policy.get("port_schema"), [])
+        if isinstance(profiles, dict):
+            profiles = (profiles,)
+        return bool(profiles) and all(
+            self._profile_satisfies(requirements, candidate)
+            for candidate in profiles
+        )
+
+    def _profile_satisfies(self, requirements: dict, profile: dict) -> bool:
+        if requirements.get("tls") is True and profile.get("tls") is not True:
+            return False
+        versions = {"TLSv1.2": 2, "TLSv1.3": 3}
+        required_version = requirements.get("min_tls_version")
+        if required_version and versions.get(profile.get("min_tls_version"), 0) < versions.get(required_version, 99):
+            return False
+        for key, required in requirements.items():
+            if isinstance(required, bool) and required and profile.get(key) is not True:
+                return False
+        required_authentication = requirements.get("required_authentication")
+        return not required_authentication or required_authentication in profile.get("authentication", [])
 
     @flow.result()
     async def shutdown(self, session):
@@ -58,12 +95,18 @@ class Manager(manager.Port):
             return None
         self.managers = self.loader.get_managers()
         await self.interpreter.start()
-        TARGET_PORTS = {'presentation', 'persistence', 'message'}
-
-        # Genera la lista filtrata
-        filtered_keys = [x for x in self.config if x in TARGET_PORTS]
-        for policy in filtered_keys:
-            filename = self.config[policy]
+        policy_managers = {
+            "presentation": "presenter",
+            "authentication": "authenticator",
+            "persistence": "storekeeper",
+            "message": "messenger",
+        }
+        manager_config = self.loader.current_config.get("manager", {})
+        for policy, manager_name in policy_managers.items():
+            config = manager_config.get(manager_name, {})
+            filename = config.get(policy) if isinstance(config, dict) else None
+            if not filename:
+                continue
             path = f"src/application/policy/{policy}/{filename}"
             code = await self.loader.resource(path)
             await self.interpreter.load_file(path, code)
@@ -71,7 +114,13 @@ class Manager(manager.Port):
             session_result = await self.session_create()
             async with flow.output(session_result) as session:
                 run_result = await session.run(path)
-                self.policies[policy] = flow.output(run_result)
+                policy_data = flow.output(run_result)
+            validation = self._validate_policy(policy, policy_data)
+            if not validation.is_success:
+                return validation
+            validated_policy = validation.output.value
+            self.policies[policy] = validated_policy
+            self.port_configurations[policy] = validated_policy["configuration"]
             print(f"[+] Policy: {policy}/{filename}")
 
         from pathlib import Path
@@ -84,6 +133,25 @@ class Manager(manager.Port):
             await self.interpreter.load_file(controller_name, code)
         
         print("[+] Controllers: ",self.controllers)
+
+    def _validate_policy(self, port, policy):
+        if not isinstance(policy, dict):
+            return flow.error(f"Policy '{port}' non valida: il risultato DSL non è un dizionario")
+        policy = dict(policy)
+        schema_name = policy.get("port_schema", port)
+        configuration = policy.get("configuration")
+        if configuration is None:
+            return flow.error(f"Configurazione globale mancante per la Port '{port}'")
+        schema = scheme.schemes.get(schema_name)
+        if not schema:
+            return flow.error(f"Schema '{schema_name}' non trovato per la policy '{port}'")
+        normalized = scheme.normalize(configuration, schema)
+        if not normalized.is_success:
+            return flow.error(f"Configurazione policy '{port}' non valida: {normalized.output.error}")
+        policy["configuration"] = normalized.output.value
+        if not self.security_authorized(None, policy, self.port_capabilities.get(port)):
+            return flow.error(f"Adapter della Port '{port}' non soddisfa i requisiti di sicurezza")
+        return flow.success(policy)
 
     @flow.result()
     async def session_create(self, env=None, **session):
@@ -99,108 +167,20 @@ class Manager(manager.Port):
         if sid not in self.interpreter._runner.sessions:
             return None
         return language.SessionHandle(self.interpreter, sid)
-
     
     def get_policy(self, policy):
         return self.policies.get(policy)
 
-    @staticmethod
-    def _merge_authentication_result(session, authentication, session_result):
-        if not session_result.get('success'):
-            return session_result
-
-        payload = flow.output(session_result)
-        if not isinstance(payload, dict):
-            return flow.error("Authentication provider returned an invalid payload")
-
-        session_result['outputs'] = payload
-
-        providers = payload.get('providers', {})
-        user = payload.get('user')
-        provider = providers.get(authentication.name)
-        if not isinstance(provider, dict) or not isinstance(user, dict):
-            return flow.error("Authentication provider returned incomplete identity data")
-
-        session.setdefault('providers', {})
-        session.setdefault('user', {})
-        session['providers'][authentication.name] = provider
-        session['user'] |= user
-        return  session_result
-
-    @flow.result(inputs=('session',))
-    async def new_session(self, session):
-        return flow.success(session)
-    
-    @flow.result(outputs=('session',))
-    async def terminate(self, session, **constants) -> bool:
-        """
-        Termina la sessione di un utente specificato.
-
-        :param constants: Deve includere 'identifier'.
-        :return: True se la sessione è stata terminata, False se l'utente non esiste.
-        """
-
-        for authentication in self.authentications:
-            session_result = await authentication.sign_out(session)
-            if not session_result.get('success'):
-                return session_result
-
-        session.pop('providers', None)
-        session.pop('user', None)
-
-        return flow.success(session)
-
-    @flow.result(outputs=('session',))
-    async def reinstate(self, session, **constants):
-        """
-        Autentica un utente utilizzando i provider configurati.
-
-        :param constants: Deve includere 'identifier', 'ip' e credenziali.
-        :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
-        """
-        for authentication in self.authentications:
-            session_result = await authentication.sign_aid(**constants)
-            merge_error = self._merge_authentication_result(session, authentication, session_result)
-            if merge_error:
-                return merge_error
-        return flow.success(session)
-
-    @flow.result()
-    async def authenticate(self, session, **constants):
-        """
-        Autentica un utente utilizzando i provider configurati.
-
-        :param constants: Deve includere 'identifier', 'ip' e credenziali.
-        :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
-        """
-       
-        for authentication in self.authentications:
-            session_result = await authentication.sign_in(**constants)
-
-            merge_error = self._merge_authentication_result(session, authentication, session_result)
-            if merge_error:
-                return merge_error
-        return flow.success(session)
-
-
-    @flow.result(outputs=('session',))
-    async def activate(self, session, **constants) -> Any:
-        """
-        Registra un utente utilizzando i provider configurati.
-
-        :param constants: Deve includere 'identifier', 'ip' e credenziali.
-        :return: Dizionario di sessione aggiornato se la registrazione ha successo, altrimenti None.
-        """
-        for authentication in self.authentications:
-            session_result = await authentication.sign_up(**constants)
-            merge_error = self._merge_authentication_result(session, authentication, session_result)
-            if merge_error:
-                return merge_error
-        return flow.success(session)
+    def get_configuration(self, port):
+        """Restituisce la configurazione globale validata di una Port."""
+        return self.port_configurations.get(port)
 
     def authorized(self, policy, **constants) -> bool:
-        policy = self.get_policy(policy)
+        policy_name = policy
+        policy = self.get_policy(policy_name)
         if not policy:
+            return False
+        if not self.security_authorized(None, policy, self.port_capabilities.get(policy_name)):
             return False
         rules = policy.get('rules', {})
         action, resource, location = constants.get('action', ''), constants.get('resource', ''), constants.get('location', '')
@@ -235,62 +215,3 @@ class Manager(manager.Port):
             else:
                 all_resutl.append(False)
         return any(all_resutl) if len(all_resutl) > 0 else False
-
-    def resolve_route(self, risorse, request_url, request_method, base_url=None,**kargs):
-        
-        try:
-            # 1. Normalizzazione URL
-            # Se request_url è relativo (es. "/home"), urljoin lo unisce a base_url
-            full_url = urljoin(base_url, request_url) if base_url else request_url
-            parsed = urlparse(full_url)
-            
-            # Pulizia del path: togliamo slash vuoti per la lista, ma manteniamo il path stringa per il match
-            path_list = [p for p in parsed.path.split('/') if p]
-            
-            # Trasformiamo query e fragment in dizionari puliti
-            query_params = {k: v[0] if len(v) == 1 else v for k, v in parse_qs(parsed.query).items()}
-            frag_params = {k: v[0] if len(v) == 1 else v for k, v in parse_qs(parsed.fragment).items()}
-
-            url_payload = {
-                'url': full_url,
-                'protocol': parsed.scheme,
-                'host': parsed.hostname,
-                'port': parsed.port,
-                'path': path_list,
-                'query': query_params,
-                'fragment': frag_params
-            }
-
-            # 2. Ciclo di Matching (Aggiornato per supportare la struttura nidificata {path: {metodo: config}})
-            for methods_dict in risorse.values():
-                # Tutte le configurazioni per lo stesso path condividono lo stesso pattern
-                # ne prendiamo una qualsiasi per eseguire il match del path
-                first_config = next(iter(methods_dict.values()))
-                match = first_config['pattern'].match(parsed.path)
-                
-                if match:
-                    # Trovato il path, cerchiamo se il metodo richiesto è supportato
-                    route_data = methods_dict.get(request_method.upper())
-                    
-                    if not route_data:
-                        # Metodo non trovato per questo path specifico
-                        continue
-                        
-                    # Recuperiamo i metadati
-                    metadata = route_data.get('metadata', route_data)
-                    
-                    # Estrazione parametri dinamici dalla Regex (es. {'id': '123'})
-                    dynamic_params = match.groupdict()
-                    
-                    return {
-                        'metadata': metadata,
-                        'params': dynamic_params,
-                        'url_details': url_payload
-                    }
-
-            print(f"[-] No route matched for: {request_method} {parsed.path}")
-            return None
-
-        except Exception as e:
-            print(f"[!] Resolve Error: {e}")
-            return None

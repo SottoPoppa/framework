@@ -6,6 +6,14 @@ import framework.port.message as message
 
 class Adapter(message.Port):
 
+    capabilities = {
+        "tls": False,
+        "encryption": False,
+        "audit": False,
+        "rate_limiting": False,
+        "authentication": [],
+    }
+
     def __init__(self, **constants):
         self.adapter = __name__.split(".")[-1]
         self.config = constants

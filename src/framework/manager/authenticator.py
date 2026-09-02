@@ -1,14 +1,12 @@
-from secrets import token_urlsafe
-from typing import Dict, Any
-from urllib.parse import urlparse, parse_qs, urljoin
+from typing import Any
 
 
-import framework.core.language as language
-import framework.core.scheme as scheme
 import framework.core.flow as flow
 import framework.manager.loader as loader
+import framework.manager.defender as defender
 import framework.port.authentication as authentication
 import framework.port.manager as manager
+
 
 class Manager(manager.Port):
     _session_exempt_methods = {
@@ -19,7 +17,8 @@ class Manager(manager.Port):
         "resolve_route",
     }
     def __init__(self, 
-            loader: loader.Loader, 
+            loader: loader.Loader,
+            defender: defender.Manager,
             authentications: list[authentication.Port], 
             **configuration
         ):
@@ -33,11 +32,9 @@ class Manager(manager.Port):
             caricare durante l'avvio.
         """
 
-        # Interpreta i file DSL e gestisce le sessioni dell'interprete.
-        self.interpreter = language.Interpreter(scheme.schemes)
-
         # Loader condiviso dal framework per leggere risorse e manager.
         self.loader = loader
+        self.defender = defender
 
         # Configurazione ricevuta dal container, conservata per il bootstrap.
         self.config = configuration
@@ -58,7 +55,10 @@ class Manager(manager.Port):
     
     @flow.result()
     async def startup(self, session=None):
-        pass
+        return None
+
+    def _authorized(self, action):
+        return self.defender.authorized("authentication", action=action)
 
     @staticmethod
     def _merge_authentication_result(session, authentication, session_result):
@@ -90,6 +90,8 @@ class Manager(manager.Port):
         :return: True se la sessione è stata terminata, False se l'utente non esiste.
         """
 
+        if not self._authorized("sign_out"):
+            return flow.error("Authentication policy denied sign_out")
         for authentication in self.authentications:
             session_result = await authentication.sign_out(session)
             if not session_result.get('success'):
@@ -108,6 +110,8 @@ class Manager(manager.Port):
         :param constants: Deve includere 'identifier', 'ip' e credenziali.
         :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
         """
+        if not self._authorized("sign_aid"):
+            return flow.error("Authentication policy denied sign_aid")
         for authentication in self.authentications:
             session_result = await authentication.sign_aid(**constants)
             merge_error = self._merge_authentication_result(session, authentication, session_result)
@@ -123,6 +127,8 @@ class Manager(manager.Port):
         :param constants: Deve includere 'identifier', 'ip' e credenziali.
         :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
         """
+        if not self._authorized("sign_in"):
+            return flow.error("Authentication policy denied sign_in")
         for authentication in self.authentications:
             session_result = await authentication.sign_in(**constants)
             merge_error = self._merge_authentication_result(session, authentication, session_result)
@@ -139,6 +145,8 @@ class Manager(manager.Port):
         :param constants: Deve includere 'identifier', 'ip' e credenziali.
         :return: Dizionario di sessione aggiornato se la registrazione ha successo, altrimenti None.
         """
+        if not self._authorized("sign_up"):
+            return flow.error("Authentication policy denied sign_up")
         for authentication in self.authentications:
             session_result = await authentication.sign_up(**constants)
             merge_error = self._merge_authentication_result(session, authentication, session_result)

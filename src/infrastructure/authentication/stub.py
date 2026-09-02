@@ -7,6 +7,15 @@ import framework.core.flow as flow
 class Adapter(authentication.Port):
     """Provider deterministico per i test di integrazione del Defender."""
 
+    capabilities = {
+        "password_hashing": False,
+        "mfa": False,
+        "token_rotation": False,
+        "sso": False,
+        "account_lockout": False,
+        "authentication": ["password"],
+    }
+
     def __init__(self, **constants: Any) -> None:
         self.name = constants.get("name", "stub")
         self.config = constants

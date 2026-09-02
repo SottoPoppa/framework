@@ -1,3 +1,19 @@
+any:port_schema := "presentation";
+any:adapter_schema := "presentation_adapter";
+
+presentation:configuration := {
+    "presentation_type": "rest_api";
+    "cors_policy": {
+        "enabled": false;
+    };
+    "security_and_waf": {
+        "tls_enabled": false;
+        "csrf_protection": false
+    };
+    "authentication_guards": {
+        "auth_required": false
+    }
+};
 type:route := {
     "path": { "type": "string" };
     "method": { "type": "string"; "default": "GET" };

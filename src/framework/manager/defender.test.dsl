@@ -4,7 +4,8 @@ imports: {
 };
 
 exports: {
-    'resolve_route': imports.module.Manager.resolve_route
+    'resolve_route': imports.module.Manager.resolve_route;
+    'security_authorized': imports.module.Manager.security_authorized
 };
 
 any:route_pattern := imports.regex.compile("^/users/(?P<id>[^/]+)$");
@@ -18,6 +19,20 @@ dict:routes := {
 };
 
 tuple:test_suite := (
+    {
+        "action": exports.security_authorized;
+        "inputs": (none, {"security": {"tls": true; "min_tls_version": "TLSv1.2"; "required_authentication": "jwt"}}, {"tls": true; "min_tls_version": "TLSv1.3"; "csrf": true; "authentication": ["jwt"]; "rate_limiting": true});
+        "outputs": true;
+        "assert": @received.outputs == @expected;
+        "note": "Il Defender accetta un adapter presentation che soddisfa i requisiti di sicurezza"
+    },
+    {
+        "action": exports.security_authorized;
+        "inputs": (none, {"security": {"tls": true; "min_tls_version": "TLSv1.2"; "required_authentication": "jwt"}}, {"tls": false; "authentication": []});
+        "outputs": false;
+        "assert": @received.outputs == @expected;
+        "note": "Il Defender rifiuta un profilo presentation privo dei requisiti"
+    },
     {
         "action": exports.resolve_route;
         "inputs": (none, routes, "https://example.test/users/42?tag=one&tag=two#section=profile", "GET");

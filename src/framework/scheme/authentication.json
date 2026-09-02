@@ -1,0 +1,88 @@
+{
+  "policy_name": {
+    "type": "string",
+    "required": true
+  },
+  "allowed_methods": {
+    "type": "list",
+    "required": true,
+    "schema": {
+      "type": "string",
+      "allowed": ["password", "mfa_totp", "mfa_sms", "passkey_webauthn", "sso_saml", "sso_oidc", "magic_link"]
+    }
+  },
+  "password_policy": {
+    "type": "dict",
+    "required": false,
+    "schema": {
+      "min_length": { "type": "integer", "min": 8, "required": true },
+      "require_uppercase": { "type": "boolean", "required": true },
+      "require_lowercase": { "type": "boolean", "required": true },
+      "require_numbers": { "type": "boolean", "required": true },
+      "require_symbols": { "type": "boolean", "required": true },
+      "expire_days": { "type": "integer", "min": 0, "required": false },
+      "prevent_reuse_count": { "type": "integer", "min": 0, "required": false }
+    }
+  },
+  "mfa_policy": {
+    "type": "dict",
+    "required": true,
+    "schema": {
+      "mode": {
+        "type": "string",
+        "required": true,
+        "allowed": ["disabled", "optional", "required", "adaptive_risk_based"]
+      },
+      "allowed_factors": {
+        "type": "list",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "allowed": ["totp_app", "webauthn_hardware", "sms_otp", "email_otp"]
+        }
+      },
+      "grace_period_days": { "type": "integer", "min": 0, "required": false }
+    }
+  },
+  "session_and_token": {
+    "type": "dict",
+    "required": true,
+    "schema": {
+      "jwt_algorithm": {
+        "type": "string",
+        "required": true,
+        "allowed": ["RS256", "ES256", "EdDSA", "HS256"]
+      },
+      "access_token_ttl_seconds": { "type": "integer", "min": 60, "required": true },
+      "refresh_token_ttl_seconds": { "type": "integer", "min": 3600, "required": true },
+      "enable_refresh_rotation": { "type": "boolean", "required": true },
+      "max_concurrent_sessions_per_user": { "type": "integer", "min": 1, "required": false }
+    }
+  },
+  "account_lockout": {
+    "type": "dict",
+    "required": true,
+    "schema": {
+      "enabled": { "type": "boolean", "required": true },
+      "max_failed_attempts": { "type": "integer", "min": 1, "required": true },
+      "lockout_duration_minutes": { "type": "integer", "min": 1, "required": true },
+      "reset_counter_after_minutes": { "type": "integer", "min": 1, "required": false }
+    }
+  },
+  "sso_federation": {
+    "type": "dict",
+    "required": false,
+    "schema": {
+      "enabled": { "type": "boolean", "required": true },
+      "providers": {
+        "type": "list",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "allowed": ["google", "azure_ad", "okta", "github", "keycloak", "saml_generic"]
+        }
+      },
+      "auto_provision_users": { "type": "boolean", "required": false }
+    }
+  }
+}

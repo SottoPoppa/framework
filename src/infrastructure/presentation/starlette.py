@@ -82,7 +82,7 @@ class DefenderMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         # Esempio: decidiamo se accettare la richiesta in base al path
         if "id" not in request.session:
-            session = await self.defender.new_session(request.session.copy())
+            session = await self.defender.session_create(request.session.copy())
             if session.get('success'):
                 request.session.update(session.get('outputs', {}))
             else:
@@ -375,6 +375,14 @@ def attrs(tag_key, input_data, classe=None):
     }
 
 class Adapter(presentation.Port):
+    capabilities = {
+        "tls": False,
+        "min_tls_version": "TLSv1.2",
+        "csrf": False,
+        "authentication": ["session_cookie"],
+        "rate_limiting": False,
+    }
+
     # --- Configurazione Tag ---
     tags = {
         presentation.Tag.WINDOW.value: {
@@ -623,6 +631,23 @@ class Adapter(presentation.Port):
         ]
         self.active_websockets = {} # sid -> [websocket]
         self.validate_adapter()
+
+    def configure_port(self, configuration):
+        """Applica la configurazione globale validata della Port presentation."""
+        self.port_configuration = configuration
+        cors_policy = configuration["cors_policy"]
+
+        self.middleware_static[1] = Middleware(
+            CORSMiddleware,
+            allow_origins=(
+                cors_policy.get("allowed_origins", [])
+                if cors_policy["enabled"] else []
+            ),
+            allow_methods=cors_policy.get("allowed_methods", ["GET", "POST", "OPTIONS"]),
+            allow_headers=cors_policy.get("allowed_headers", ["Content-Type"]),
+            allow_credentials=bool(cors_policy.get("allow_credentials", False)),
+            max_age=cors_policy.get("max_age_seconds", 600),
+        )
 
     def _session_secret(self):
         config = getattr(getattr(self, 'loader', None), 'current_config', {})

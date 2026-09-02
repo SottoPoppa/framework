@@ -12,6 +12,41 @@ OmniPort segue una **Hexagonal Architecture** (Ports & Adapters): la logica di b
 2. **Infrastructure (`src/infrastructure/`)**: implementazioni concrete (adapter web, persistenza, sensori, autenticazione...). Modificabile solo per aggiungere/correggere un adapter specifico, mai per cambiare il contratto della Port che implementa.
 3. **Framework (`src/framework/`)**: il kernel — loader, container DI, manager. Modificabile **solo** in "Framework Maintenance Mode" (vedi sotto), mai in modalità app-building.
 
+### Configurazione globale della Port e capabilities
+
+La configurazione globale appartiene alla Port e non a una specifica implementazione. Il relativo schema JSON definisce la configurazione funzionale attesa; la policy DSL la assegna esplicitamente alla Port:
+
+```dsl
+any:port_schema := "presentation";
+any:adapter_schema := "presentation_adapter";
+presentation:configuration := {
+    "presentation_type": "rest_api";
+    "cors_policy": { "enabled": false };
+    "security_and_waf": { "tls_enabled": false; "csrf_protection": false };
+    "authentication_guards": { "auth_required": false }
+};
+```
+
+Un adapter non ridefinisce questa configurazione. Dichiara invece `capabilities`, cioè le capacità concrete che supporta rispetto al contratto della Port. Il `Loader` valida le capabilities dell'adapter contro lo schema `<port>_adapter`; il `Defender` raccoglie le capabilities di tutte le implementazioni attive, valida la policy e rifiuta una Port se una delle implementazioni configurate non soddisfa i requisiti.
+
+La configurazione tecnica di ogni istanza resta nel `pyproject.toml`. Per esempio, per Starlette `host`, `port` e `protocol` devono essere definiti nel singolo blocco `[[presentation.starlette]]`. Il TOML può contenere più blocchi dello stesso adapter con valori diversi:
+
+```toml
+[[presentation.starlette]]
+name = "public"
+host = "127.0.0.1"
+port = 8000
+protocol = "http"
+
+[[presentation.starlette]]
+name = "internal"
+host = "127.0.0.1"
+port = 8001
+protocol = "http"
+```
+
+Le regole funzionali e di sicurezza restano nella configurazione DSL globale: entrambe le istanze ricevono la stessa `port_configuration`, ma conservano separati i propri parametri TOML. Il Loader pubblica la configurazione globale su manager e adapter tramite `port_configuration`.
+
 ---
 
 ## 🛑 Regole di Scope — due modalità operative
@@ -271,11 +306,11 @@ presentation = "web.toml"  # → src/application/policy/presentation/web.toml
 [manager.defender]
 key = "SECRET_KEY"
 
-[presentation.backend]
-adapter = "starlette"
-port = "5000"
-
-# CORS deny-by-default: configurare solo le origini necessarie.
+[[presentation.starlette]]
+name = "web"
+host = "127.0.0.1"
+port = 8000
+protocol = "http"
 cors_origins = []
 cors_credentials = false
 ```

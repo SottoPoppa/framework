@@ -12,12 +12,22 @@ dependencies = [
 key = "replace-this-development-key"
 soglia_tentativi = 5
 timeout_blocchi = 3600
+
+[manager.presenter]
 presentation = "demo.dsl"
-#persistence = "redis.toml"
-#message = "log.toml"
 
 [manager.messenger]
 debug_mode = true
+message = "default.dsl"
+
+[manager.authenticator]
+authentication = "default.dsl"
+
+[manager.storekeeper]
+persistence = "default.dsl"
+
+[[authentication.stub]]
+name = "stub"
 
 #[[message.console]]
 #persistence = "log"
@@ -33,6 +43,7 @@ name = "broker"
 name = "web"
 host = "127.0.0.1"
 port = 8000
+protocol = "http"
 cors_origins = []
 cors_credentials = false
 

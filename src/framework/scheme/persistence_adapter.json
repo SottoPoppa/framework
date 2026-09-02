@@ -1,0 +1,10 @@
+{
+  "encryption_at_rest": { "type": "boolean", "required": true },
+  "audit": { "type": "boolean", "required": true },
+  "soft_delete": { "type": "boolean", "required": true },
+  "authentication": {
+    "type": "list",
+    "required": true,
+    "schema": { "type": "string" }
+  }
+}

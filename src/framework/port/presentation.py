@@ -16,6 +16,7 @@ import os
 import pathlib
 
 import framework.core.flow as flow
+import framework.core.scheme as scheme
 from framework.service.route import compile_pattern, match, normalize_path, register, register_many
 from framework.service.template import render
 
@@ -282,6 +283,13 @@ _ATTRIBUTES_SCHEMA |= {
 
 class Port(ABC):
     tags = {}
+    capabilities = {
+        "tls": False,
+        "min_tls_version": "TLSv1.2",
+        "csrf": False,
+        "authentication": [],
+        "rate_limiting": False,
+    }
 
     _method_decorators = {
         "start": flow.result(),
@@ -371,6 +379,19 @@ class Port(ABC):
         for method in ('node_create', 'node_update', 'rebuild'):
             if not callable(getattr(self, method, None)):
                 raise RuntimeError(f"Adapter presentation non implementa '{method}'")
+        self.validate_capabilities()
+        if self.defender is not None and hasattr(self.defender, "_register_capabilities"):
+            self.defender._register_capabilities(None, "presentation", self.capabilities)
+        return True
+
+    def validate_capabilities(self):
+        loaded_schemes = getattr(scheme, "schemes", {})
+        capabilities_schema = loaded_schemes.get("presentation_adapter", {})
+        if not capabilities_schema:
+            return True
+        result = scheme.normalize(self.capabilities, capabilities_schema)
+        if not result.is_success:
+            raise RuntimeError(f"Capabilities presentation non valide: {result.output.error}")
         return True
 
     @abstractmethod

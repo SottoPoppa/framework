@@ -15,6 +15,13 @@ class Port(ABC):
     all'endpoint remoto.
     """
 
+    capabilities = {
+        "encryption_at_rest": False,
+        "audit": False,
+        "soft_delete": False,
+        "authentication": [],
+    }
+
     _method_decorators = {
         "create":      flow.result(inputs=("session","storekeeper"), ),
         "read":      flow.result(inputs=("session","storekeeper"), ),

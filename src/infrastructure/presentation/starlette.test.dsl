@@ -25,6 +25,7 @@ exports: {
     'action': imports.module.Adapter.action;
     'mount_route': imports.module.Adapter.mount_route;
     'shutdown': imports.module.Adapter.shutdown;
+    'validate_capabilities': imports.module.Adapter.validate_capabilities
 };
 
 tuple:html_cases := (
@@ -76,6 +77,13 @@ dict:expected_html := {
 };
 
 tuple:test_suite := (
+    {
+        "action": exports.validate_capabilities;
+        "inputs": adapter;
+        "outputs": true;
+        "assert": @received.outputs == @expected;
+        "note": "Starlette espone un profilo presentation validabile dal Port"
+    },
     {
         "action": exports.attrs;
         "inputs": ("container", {"attrs": {"class": "base"; "width": "full"; "id": "panel"}});

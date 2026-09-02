@@ -18,6 +18,7 @@ from typing import Any, Optional, Type, TypedDict, get_args, get_type_hints
 
 from jinja2 import BaseLoader, Environment
 import framework.core.flow as flow
+import framework.core.scheme as scheme
 
 # Python 3.11+ native TOML support with fallback for older versions
 try:
@@ -651,7 +652,7 @@ class Loader:
             for adapter_name, adapter_config in enabled.items()
             for cfg in (
                 adapter_config
-                if isinstance(adapter_config, list)
+                if isinstance(adapter_config, (list, tuple))
                 else [adapter_config]
             )
         )
@@ -743,10 +744,27 @@ class Loader:
         if not interface or not adapter_cls:
             raise RuntimeError(f"Adapter non valido: {resource.name}")
         obj = self._build(adapter_cls, config)
+        self._register_adapter_capabilities(parts[2], obj)
         if save:
             self.container.add_port(interface, obj)
         print(f"[✓] Adapter {adapter_cls.__name__} name={config.get('name')}")
         return obj
+
+    def _register_adapter_capabilities(self, port: str, adapter: Any) -> None:
+        capabilities = getattr(adapter, "capabilities", None)
+        if not isinstance(capabilities, dict):
+            raise RuntimeError(f"Adapter {port} privo di capabilities")
+        capabilities_schema = getattr(scheme, "schemes", {}).get(f"{port}_adapter")
+        if not capabilities_schema:
+            raise RuntimeError(f"Schema sicurezza mancante per la Port '{port}'")
+        result = scheme.normalize(capabilities, capabilities_schema)
+        if not result.is_success:
+            raise RuntimeError(f"Capabilities non valide per la Port '{port}': {result.output.error}")
+        defender_resource = self.framework.component("framework.manager.defender")
+        defender_cls = getattr(defender_resource.module, "Manager", None) if defender_resource else None
+        defender = self.container.get(defender_cls) if defender_cls else None
+        if defender and hasattr(defender, "_register_capabilities"):
+            defender._register_capabilities(None, port, capabilities)
 
     async def reload(self, session: Any, changed_path: str) -> bool:
         """Esegue il reload in-memory di adapter o manager modificati."""
@@ -949,8 +967,12 @@ class Loader:
             "adapter_resources": adapter_resources,
         }
 
-    def _discovery_result(self, context: dict) -> tuple[dict, tuple[Resource, ...]]:
-        return context["config"], tuple(context["manager_resources"])
+    def _discovery_result(self, context: dict) -> tuple[dict, tuple[Resource, ...], tuple[Resource, ...]]:
+        return (
+            context["config"],
+            tuple(context["manager_resources"]),
+            tuple(context["adapter_resources"]),
+        )
 
     def _bootstrap_context(self, config_toml_path: Any) -> dict:
         kwargs = (
@@ -983,11 +1005,11 @@ class Loader:
         return {**context, "discovery": flow.unwrap(discovery)}
 
     def _build_runtime(self, context: LoaderContext) -> LoaderContext:
-        config, mgr_resources = context["discovery"]
+        config, mgr_resources, adapter_resources = context["discovery"]
         print("\n[*] Discovery...")
         print("\n[*] Build...")
         managers = flow.unwrap(self._build_managers(mgr_resources))
-        flow.unwrap(self._build_adapters(self.framework.components_ports()))
+        flow.unwrap(self._build_adapters(adapter_resources))
         return {**context, "config": config, "managers": managers}
 
     async def _start_runtime(self, context: LoaderContext) -> LoaderContext:
@@ -1001,11 +1023,32 @@ class Loader:
                 startup_result = await defender.startup()
                 if flow.is_result(startup_result) and not flow.check(startup_result):
                     raise RuntimeError(flow.output(startup_result))
+            if defender:
+                self._apply_port_configurations(defender)
             if hasattr(defender, "session_create"):
                 session = flow.output(await defender.session_create())
                 print(f"[*] Sessione creata: {session}")
 
         return {**context, "session": session}
+
+    def _apply_port_configurations(self, defender) -> None:
+        """Pubblica le configurazioni DSL globali su manager e adapter."""
+        manager_names = {
+            "presentation": "presenter",
+            "authentication": "authenticator",
+            "persistence": "storekeeper",
+            "message": "messenger",
+        }
+        managers = self.get_managers()
+        for port, configuration in defender.port_configurations.items():
+            manager = managers.get(manager_names.get(port, ""))
+            targets = [manager] if manager is not None else []
+            targets.extend(self.container.get_port(port))
+            for target in targets:
+                target.port_configuration = configuration
+                configure = getattr(target, "configure_port", None)
+                if callable(configure):
+                    configure(configuration)
 
     async def _discover_components(self, config_toml_path: Any) -> flow.Result:
         """Carica core, manager e adapter senza istanziarli."""

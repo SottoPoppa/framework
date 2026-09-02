@@ -1,0 +1,12 @@
+{
+  "password_hashing": { "type": "boolean", "required": true },
+  "mfa": { "type": "boolean", "required": true },
+  "token_rotation": { "type": "boolean", "required": true },
+  "sso": { "type": "boolean", "required": true },
+  "account_lockout": { "type": "boolean", "required": true },
+  "authentication": {
+    "type": "list",
+    "required": true,
+    "schema": { "type": "string" }
+  }
+}

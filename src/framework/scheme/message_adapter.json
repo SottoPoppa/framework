@@ -1,0 +1,11 @@
+{
+  "tls": { "type": "boolean", "required": true },
+  "encryption": { "type": "boolean", "required": true },
+  "audit": { "type": "boolean", "required": true },
+  "rate_limiting": { "type": "boolean", "required": true },
+  "authentication": {
+    "type": "list",
+    "required": true,
+    "schema": { "type": "string" }
+  }
+}

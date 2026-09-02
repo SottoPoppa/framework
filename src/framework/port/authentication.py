@@ -3,6 +3,14 @@ from abc import ABC, abstractmethod
 import framework.core.flow as flow
 
 class Port(ABC):
+    capabilities = {
+        "password_hashing": False,
+        "mfa": False,
+        "token_rotation": False,
+        "sso": False,
+        "account_lockout": False,
+        "authentication": [],
+    }
 
     # Mappa: nome_metodo -> decoratore da applicare automaticamente
     _method_decorators = {

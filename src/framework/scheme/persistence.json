@@ -1,0 +1,123 @@
+{
+  "storage_type": {
+    "type": "string",
+    "required": true,
+    "allowed": [
+      "filesystem",
+      "s3_object_storage",
+      "relational_db",
+      "nosql_db",
+      "rest_api",
+      "graphql_api"
+    ]
+  },
+  "connection": {
+    "type": "dict",
+    "required": true,
+    "schema": {
+      "endpoint_or_path": {
+        "type": "string",
+        "required": true
+      },
+      "driver_or_provider": {
+        "type": "string",
+        "required": false,
+        "allowed": ["posix", "aws_s3", "postgresql", "mysql", "mongodb", "http_client"]
+      },
+      "timeout_ms": {
+        "type": "integer",
+        "min": 100,
+        "required": false
+      }
+    }
+  },
+  "crud_permissions": {
+    "type": "dict",
+    "required": true,
+    "schema": {
+      "allow_create": { "type": "boolean", "required": true },
+      "allow_read": { "type": "boolean", "required": true },
+      "allow_update": { "type": "boolean", "required": true },
+      "allow_delete": { "type": "boolean", "required": true },
+      "soft_delete": {
+        "type": "boolean",
+        "required": false
+      }
+    }
+  },
+  "persistence_policy": {
+    "type": "dict",
+    "required": true,
+    "schema": {
+      "strategy": {
+        "type": "string",
+        "required": true,
+        "allowed": ["immediate_write", "write_through", "write_back", "ephemeral_cache"]
+      },
+      "sync_flush": {
+        "type": "boolean",
+        "required": false
+      },
+      "retention_days": {
+        "type": "integer",
+        "min": 0,
+        "nullable": true,
+        "required": false
+      },
+      "max_storage_size_mb": {
+        "type": "integer",
+        "min": 1,
+        "nullable": true,
+        "required": false
+      }
+    }
+  },
+  "authentication": {
+    "type": "dict",
+    "required": false,
+    "schema": {
+      "type": {
+        "type": "string",
+        "required": true,
+        "allowed": ["none", "api_key", "bearer_token", "basic_auth", "iam_role", "db_credentials"]
+      },
+      "credentials_secret_ref": {
+        "type": "string",
+        "nullable": true,
+        "required": false
+      }
+    }
+  },
+  "encryption": {
+    "type": "dict",
+    "required": false,
+    "schema": {
+      "enabled": { "type": "boolean", "required": true },
+      "algorithm": {
+        "type": "string",
+        "required": false,
+        "allowed": ["AES-256-CBC", "AES-256-GCM", "RSA-4096"]
+      },
+      "kms_key_ref": {
+        "type": "string",
+        "nullable": true,
+        "required": false
+      }
+    }
+  },
+  "audit_trail": {
+    "type": "dict",
+    "required": false,
+    "schema": {
+      "log_operations": { "type": "boolean", "required": true },
+      "tracked_events": {
+        "type": "list",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "allowed": ["CREATE", "READ", "UPDATE", "DELETE"]
+        }
+      }
+    }
+  }
+}

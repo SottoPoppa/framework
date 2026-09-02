@@ -16,7 +16,7 @@ OmniPort separa nettamente tre livelli:
 - **`framework/`** — il kernel: caricamento dinamico dei moduli, container di dependency injection, orchestrazione. Non va modificato.
 - **`infrastructure/`** — gli adapter concreti (persistenza, presentazione web/console, autenticazione, messaggistica, sensori/attuatori...). Intercambiabili senza toccare la logica di dominio.
 
-Il tutto orchestrato da un unico file di configurazione dichiarativa (`pyproject.toml`) e da un `Loader` che fa discovery, dependency injection e installazione delle dipendenze in base a cosa è effettivamente abilitato.
+Il tutto orchestrato da un unico file di configurazione dichiarativa (`pyproject.toml`) e da un `Loader` che fa discovery, dependency injection e installazione delle dipendenze in base a cosa è effettivamente abilitato. Le Port possono inoltre ricevere una configurazione globale dal DSL applicativo, condivisa da tutte le loro implementazioni.
 
 ---
 
@@ -93,6 +93,8 @@ Il tutto orchestrato da un unico file di configurazione dichiarativa (`pyproject
 **Dependency Injection:** container custom con registrazione esplicita dei provider, risoluzione lazy, supporto a singleton/factory, e ordine di inizializzazione calcolato automaticamente via `graphlib.TopologicalSorter` sulle dipendenze dichiarate nei contract.
 
 **Caricamento dinamico:** i moduli vengono caricati a runtime con `importlib.util.spec_from_file_location`, registrati in `sys.modules` come pacchetti sintetici, e possono essere ricaricati a caldo (hot-reload) tramite la classe `Handle`, che sostituisce l'oggetto interno preservandone lo stato.
+
+**Configurazione Port e capabilities:** ogni Port definisce nel proprio schema JSON il contratto della configurazione globale e l'insieme delle capabilities attese. Una policy DSL dichiara la Port destinataria con `port_schema` e assegna la configurazione, per esempio `presentation:configuration := { ... };`. Ogni adapter concreto dichiara invece le proprie `capabilities`: il Loader le valida contro lo schema dell'adapter e il Defender verifica che soddisfino i requisiti della policy. La configurazione globale viene poi pubblicata su manager e adapter tramite `port_configuration`.
 
 ---
 
@@ -175,6 +177,48 @@ name = "tui"
 ```
 
 Ogni blocco (`persistence`, `presentation`, `message`, `manager`, ...) attiva un adapter corrispondente in `src/infrastructure/`. Il `Loader` fa discovery automatico solo degli adapter effettivamente presenti nel file.
+
+La configurazione è divisa in due livelli:
+
+- `pyproject.toml` configura ogni istanza tecnica dell'adapter, inclusi `host`, `port` e `protocol` del server Starlette;
+- la policy DSL della Port configura il comportamento globale condiviso da tutte le implementazioni della Port.
+
+Il TOML può definire più istanze dello stesso servizio, ciascuna con nome, host e porta propri:
+
+```toml
+[[presentation.starlette]]
+name = "public"
+host = "127.0.0.1"
+port = 8000
+protocol = "http"
+
+[[presentation.starlette]]
+name = "internal"
+host = "127.0.0.1"
+port = 8001
+protocol = "http"
+```
+
+Entrambe le istanze ricevono la stessa configurazione globale `presentation` dal DSL, ma mantengono separata la propria configurazione tecnica TOML.
+
+Esempio di policy globale presentation:
+
+```dsl
+any:port_schema := "presentation";
+any:adapter_schema := "presentation_adapter";
+
+presentation:configuration := {
+    "presentation_type": "rest_api";
+    "cors_policy": { "enabled": false };
+    "security_and_waf": {
+        "tls_enabled": false;
+        "csrf_protection": false
+    };
+    "authentication_guards": { "auth_required": false }
+};
+```
+
+L'adapter dichiara le capacità che supporta, mentre il Defender raccoglie le capacità di tutti gli adapter attivi della Port. Se la policy richiede una capacità non disponibile in una delle implementazioni configurate, il bootstrap o l'autorizzazione vengono rifiutati.
 
 Un adapter API può usare un provider OAuth nominato nella stessa configurazione:
 
