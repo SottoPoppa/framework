@@ -114,7 +114,7 @@ class Manager(manager.Port):
             session=session,
             action=operation,
             resource=resource,
-            adapter=storekeeper,
+            request=storekeeper,
         ):
             return flow.error("Persistence policy denied the operation")
         if self.defender and security:

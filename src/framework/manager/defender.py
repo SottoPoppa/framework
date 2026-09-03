@@ -224,7 +224,7 @@ class Manager(manager.Port):
             'resource': resource,
             'location': location,
             'session': session,
-            'adapter': constants.get('adapter', {}),
+            'request': constants.get('request', {}),
         }
         filted_rules = []
         all_resutl = []
