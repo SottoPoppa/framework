@@ -740,17 +740,12 @@ class Interpreter:
         Per ottenere il payload usare ``result.output.value``. Il risultato
         conserva anche ``transactions`` e la traccia delle chiamate interne.
 
-        Solleva ``DSLRuntimeError`` in caso di errore.
-
         :param fn:     funzione da invocare
         :param args:   argomenti posizionali
         :param kwargs: argomenti keyword
         :returns:      risultato Flow della funzione
         """
-        res = await self._invoke(fn, args, kwargs or {})
-        if not res.is_success:
-            raise DSLRuntimeError(f"Errore in call: {res.output.error}")
-        return res
+        return await self._invoke(fn, args, kwargs or {})
 
     # ── internals ─────────────────────────────────────────────────────────────
     # Tutto ciò che segue è API privata (prefisso _).
