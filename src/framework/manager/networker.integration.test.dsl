@@ -22,35 +22,35 @@ tuple:test_suite := (
         "action": exports.provision;
         "inputs": {"args": [session, intent]};
         "outputs": {"provider": "stub"};
-        "assert": @received.outputs.provider == @expected.provider;
+        "assert": @received.output.value.provider == @expected.provider;
         "note": "provision usa il network stub selezionato per capability"
     },
     {
         "action": exports.route;
         "inputs": {"args": [session, application, requirements]};
         "outputs": {"provider": "stub"};
-        "assert": @received.outputs.provider == @expected.provider;
+        "assert": @received.output.value.provider == @expected.provider;
         "note": "route delega la scelta al network stub"
     },
     {
         "action": exports.compute;
         "inputs": {"args": [session]};
         "outputs": none;
-        "assert": @received.outputs != none;
+        "assert": @received.output.value != none;
         "note": "compute raccoglie il risultato del network stub"
     },
     {
         "action": exports.monitor;
         "inputs": {"args": [session]};
         "outputs": {"networks": none};
-        "assert": @received.outputs.networks != none;
+        "assert": @received.output.value.networks != none;
         "note": "monitor espone lo stato del network stub"
     },
     {
         "action": exports.status;
         "inputs": {"args": [session]};
         "outputs": none;
-        "assert": @received.outputs.stub != none;
+        "assert": @received.output.value.stub != none;
         "note": "status indicizza il risultato del network stub"
     }
 );

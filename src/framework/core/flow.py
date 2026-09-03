@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import re
 from functools import reduce as _reduce, wraps
 import inspect
 import time
@@ -337,13 +338,29 @@ def map_get_value(path: str | int, default: Any = None) -> Callable:
     - 'data.id' -> naviga nei dizionari o Scheme
     - 'data.0' -> naviga nelle liste/tuple
     - 'users.*.id' -> estrae 'id' da tutti gli elementi di 'users'
+    - 'users.*[role=admin].id' -> estrae 'id' solo dagli elementi che soddisfano il filtro
     """
+    filter_pattern = re.compile(r"^\*\[(\w+)=(.*)\]$")
+
     def _resolve(current: Any, tokens: list[str]) -> Any:
         if not tokens:
             return current
         
         token = tokens[0]
         rest = tokens[1:]
+
+        # Wildcard condizionale '*[campo=valore]' per liste/tuple di dict
+        filter_match = filter_pattern.match(token)
+        if filter_match:
+            field, expected_value = filter_match.groups()
+            if isinstance(current, (list, tuple)):
+                matches = [
+                    item for item in current
+                    if isinstance(item, dict) and str(item.get(field)) == expected_value
+                ]
+                resolved = [_resolve(item, rest) for item in matches]
+                return resolved if resolved else default
+            return default
 
         # Wildcard '*' per sequenze e dizionari
         if token == "*":
@@ -366,8 +383,7 @@ def map_get_value(path: str | int, default: Any = None) -> Callable:
         if isinstance(current, dict):
             if token in current:
                 return _resolve(current[token], rest)
-            return default
-        elif hasattr(current, token):
+        if hasattr(current, token):
             return _resolve(getattr(current, token), rest)
 
         return default

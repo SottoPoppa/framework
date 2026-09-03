@@ -3,55 +3,55 @@ imports: {
 };
 
 exports: {
-    'reset': imports.flow.reset;
-    'switch': imports.flow.switch;
+    'pipe_sync': imports.flow.pipe_sync;
+    'is_result': imports.flow.is_result;
     'success': imports.flow.success;
     'check': imports.flow.check;
-    'transactions': imports.flow.transactions;
-    'pipeline': imports.flow.pipeline
+    'unwrap': imports.flow.unwrap;
+    'output': imports.flow.output
 };
 
 tuple:test_suite := (
     {
-        "action": exports.reset;
-        "inputs": (1, 2);
-        "outputs": 2;
-        "assert": @received.outputs == @expected;
-        "note": "reset sostituisce il valore precedente";
+        "action": exports.pipe_sync;
+        "inputs": ({"a": {"b": 42;};}, imports.flow.map_get_value("a.b"));
+        "outputs": 42;
+        "assert": @received.is_success == true & @received.output.value == @expected;
+        "note": "pipe_sync esegue una pipeline sincrona di step";
     },
     {
-        "action": exports.switch;
-        "inputs": ({true: "fallback";}, {true: "selected";});
-        "outputs": "selected";
-        "assert": @received.outputs == @expected;
-        "note": "switch usa il ramo true come fallback";
+        "action": exports.is_result;
+        "inputs": "payload";
+        "outputs": false;
+        "assert": @received.output.value == @expected;
+        "note": "is_result restituisce false per un valore che non è un flow.Result (il DSL spacchetta sempre il Result restituito da una chiamata)";
     },
     {
         "action": exports.success;
         "inputs": "payload";
         "outputs": "payload";
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "success conserva il payload del risultato Flow";
     },
     {
         "action": exports.check;
         "inputs": {"args": [imports.flow.error("invalid credentials")]};
         "outputs": false;
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "check riconosce un risultato Flow fallito";
     },
     {
-        "action": exports.transactions;
+        "action": exports.unwrap;
         "inputs": exports.success("payload");
-        "outputs": [];
-        "assert": @received.outputs == @expected;
-        "note": "transactions espone dal DSL il registro interno di un Flow";
+        "outputs": "payload";
+        "assert": @received.is_success == true & @received.output.value == @expected;
+        "note": "unwrap restituisce il valore di un Result riuscito";
     },
     {
-        "action": exports.pipeline;
-        "inputs": ("payload", exports.success);
-        "outputs": "payload";
-        "assert": @received.outputs == @expected;
-        "note": "pipeline conserva il payload dopo una chiamata interna Flow";
+        "action": exports.output;
+        "inputs": {"args": [imports.flow.error("invalid credentials")]};
+        "outputs": "invalid credentials";
+        "assert": @received.output.value == @expected;
+        "note": "output estrae l'errore da un Result fallito";
     }
 );

@@ -104,7 +104,11 @@ async def transform(
 
 def normalize(value: Any, schema: dict) -> flow.Result:
     """Normalizza e valida un dizionario tramite pipeline sincrona."""
-    validator = Validator(schema)
+    validation_schema = {
+        field: {rule: option for rule, option in definition.items() if rule != "comment"}
+        for field, definition in schema.items()
+    }
+    validator = Validator(validation_schema)
 
     return flow.pipe_sync(
         value,
@@ -116,6 +120,27 @@ def normalize(value: Any, schema: dict) -> flow.Result:
         flow.map_freeze_map(),
         action="normalize_pipeline",
     )
+
+
+_FORMAT_PARSERS: Dict[str, Callable[[str], Any]] = {
+    "toml": tomli.loads,
+    "json": json.loads,
+}
+
+
+def convert(value: Any, target: type = str, format: str | None = None) -> Any:
+    """
+    Converte un valore in un tipo Python o decodifica una stringa in un formato
+    strutturato (es. 'toml', 'json') prima di restituirla.
+    """
+    if format is not None:
+        parser = _FORMAT_PARSERS.get(str(format).lower())
+        if parser is None:
+            raise ValueError(f"Formato non supportato per convert(): {format}")
+        return parser(value)
+    if target is None or isinstance(value, target):
+        return value
+    return target(value)
 
 class Scheme(flow.Immutable):
     """Dict immutabile basato su schema nativo."""

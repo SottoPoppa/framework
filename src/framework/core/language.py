@@ -141,7 +141,7 @@ DSL_FUNCTIONS: Dict[str, Any] = {
     'get':       scheme.get,
     'normalize': scheme.normalize,
     'put':       scheme.put,
-    #'convert':   scheme.convert,
+    'convert':   scheme.convert,
     'keys':      lambda d: list(d.keys()) if isinstance(d, dict) else [],
     'values':    lambda d: list(d.values()) if isinstance(d, dict) else [],
     'union':     lambda a, b: {**a, **b},

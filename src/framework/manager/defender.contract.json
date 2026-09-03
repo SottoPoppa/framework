@@ -1,15 +1,22 @@
 {
   "contract_version": 2,
   "exports": {
-    "resolve_route": [
-      "Manager.resolve_route"
+    "capabilities_authorized": [
+      "Manager.capabilities_authorized"
+    ],
+    "compatible_adapters": [
+      "Manager.compatible_adapters"
     ]
   },
   "hashes": {
     "Manager": {
-      "resolve_route": {
-        "test": "f651cff45782dbe9adfe7ce9567ce600207c2821c48ffa8a738034f74be16d8b",
-        "production": "f651cff45782dbe9adfe7ce9567ce600207c2821c48ffa8a738034f74be16d8b"
+      "capabilities_authorized": {
+        "test": "365390edff86655ac94a15bf59198204dc91f7f158cf6ce30a90a0f19f25efab",
+        "production": "365390edff86655ac94a15bf59198204dc91f7f158cf6ce30a90a0f19f25efab"
+      },
+      "compatible_adapters": {
+        "test": "b4c07480f8449af33dff90edaf463027596e26eb810bf46c2b87d78990b793ad",
+        "production": "b4c07480f8449af33dff90edaf463027596e26eb810bf46c2b87d78990b793ad"
       }
     }
   }

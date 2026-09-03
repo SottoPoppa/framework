@@ -20,49 +20,49 @@ tuple:test_suite := (
         "action": exports.resolve_filter;
         "inputs": "managers";
         "outputs": "src/framework/manager";
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "Test import() - resolve_filter con 'managers'";
     },
     {
         "action": exports.resolve_filter;
         "inputs": "ports";
         "outputs": "src/framework/port";
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "Test import() - resolve_filter con 'ports'";
     },
     {
         "action": exports.is_integration_test_path;
         "inputs": "src/application/controller/account.integration.test.dsl";
         "outputs": true;
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "riconosce un test di integrazione accanto al target";
     },
     {
         "action": exports.is_integration_test_path;
         "inputs": "src/application/controller/account.test.dsl";
         "outputs": false;
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "non classifica un test di contract come integrazione";
     },
     {
         "action": exports.is_contract_test_path;
         "inputs": "src/application/controller/account.test.dsl";
         "outputs": true;
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "riconosce un test di contract";
     },
     {
         "action": exports.resolve_target_name;
         "inputs": exports.resolve_filter;
         "outputs": "resolve_filter";
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "resolve_target_name restituisce il nome stabile della funzione esportata";
     },
     {
         "action": exports.port.initialize;
         "inputs": imports.presentation_module.Port;
         "outputs": none;
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "Un metodo di una classe esportata viene associato al relativo export oggetto";
     }
 );

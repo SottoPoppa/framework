@@ -19,56 +19,56 @@ tuple:test_suite := (
         "action": exports.new_session;
         "inputs": {"args": [session]};
         "outputs": none;
-        "assert": @received.outputs != none;
+        "assert": @received.output.value != none;
         "note": "new_session restituisce la sessione corrente"
     },
     {
         "action": exports.activate;
         "inputs": {"args": [session]; "kwargs": {"email": "integration@example.test"; "password": "secret"}};
         "outputs": none;
-        "assert": @received.outputs.user.email == @expected.user.email;
+        "assert": @received.output.value.user.email == @expected.user.email;
         "note": "activate registra l'utente tramite authentication stub"
     },
     {
         "action": exports.authenticate;
         "inputs": {"args": [session]; "kwargs": {"email": "integration@example.test"; "password": "secret"}};
         "outputs": none;
-        "assert": @received.success == true & @received.transactions != none;
+        "assert": @received.is_success == true & @received.transactions != none;
         "note": "authenticate esegue il login e attraversa l'adapter authentication stub"
     },
     {
         "action": exports.reinstate;
         "inputs": {"args": [session]; "kwargs": {"email": "integration@example.test"; "password": "secret"}};
         "outputs": none;
-        "assert": @received.outputs.user.email == @expected.user.email;
+        "assert": @received.output.value.user.email == @expected.user.email;
         "note": "reinstate ripristina l'identita dal provider stub"
     },
     {
         "action": exports.terminate;
         "inputs": {"args": [session]};
         "outputs": {};
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "terminate chiude la sessione tramite authentication stub"
     },
     {
         "action": exports.get_policy;
         "inputs": "missing";
         "outputs": none;
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "get_policy segnala una policy non caricata"
     },
     {
         "action": exports.authorized;
         "inputs": {"args": ["missing"]};
         "outputs": false;
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "authorized nega una policy inesistente senza provider esterno"
     },
     {
         "action": exports.resolve_route;
         "inputs": {"args": [routes, "/missing", "GET"]};
         "outputs": none;
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "resolve_route restituisce none per una rotta non registrata"
     }
 );

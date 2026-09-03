@@ -49,6 +49,8 @@ class Repository:
             value = flow.map_get_value(provider_path)(data)
             if value is not None:
                 mapped = flow.map_put_map(model_key, value)(mapped)
+                if isinstance(provider_path, str) and "." not in provider_path:
+                    mapped.pop(provider_path, None)
         return mapped
 
     def get_requirements(self, template_str):

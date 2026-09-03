@@ -23,70 +23,70 @@ tuple:test_suite := (
         "action": exports.create;
         "inputs": imports.module.Port;
         "outputs": none;
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "Persistence Port espone create come hook astratto";
     },
     {
         "action": exports.read;
         "inputs": imports.module.Port;
         "outputs": none;
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "Persistence Port espone read come hook astratto";
     },
     {
         "action": exports.update;
         "inputs": imports.module.Port;
         "outputs": none;
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "Persistence Port espone update come hook astratto";
     },
     {
         "action": exports.delete;
         "inputs": imports.module.Port;
         "outputs": none;
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "Persistence Port espone delete come hook astratto";
     },
     {
         "action": exports.query;
         "inputs": imports.module.Port;
         "outputs": none;
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "Persistence Port espone query come hook astratto";
     },
     {
         "action": exports.view;
         "inputs": imports.module.Port;
         "outputs": none;
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "Persistence Port espone view come hook astratto";
     },
     {
         "action": exports.mock.create;
         "inputs": {"session": session; "storekeeper": record};
         "outputs": "item";
-        "assert": @received.outputs.name == @expected;
+        "assert": @received.output.value.name == @expected;
         "note": "L'adapter mock crea una risorsa in memoria";
     },
     {
         "action": exports.mock.read;
         "inputs": {"session": session; "storekeeper": {"location": "/items/1"}};
         "outputs": "item";
-        "assert": @received.outputs.name == @expected;
+        "assert": @received.output.value.name == @expected;
         "note": "L'adapter mock legge una risorsa esistente";
     },
     {
         "action": exports.mock.update;
         "inputs": {"session": session; "storekeeper": {"location": "/items/1"; "payload": {"name": "updated"}}};
         "outputs": "updated";
-        "assert": @received.outputs.name == @expected;
+        "assert": @received.output.value.name == @expected;
         "note": "L'adapter mock aggiorna una risorsa in memoria";
     },
     {
         "action": exports.mock.delete;
         "inputs": {"session": session; "storekeeper": {"location": "/items/1"}};
         "outputs": {};
-        "assert": @received.outputs == @expected;
+        "assert": @received.output.value == @expected;
         "note": "L'adapter mock elimina una risorsa in memoria";
     }
 );
