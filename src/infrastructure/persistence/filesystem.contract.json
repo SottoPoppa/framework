@@ -20,13 +20,13 @@
         "test": "2c74ebf41db20853795548371da7baa3167682e683f2087fea8e56c20d4ab24e",
         "production": "2c74ebf41db20853795548371da7baa3167682e683f2087fea8e56c20d4ab24e"
       },
-      "_payload_data": {
-        "test": "a69de6615c35053c56123f8dd04eaf5a1fdf8c27b355a15d19065e431d78aa30",
-        "production": "a69de6615c35053c56123f8dd04eaf5a1fdf8c27b355a15d19065e431d78aa30"
-      },
       "_resolve_path": {
         "test": "5ae2981284d88ce7ff9c016c56a0f4bd0c8384f19ae4e89748b5e48759f5ce68",
         "production": "5ae2981284d88ce7ff9c016c56a0f4bd0c8384f19ae4e89748b5e48759f5ce68"
+      },
+      "_payload_data": {
+        "test": "a69de6615c35053c56123f8dd04eaf5a1fdf8c27b355a15d19065e431d78aa30",
+        "production": "a69de6615c35053c56123f8dd04eaf5a1fdf8c27b355a15d19065e431d78aa30"
       }
     }
   }

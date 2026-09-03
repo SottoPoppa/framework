@@ -6,6 +6,7 @@ imports: {
 any:mock := imports.mock_module.Adapter(name:"mock");
 
 exports: {
+    'request': imports.module.Port.request;
     'create': imports.module.Port.create;
     'read': imports.module.Port.read;
     'update': imports.module.Port.update;
@@ -19,6 +20,13 @@ session:session := {"id": "persistence-test"};
 any:record := {"location": "/items/1"; "payload": {"name": "item"}};
 
 tuple:test_suite := (
+    {
+        "action": exports.request;
+        "inputs": imports.module.Port;
+        "outputs": none;
+        "assert": @received.is_success == true & @received.output.value == @expected;
+        "note": "Persistence Port espone request come hook astratto del provider";
+    },
     {
         "action": exports.create;
         "inputs": imports.module.Port;

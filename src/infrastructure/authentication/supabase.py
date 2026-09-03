@@ -3,6 +3,7 @@ import json
 import supabase
 from types import MappingProxyType
 import re
+import framework.port.authentication as authentication
 
 _TYPE_MAP    = {"string":"text","integer":"integer","float":"numeric",
                 "boolean":"boolean","date":"date","datetime":"timestamp"}
@@ -122,7 +123,7 @@ def map_auth_response(provider,auth_res):
         }
     }
 
-class Adapter(authentication.port):
+class Adapter(authentication.Port):
     """
     Adapter Supabase stateless per ambienti multi-utente.
 

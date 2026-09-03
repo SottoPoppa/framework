@@ -442,7 +442,7 @@ mapping_attributes = {
 
 def attrs(tag_key, input_data, classe=None):
     # 1. Prendi gli attributi grezzi passati dall'utente
-    raw_attrs = input_data.get("attrs", {})
+    raw_attrs = dict(input_data.get("attrs", {}))
     if classe:
         raw_attrs["class"] = classe + " " + raw_attrs.get("class", "")
     
@@ -1076,6 +1076,8 @@ class Adapter(presentation.Port):
         return rendered_node
 
     async def mount_route(self, routes):
+        if not hasattr(routes, "append"):
+            routes = list(routes)
         for path, methods_dict in self.routes.items():
             for method, data in methods_dict.items():
                 typee = data.get('type')
@@ -1113,6 +1115,7 @@ class Adapter(presentation.Port):
                 # Crea la rotta e aggiungila
                 r = Route(path, endpoint=endpoint, methods=[method])
                 routes.append(r)
+            return routes
 
     def mount_css(self, node, context):
         pass
@@ -1124,7 +1127,7 @@ class Adapter(presentation.Port):
         if callable(tag) and type(tag).__name__ == "function":
             return str(tag({"inner": inner, "attrs": attrs}))
         # Altrimenti trattalo come un elemento htpy standard
-        children = [Markup(i) for i in inner] if isinstance(inner, list) else Markup(inner or "")
+        children = [Markup(i) for i in inner] if isinstance(inner, (list, tuple)) else Markup(inner or "")
         if not hasattr(tag, "__getitem__"):
             return str(tag(**attrs))
         return str(tag(**attrs)[children])

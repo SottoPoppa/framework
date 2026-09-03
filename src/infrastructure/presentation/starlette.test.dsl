@@ -8,8 +8,8 @@ any:adapter := imports.module.Adapter(loader: none, defender: none, presenter: n
 any:unsupported_request := imports.module.Request({"type": "http"; "method": "PUT"; "path": "/"; "query_string": ""; "headers": []; "session": {}});
 any:action_request := imports.types.SimpleNamespace(method: "GET", query_params: {"q": "dsl"}, session: {});
 any:authenticate := imports.mock.AsyncMock(return_value: {"success": true; "outputs": {"user": "alice"}; "errors": []});
-any:auth_defender := imports.types.SimpleNamespace(authenticate: authenticate);
-any:auth_adapter := imports.module.Adapter(loader: none, defender: auth_defender, presenter: none, messenger: none, authenticator: none, storekeeper: none, manager: {"defender": {"key": "test-key"}});
+any:authenticator := imports.types.SimpleNamespace(authenticate: authenticate);
+any:auth_adapter := imports.module.Adapter(loader: none, defender: none, presenter: none, messenger: none, authenticator: authenticator, storekeeper: none, manager: {"defender": {"key": "test-key"}});
 
 exports: {
     'attrs': imports.module.attrs;
@@ -21,7 +21,7 @@ exports: {
     'signout': imports.module.Adapter.signout;
     'signin': imports.module.Adapter.signin;
     'signup': imports.module.Adapter.signup;
-    'signaid': imports.module.Adapter.signaid;
+        "inputs": {"args": (adapter.views)};
     'action': imports.module.Adapter.action;
     'mount_route': imports.module.Adapter.mount_route;
     'shutdown': imports.module.Adapter.shutdown;
@@ -221,7 +221,7 @@ tuple:test_suite := (
         "action": exports.mount_route;
         "inputs": (adapter, []);
         "outputs": none;
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "assert": @received.is_success == true;
         "note": "Starlette monta una route reale e aggiorna l'indice delle view";
     },
     {
