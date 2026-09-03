@@ -1,5 +1,5 @@
 imports: {
-    'scheme': import("framework.service.scheme");
+    'scheme': import("framework.core.scheme");
 };
 
 exports: {

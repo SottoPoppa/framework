@@ -1,5 +1,5 @@
 imports: {
-    'flow': import("framework.service.flow");
+    'flow': import("framework.core.flow");
 };
 
 exports: {

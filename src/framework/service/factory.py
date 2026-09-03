@@ -23,7 +23,7 @@ class Repository:
         if not self.envelope or not isinstance(data, dict):
             return data
 
-        value = scheme.get(data, self.envelope)
+        value = flow.map_get_value(self.envelope)(data)
         return value if value is not None else data
 
     def _map_provider_data(self, data, profile):
@@ -46,9 +46,9 @@ class Repository:
 
         mapped = dict(data)
         for model_key, provider_path in mapping.items():
-            value = scheme.get(data, provider_path)
+            value = flow.map_get_value(provider_path)(data)
             if value is not None:
-                mapped = scheme.put(mapped, model_key, value)
+                mapped = flow.map_put_map(model_key, value)(mapped)
         return mapped
 
     def get_requirements(self, template_str):
@@ -155,9 +155,9 @@ class Repository:
             return transaction
 
         normalized = scheme.normalize(data, model)
-        if normalized["errors"]:
-            return flow.error(normalized["errors"])
-        return flow.success(normalized["data"])
+        if not normalized.is_success:
+            return flow.error(flow.output(normalized))
+        return flow.success(flow.output(normalized))
 
     async def parameters(self, **inputs):
         """Prepara i parametri della rotta risolvendo il template tramite Scheme."""

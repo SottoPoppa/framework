@@ -786,8 +786,13 @@ class Interpreter:
             res, _ = await self.visit_call(fn.call_node, merged, path=path)
             return _flow_result(res, action=path or "language.lazy_call")
         if callable(fn):
-            step = fn
-            value = kwargs if kwargs else args
+            async def step(_):
+                out = fn(*args, **kwargs)
+                if inspect.isawaitable(out):
+                    out = await out
+                return out
+            step.__name__ = getattr(fn, "__name__", "language.invoke")
+            value = None
         elif isinstance(fn, tuple) and len(fn) in (3, 4):
             step = self._call_dsl_fn
             value = (fn, args, kwargs, path)

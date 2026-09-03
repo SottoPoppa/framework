@@ -1,5 +1,5 @@
 imports: {
-    'language': import("framework.service.language");
+    'language': import("framework.core.language");
 };
 
 any:interpreter := imports.language.Interpreter();

@@ -282,8 +282,10 @@ class Manager(manager.Port):
 
         try:
             run_result = await session.run(path)
+            if flow.is_result(run_result) and not run_result.is_success:
+                error = flow.output(run_result)
+                raise error if isinstance(error, Exception) else RuntimeError(str(error))
             ctx = flow.output(run_result) if flow.is_result(run_result) else run_result
-            #exit(ctx)
         except Exception as e:
             s.error(
                 f"Il file DSL {path} non è stato eseguito correttamente (errore di parsing o runtime)",
