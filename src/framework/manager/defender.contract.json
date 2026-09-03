@@ -10,13 +10,13 @@
   },
   "hashes": {
     "Manager": {
-      "compatible_adapters": {
-        "test": "b4c07480f8449af33dff90edaf463027596e26eb810bf46c2b87d78990b793ad",
-        "production": "b4c07480f8449af33dff90edaf463027596e26eb810bf46c2b87d78990b793ad"
-      },
       "capabilities_authorized": {
-        "test": "365390edff86655ac94a15bf59198204dc91f7f158cf6ce30a90a0f19f25efab",
-        "production": "365390edff86655ac94a15bf59198204dc91f7f158cf6ce30a90a0f19f25efab"
+        "production": "365390edff86655ac94a15bf59198204dc91f7f158cf6ce30a90a0f19f25efab",
+        "test": "365390edff86655ac94a15bf59198204dc91f7f158cf6ce30a90a0f19f25efab"
+      },
+      "compatible_adapters": {
+        "production": "b4c07480f8449af33dff90edaf463027596e26eb810bf46c2b87d78990b793ad",
+        "test": "b4c07480f8449af33dff90edaf463027596e26eb810bf46c2b87d78990b793ad"
       }
     }
   }

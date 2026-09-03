@@ -9,13 +9,13 @@
     ]
   },
   "hashes": {
-    "resolve_target_name": {
-      "test": "39ba38ca3ad1ef1dd54dd1cffd3697ad5d9b13481cff5d5f58c6b5ddf5a2ab5c",
-      "production": "39ba38ca3ad1ef1dd54dd1cffd3697ad5d9b13481cff5d5f58c6b5ddf5a2ab5c"
-    },
     "resolve_filter": {
-      "test": "f33bea95ba734634deab134f1c5efbb6b99c37275ff6e527695e33c3193fe661",
-      "production": "f33bea95ba734634deab134f1c5efbb6b99c37275ff6e527695e33c3193fe661"
+      "production": "f33bea95ba734634deab134f1c5efbb6b99c37275ff6e527695e33c3193fe661",
+      "test": "f33bea95ba734634deab134f1c5efbb6b99c37275ff6e527695e33c3193fe661"
+    },
+    "resolve_target_name": {
+      "production": "39ba38ca3ad1ef1dd54dd1cffd3697ad5d9b13481cff5d5f58c6b5ddf5a2ab5c",
+      "test": "39ba38ca3ad1ef1dd54dd1cffd3697ad5d9b13481cff5d5f58c6b5ddf5a2ab5c"
     }
   }
 }

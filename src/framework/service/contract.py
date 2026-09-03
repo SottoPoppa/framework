@@ -71,7 +71,7 @@ class Contract:
         target = Path(path)
         temporary = target.with_suffix(target.suffix + ".tmp")
         temporary.write_text(
-            json.dumps(json_safe(data), indent=2, ensure_ascii=False),
+            json.dumps(json_safe(data), indent=2, ensure_ascii=False, sort_keys=True),
             encoding="utf-8",
         )
         temporary.replace(target)

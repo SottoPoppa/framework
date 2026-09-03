@@ -1,42 +1,38 @@
 {
-  "requires": [
-    "bs4",
-    "untangle"
-  ],
   "contract_version": 2,
   "exports": {
     "initialize": [
       "Port.initialize"
     ],
-    "mount_view": [
-      "Port.mount_view"
+    "mount_css": [
+      "Port.mount_css"
     ],
     "mount_route": [
       "Port.mount_route"
     ],
-    "mount_css": [
-      "Port.mount_css"
+    "mount_view": [
+      "Port.mount_view"
     ],
     "node_create": [
       "Port.node_create"
     ],
-    "node_update": [
-      "Port.node_update"
+    "node_get": [
+      "Port.node_get"
     ],
     "node_union": [
       "Port.node_union"
     ],
-    "node_get": [
-      "Port.node_get"
-    ],
-    "rebuild": [
-      "Port.rebuild"
+    "node_update": [
+      "Port.node_update"
     ],
     "normalize_route_path": [
       "Port.normalize_route_path"
     ],
     "parse_reactive_event": [
       "Port.parse_reactive_event"
+    ],
+    "rebuild": [
+      "Port.rebuild"
     ],
     "resolve_controller_file": [
       "Port.resolve_controller_file"
@@ -47,58 +43,62 @@
   },
   "hashes": {
     "Port": {
+      "initialize": {
+        "production": "c17202ab7d9c2214c87c1ce267da8441761634a1941a7b552f3c79a4f9c053c5",
+        "test": "c17202ab7d9c2214c87c1ce267da8441761634a1941a7b552f3c79a4f9c053c5"
+      },
       "mount_css": {
-        "test": "d88ddbbf7228fed9edb1a6856ebd17da91b532b82466fa4bc7bee659362dced4",
-        "production": "d88ddbbf7228fed9edb1a6856ebd17da91b532b82466fa4bc7bee659362dced4"
+        "production": "d88ddbbf7228fed9edb1a6856ebd17da91b532b82466fa4bc7bee659362dced4",
+        "test": "d88ddbbf7228fed9edb1a6856ebd17da91b532b82466fa4bc7bee659362dced4"
       },
       "mount_route": {
-        "test": "81d628aa243cba965bc84f5de7b3fe6387530c32087189d755e1c1b6294eb557",
-        "production": "81d628aa243cba965bc84f5de7b3fe6387530c32087189d755e1c1b6294eb557"
-      },
-      "node_create": {
-        "test": "05d73e2684ed54b8a5871f3af607c9d629189253018293739bcb8f643d8c7720",
-        "production": "05d73e2684ed54b8a5871f3af607c9d629189253018293739bcb8f643d8c7720"
-      },
-      "normalize_route_path": {
-        "test": "6ccd137d0995e8b3f68b2532a141a1adf76d64e45d70984f3243c0bb88c61f11",
-        "production": "6ccd137d0995e8b3f68b2532a141a1adf76d64e45d70984f3243c0bb88c61f11"
-      },
-      "parse_reactive_event": {
-        "test": "d2e7566303cbd6c07f4475a83e9462b15a3a8e6871ac83cfdd84d8a3b4e90d35",
-        "production": "d2e7566303cbd6c07f4475a83e9462b15a3a8e6871ac83cfdd84d8a3b4e90d35"
-      },
-      "resolve_controller_file": {
-        "test": "52ea60a0edb1deb0bbd3f8a41382a0741d98042151112bc5637287016ae0e7f1",
-        "production": "52ea60a0edb1deb0bbd3f8a41382a0741d98042151112bc5637287016ae0e7f1"
-      },
-      "shutdown": {
-        "test": "92e314167fe712b541cef250cb65bff9660b6c7284a72c082549a40ecb1a773e",
-        "production": "92e314167fe712b541cef250cb65bff9660b6c7284a72c082549a40ecb1a773e"
-      },
-      "node_union": {
-        "test": "79e13eac3b2f722fe0f2228c5be74959b5cc4f8ba02fd570ef69cccc8e1af053",
-        "production": "79e13eac3b2f722fe0f2228c5be74959b5cc4f8ba02fd570ef69cccc8e1af053"
-      },
-      "node_update": {
-        "test": "c7357a6a1bd7b04cc13849eb69382a97643c2b86215c4e0407a2f0b789916bd6",
-        "production": "c7357a6a1bd7b04cc13849eb69382a97643c2b86215c4e0407a2f0b789916bd6"
+        "production": "81d628aa243cba965bc84f5de7b3fe6387530c32087189d755e1c1b6294eb557",
+        "test": "81d628aa243cba965bc84f5de7b3fe6387530c32087189d755e1c1b6294eb557"
       },
       "mount_view": {
-        "test": "5d8f2209b38411f61174f27a573524b616d9d5f9b224fb9ab78fe1f372a9bbbf",
-        "production": "5d8f2209b38411f61174f27a573524b616d9d5f9b224fb9ab78fe1f372a9bbbf"
+        "production": "5d8f2209b38411f61174f27a573524b616d9d5f9b224fb9ab78fe1f372a9bbbf",
+        "test": "5d8f2209b38411f61174f27a573524b616d9d5f9b224fb9ab78fe1f372a9bbbf"
       },
-      "rebuild": {
-        "test": "02cfaf8a219549d1d8d555794b97d92ad2c2f799ba9679a826acc9181fe3c2c3",
-        "production": "02cfaf8a219549d1d8d555794b97d92ad2c2f799ba9679a826acc9181fe3c2c3"
+      "node_create": {
+        "production": "05d73e2684ed54b8a5871f3af607c9d629189253018293739bcb8f643d8c7720",
+        "test": "05d73e2684ed54b8a5871f3af607c9d629189253018293739bcb8f643d8c7720"
       },
       "node_get": {
-        "test": "12ddbe83fa24b931967649f06192efb9d31f05adf8cd33b9185556257993dbfa",
-        "production": "12ddbe83fa24b931967649f06192efb9d31f05adf8cd33b9185556257993dbfa"
+        "production": "12ddbe83fa24b931967649f06192efb9d31f05adf8cd33b9185556257993dbfa",
+        "test": "12ddbe83fa24b931967649f06192efb9d31f05adf8cd33b9185556257993dbfa"
       },
-      "initialize": {
-        "test": "c17202ab7d9c2214c87c1ce267da8441761634a1941a7b552f3c79a4f9c053c5",
-        "production": "c17202ab7d9c2214c87c1ce267da8441761634a1941a7b552f3c79a4f9c053c5"
+      "node_union": {
+        "production": "79e13eac3b2f722fe0f2228c5be74959b5cc4f8ba02fd570ef69cccc8e1af053",
+        "test": "79e13eac3b2f722fe0f2228c5be74959b5cc4f8ba02fd570ef69cccc8e1af053"
+      },
+      "node_update": {
+        "production": "c7357a6a1bd7b04cc13849eb69382a97643c2b86215c4e0407a2f0b789916bd6",
+        "test": "c7357a6a1bd7b04cc13849eb69382a97643c2b86215c4e0407a2f0b789916bd6"
+      },
+      "normalize_route_path": {
+        "production": "6ccd137d0995e8b3f68b2532a141a1adf76d64e45d70984f3243c0bb88c61f11",
+        "test": "6ccd137d0995e8b3f68b2532a141a1adf76d64e45d70984f3243c0bb88c61f11"
+      },
+      "parse_reactive_event": {
+        "production": "d2e7566303cbd6c07f4475a83e9462b15a3a8e6871ac83cfdd84d8a3b4e90d35",
+        "test": "d2e7566303cbd6c07f4475a83e9462b15a3a8e6871ac83cfdd84d8a3b4e90d35"
+      },
+      "rebuild": {
+        "production": "02cfaf8a219549d1d8d555794b97d92ad2c2f799ba9679a826acc9181fe3c2c3",
+        "test": "02cfaf8a219549d1d8d555794b97d92ad2c2f799ba9679a826acc9181fe3c2c3"
+      },
+      "resolve_controller_file": {
+        "production": "52ea60a0edb1deb0bbd3f8a41382a0741d98042151112bc5637287016ae0e7f1",
+        "test": "52ea60a0edb1deb0bbd3f8a41382a0741d98042151112bc5637287016ae0e7f1"
+      },
+      "shutdown": {
+        "production": "92e314167fe712b541cef250cb65bff9660b6c7284a72c082549a40ecb1a773e",
+        "test": "92e314167fe712b541cef250cb65bff9660b6c7284a72c082549a40ecb1a773e"
       }
     }
-  }
+  },
+  "requires": [
+    "bs4",
+    "untangle"
+  ]
 }

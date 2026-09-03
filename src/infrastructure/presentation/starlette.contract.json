@@ -1,14 +1,4 @@
 {
-  "requires": [
-    "htpy",
-    "starlette",
-    "uvicorn",
-    "beautifulsoup4",
-    "paramiko",
-    "itsdangerous",
-    "websockets",
-    "python-multipart"
-  ],
   "contract_version": 2,
   "exports": {
     "attrs": [
@@ -19,15 +9,25 @@
     ]
   },
   "hashes": {
-    "attrs": {
-      "test": "7b8a18ebbb3de013858dcaad2bf36e6ea26a7059ed16b93ce3aa617c247c5cfc",
-      "production": "67d64e7a9b08c35dfca93d896dae7096e98c3d7d8080cf5825f926c02e02a664"
-    },
     "Adapter": {
       "node_create": {
-        "test": "9070c97ea0cb97a832ab7617faab99b67fa6e36a2a9527dabe15cddd2fad631c",
-        "production": "172ea4084ad3461bbf21f359aa6b902628f628dab264d193985187e36b3cba55"
+        "production": "172ea4084ad3461bbf21f359aa6b902628f628dab264d193985187e36b3cba55",
+        "test": "9070c97ea0cb97a832ab7617faab99b67fa6e36a2a9527dabe15cddd2fad631c"
       }
+    },
+    "attrs": {
+      "production": "67d64e7a9b08c35dfca93d896dae7096e98c3d7d8080cf5825f926c02e02a664",
+      "test": "7b8a18ebbb3de013858dcaad2bf36e6ea26a7059ed16b93ce3aa617c247c5cfc"
     }
-  }
+  },
+  "requires": [
+    "htpy",
+    "starlette",
+    "uvicorn",
+    "beautifulsoup4",
+    "paramiko",
+    "itsdangerous",
+    "websockets",
+    "python-multipart"
+  ]
 }

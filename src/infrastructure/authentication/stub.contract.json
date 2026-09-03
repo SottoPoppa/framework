@@ -1,22 +1,22 @@
 {
   "contract_version": 2,
   "exports": {
-    "sign_up": [
-      "Adapter.sign_up"
-    ],
     "sign_in": [
       "Adapter.sign_in"
+    ],
+    "sign_up": [
+      "Adapter.sign_up"
     ]
   },
   "hashes": {
     "Adapter": {
       "sign_in": {
-        "test": "35f3d260ca8b2649677ec73c9df7797d64d667af02d220d3a630d16acd1440df",
-        "production": "35f3d260ca8b2649677ec73c9df7797d64d667af02d220d3a630d16acd1440df"
+        "production": "35f3d260ca8b2649677ec73c9df7797d64d667af02d220d3a630d16acd1440df",
+        "test": "35f3d260ca8b2649677ec73c9df7797d64d667af02d220d3a630d16acd1440df"
       },
       "sign_up": {
-        "test": "278eea648c8ea1cb2baf500cba74942c1da044dd65e5264259daca6fe3b67627",
-        "production": "278eea648c8ea1cb2baf500cba74942c1da044dd65e5264259daca6fe3b67627"
+        "production": "278eea648c8ea1cb2baf500cba74942c1da044dd65e5264259daca6fe3b67627",
+        "test": "278eea648c8ea1cb2baf500cba74942c1da044dd65e5264259daca6fe3b67627"
       }
     }
   }
