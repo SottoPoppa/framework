@@ -40,21 +40,21 @@ tuple:test_suite := (
         "action": exports.get_requirements;
         "inputs": "";
         "outputs": [];
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "get_requirements gestisce un template vuoto";
     },
     {
         "action": exports.get_requirements;
         "inputs": "repos/{{ owner }}/{{ name }}";
         "outputs": ["name", "owner"];
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "get_requirements estrae tutte le variabili del template";
     },
     {
         "action": exports.select;
         "inputs": (["static/path"], {});
         "outputs": "static/path";
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "select sceglie un template statico senza requisiti";
     },
     {
@@ -66,7 +66,7 @@ tuple:test_suite := (
             "name": "repo"
         };
         "outputs": "repos/octo/repo";
-        "assert": @received.output.value.location == @expected & @received.output.value.provider == "github";
+        "assert": @received.is_success == true & @received.output.value.location == @expected & @received.output.value.provider == "github";
         "note": "parameters seleziona e formatta il template del provider";
     },
     {
@@ -87,14 +87,14 @@ tuple:test_suite := (
             "modified_at": none;
             "accessed_at": none
         };
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "results normalizza la risposta secondo lo schema file e applica i default";
     },
     {
         "action": exports.results;
         "inputs": [{}, "WORKFOLDER"];
         "outputs": none;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "results tratta una risposta vuota di delete come esito senza payload";
     },
     {
@@ -115,7 +115,7 @@ tuple:test_suite := (
             "modified_at": none;
             "accessed_at": none
         };
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "results mappa le chiavi del provider verso il modello canonico";
     }
 );

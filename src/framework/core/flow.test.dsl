@@ -23,21 +23,21 @@ tuple:test_suite := (
         "action": exports.is_result;
         "inputs": "payload";
         "outputs": false;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "is_result restituisce false per un valore che non è un flow.Result (il DSL spacchetta sempre il Result restituito da una chiamata)";
     },
     {
         "action": exports.success;
         "inputs": "payload";
         "outputs": "payload";
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "success conserva il payload del risultato Flow";
     },
     {
         "action": exports.check;
         "inputs": {"args": [imports.flow.error("invalid credentials")]};
         "outputs": false;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "check riconosce un risultato Flow fallito";
     },
     {
@@ -51,7 +51,7 @@ tuple:test_suite := (
         "action": exports.output;
         "inputs": {"args": [imports.flow.error("invalid credentials")]};
         "outputs": "invalid credentials";
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "output estrae l'errore da un Result fallito";
     }
 );

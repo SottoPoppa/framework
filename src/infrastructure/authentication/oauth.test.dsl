@@ -42,28 +42,28 @@ tuple:test_suite := (
         "action": exports.bool;
         "inputs": "true";
         "outputs": true;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "OAuth interpreta il flag SSL testuale";
     },
     {
         "action": exports.bool;
         "inputs": "false";
         "outputs": false;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "OAuth rifiuta il flag SSL disabilitato";
     },
     {
         "action": exports.headers;
         "inputs": (session,);
         "outputs": {"Authorization": "Bearer test-access-token"};
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "OAuth costruisce gli header dal token presente nella sessione";
     },
     {
         "action": exports.user;
         "inputs": (session,);
         "outputs": {"email": "user@example.test"};
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "OAuth recupera l'utente dalla sessione";
     },
     {
@@ -77,7 +77,7 @@ tuple:test_suite := (
         "action": exports.token_expired;
         "inputs": {"args": [{"expires_at": 1}]};
         "outputs": true;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "OAuth riconosce un token scaduto dalla sessione";
     }
 );

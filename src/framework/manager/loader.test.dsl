@@ -28,28 +28,28 @@ tuple:test_suite := (
         "action": exports.component;
         "inputs": "missing.component";
         "outputs": none;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "component restituisce none per una risorsa non registrata";
     },
     {
         "action": exports.import_module;
         "inputs": "framework.manager.loader";
         "outputs": true;
-        "assert": @received.output.value.Framework != none;
+        "assert": @received.is_success == true & @received.output.value.Framework != none;
         "note": "import_module risolve un modulo framework reale senza fixture";
     },
     {
         "action": exports.load_module;
         "inputs": ("framework.core.scheme", "src/framework/core/scheme.py", {"schemes": {"test": {}}});
         "outputs": true;
-        "assert": @received.output.value.schemes.test != none;
+        "assert": @received.is_success == true & @received.output.value.schemes.test != none;
         "note": "load_module inietta gli extra anche in un modulo già importato";
     },
     {
         "action": exports.run_integration_tests;
         "inputs": none;
         "outputs": false;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "run_integration_tests fallisce in modo esplicito senza Tester nel container";
     }
 );

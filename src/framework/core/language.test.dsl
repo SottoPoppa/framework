@@ -13,14 +13,14 @@ tuple:test_suite := (
         "action": exports.parse_only;
         "inputs": "int:value := 10;";
         "outputs": true;
-        "assert": @received.output.value != none;
+        "assert": @received.is_success == true & @received.output.value != none;
         "note": "parse_only accetta una dichiarazione DSL valida";
     },
     {
         "action": exports.parse_only;
         "inputs": "int:other := 20;";
         "outputs": true;
-        "assert": @received.output.value != none;
+        "assert": @received.is_success == true & @received.output.value != none;
         "note": "parse_only gestisce una seconda dichiarazione DSL valida";
     }
 );

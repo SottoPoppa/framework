@@ -146,7 +146,7 @@ tuple:test_suite := (
         "action": exports.startup;
         "inputs": [session];
         "outputs": none;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "startup invia il messaggio di avvio senza richiedere provider start";
     },
     {
@@ -159,14 +159,14 @@ tuple:test_suite := (
             "message": "Storekeeper avviato.";
             "domain": "info"
         };
-        "assert": @received.output.value.message == @expected.message & @received.output.value.domain == @expected.domain;
+        "assert": @received.is_success == true & @received.output.value.message == @expected.message & @received.output.value.domain == @expected.domain;
         "note": "il messaggio di startup attraversa Messenger e viene ricevuto dal provider mock";
     },
     {
         "action": exports.shutdown;
         "inputs": [session];
         "outputs": none;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "shutdown invia il messaggio di arresto";
     },
     {
@@ -179,7 +179,7 @@ tuple:test_suite := (
             "message": "Storekeeper arrestato.";
             "domain": "info"
         };
-        "assert": @received.output.value.message == @expected.message & @received.output.value.domain == @expected.domain;
+        "assert": @received.is_success == true & @received.output.value.message == @expected.message & @received.output.value.domain == @expected.domain;
         "note": "il messaggio di shutdown attraversa Messenger e viene ricevuto dal provider mock";
     },
     {
@@ -188,7 +188,7 @@ tuple:test_suite := (
             "args": [preparation_manager, session, preparation_input]
         };
         "outputs": true;
-        "assert": @received.output.value.0 != none & @received.output.value.1 != none;
+        "assert": @received.is_success == true & @received.output.value.0 != none & @received.output.value.1 != none;
         "note": "preparation carica il repository in cache e prepara il task del provider";
     },
     {
@@ -198,7 +198,7 @@ tuple:test_suite := (
             "kwargs": base
         };
         "outputs": created_model;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Storekeeper.store inoltra create, applica la mappa provider e normalizza il modello file";
     },
     {
@@ -208,7 +208,7 @@ tuple:test_suite := (
             "kwargs": base
         };
         "outputs": created_model;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Storekeeper.gather inoltra read e restituisce il modello file normalizzato";
     },
     {
@@ -218,7 +218,7 @@ tuple:test_suite := (
             "kwargs": base
         };
         "outputs": created_model;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Storekeeper.overview inoltra view e restituisce il modello file normalizzato";
     },
     {
@@ -228,7 +228,7 @@ tuple:test_suite := (
             "kwargs": updated
         };
         "outputs": updated_model;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Storekeeper.change inoltra update e riapplica mappa e modello";
     },
     {
@@ -238,7 +238,7 @@ tuple:test_suite := (
             "kwargs": base
         };
         "outputs": none;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Storekeeper.remove inoltra delete al provider configurato; il modello non normalizza una risposta vuota";
     }
 );

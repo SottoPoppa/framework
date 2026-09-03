@@ -27,35 +27,35 @@ tuple:test_suite := (
         "action": exports.get;
         "inputs": (data, "config.timeout");
         "outputs": 30;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "get legge un valore annidato tramite dot path";
     },
     {
         "action": exports.get;
         "inputs": (data, "versioni.*[status=fallito].id");
         "outputs": [2];
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "get filtra una lista con una wildcard condizionale";
     },
     {
         "action": exports.format;
         "inputs": {"target": "Ciao {{nome}}"; "nome": "Progetto A";};
         "outputs": "Ciao Progetto A";
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "format sostituisce le variabili Jinja";
     },
     {
         "action": exports.convert;
         "inputs": ("10", int);
         "outputs": 10;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "convert converte una stringa in intero";
     },
     {
         "action": exports.put;
         "inputs": (data, "config.timeout", 60);
         "outputs": {"nome": "Progetto A"; "config": {"timeout": 60;}; "versioni": [{"id": 1; "status": "completo";}, {"id": 2; "status": "fallito";}];};
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "put restituisce una copia aggiornata";
     },
     {

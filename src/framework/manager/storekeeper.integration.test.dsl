@@ -43,7 +43,7 @@ tuple:test_suite := (
             "kwargs": resource
         };
         "outputs": expected;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Storekeeper.store persiste un record usando il repository file e il filesystem reale";
     },
     {
@@ -53,7 +53,7 @@ tuple:test_suite := (
             "kwargs": resource
         };
         "outputs": expected;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Storekeeper.gather legge il record persistito tramite lo stesso repository reale";
     },
     {
@@ -63,7 +63,7 @@ tuple:test_suite := (
             "kwargs": resource
         };
         "outputs": none;
-        "assert": @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Storekeeper.remove ripulisce la risorsa creata dal test integrativo";
     }
 );

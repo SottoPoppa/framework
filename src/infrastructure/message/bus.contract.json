@@ -10,13 +10,13 @@
   },
   "hashes": {
     "Adapter": {
-      "post": {
-        "test": "f775141ce9ad250ccefc414c0510161a5b593c5360309eb701bb7a66974b4f67",
-        "production": "f775141ce9ad250ccefc414c0510161a5b593c5360309eb701bb7a66974b4f67"
-      },
       "forget": {
         "test": "1cc66f175e7c1862276cbaf04a04a84de97a2a6a76c9d02aa5e30f7503d701d5",
         "production": "1cc66f175e7c1862276cbaf04a04a84de97a2a6a76c9d02aa5e30f7503d701d5"
+      },
+      "post": {
+        "test": "f775141ce9ad250ccefc414c0510161a5b593c5360309eb701bb7a66974b4f67",
+        "production": "f775141ce9ad250ccefc414c0510161a5b593c5360309eb701bb7a66974b4f67"
       }
     }
   }

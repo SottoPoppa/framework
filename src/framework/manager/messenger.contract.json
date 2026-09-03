@@ -9,6 +9,10 @@
   },
   "hashes": {
     "Manager": {
+      "_split_domain": {
+        "test": "2b632fc87075424d6b2a34f87914f9a611b19fc55ea0daba5e0d54a9c48c00ff",
+        "production": "2b632fc87075424d6b2a34f87914f9a611b19fc55ea0daba5e0d54a9c48c00ff"
+      },
       "receive": {
         "test": "22bef44ab4bada077cda27a1bf4342323cb8f02ebb885c0106dad948cb0eca0b",
         "production": "22bef44ab4bada077cda27a1bf4342323cb8f02ebb885c0106dad948cb0eca0b"
@@ -16,10 +20,6 @@
       "send": {
         "test": "a3b70b3104e564b9ec8dd779efcbc770aca9b5d083cf75a963b1279676920e84",
         "production": "a3b70b3104e564b9ec8dd779efcbc770aca9b5d083cf75a963b1279676920e84"
-      },
-      "_split_domain": {
-        "test": "2b632fc87075424d6b2a34f87914f9a611b19fc55ea0daba5e0d54a9c48c00ff",
-        "production": "2b632fc87075424d6b2a34f87914f9a611b19fc55ea0daba5e0d54a9c48c00ff"
       }
     }
   }

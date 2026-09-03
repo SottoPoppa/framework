@@ -3,13 +3,15 @@ imports: {
 };
 
 any:adapter := imports.module.Adapter(
-    provider:"jsonplaceholder",
-    url:"https://jsonplaceholder.typicode.com"
+    provider: "glpi",
+    url: "https://glpi.example.test"
 );
 any:token_adapter := imports.module.Adapter(
-    url:"https://example.test/api",
-    token:"secret",
-    authorization:"Token"
+    provider: "glpi",
+    url: "https://glpi.example.test",
+    access_token: "secret",
+    expires_at: 4102444800,
+    token_type: "Token"
 );
 
 session:session := {
@@ -25,95 +27,95 @@ exports: {
 
 tuple:test_suite := (
     {
-        "action": adapter._url;
-        "inputs": "/posts/1";
-        "outputs": "https://jsonplaceholder.typicode.com/posts/1";
-        "assert": @received.output.value == @expected;
-        "note": "Adapter._url normalizza il percorso e costruisce l'URL della risorsa";
+        "action": exports.adapter._api_url;
+        "inputs": "Assistance/Ticket/1";
+        "outputs": "https://glpi.example.test/api.php/v2.3/Assistance/Ticket/1";
+        "assert": @received.is_success == true & @received.output.value == @expected;
+        "note": "Adapter._api_url costruisce il percorso API GLPI V2";
     },
     {
-        "action": adapter._headers;
-        "inputs": {"headers": {"X-Test": "api"}};
+        "action": exports.adapter._headers;
+        "inputs": {"headers": {"X-Test": "api"}; "has_body": true};
         "outputs": {"Accept": "application/json"; "Content-Type": "application/json"; "X-Test": "api"};
-        "assert": @received.output.value == @expected;
-        "note": "Adapter._headers combina gli header predefiniti con quelli della richiesta";
+        "assert": @received.is_success == true & @received.output.value == @expected;
+        "note": "Adapter._headers aggiunge Content-Type solo alle richieste con body";
     },
     {
         "action": exports.token_adapter._headers;
         "inputs": {};
         "outputs": "Token secret";
-        "assert": @received.output.value.Authorization == @expected;
-        "note": "Adapter costruisce l'header Authorization usando token e schema configurati";
+        "assert": @received.is_success == true & @received.output.value.Authorization == @expected;
+        "note": "Adapter._headers usa il token OAuth esplicito e il suo tipo";
     },
     {
-        "action": adapter.request;
-        "inputs": {"method": "GET"; "location": "/posts/1"};
-        "outputs": 1;
-        "assert": @received.output.value.id == @expected;
-        "note": "Adapter.request esegue una GET e restituisce il payload JSON";
+        "action": exports.adapter.request;
+        "inputs": {"method": "GET"; "location": "Assistance/Ticket/1"; "session": session};
+        "outputs": none;
+        "assert": @received.is_success == false & @received.output.value == @expected;
+        "note": "Adapter.request rifiuta una richiesta senza configurazione OAuth";
     },
     {
-        "action": adapter.create;
+        "action": exports.adapter.create;
         "inputs": {
-            "resource": "posts";
-            "payload": {"title": "OmniPort"; "body": "test"; "userId": 1};
+            "resource": "Assistance/Ticket";
+            "payload": {"name": "OmniPort"};
             "session": session
         };
-        "outputs": "OmniPort";
-        "assert": @received.output.value.title == @expected;
-        "note": "Adapter.create delega a POST e restituisce la risorsa creata";
+        "outputs": none;
+        "assert": @received.is_success == false & @received.output.value == @expected;
+        "note": "Adapter.create richiede un token prima di inviare il payload";
     },
     {
-        "action": adapter.read;
+        "action": exports.adapter.read;
         "inputs": {
             "session": session;
-            "storekeeper": {"provider": "jsonplaceholder"; "location": "/posts/1"; "operation": "read"; "repository": "posts"}
+            "storekeeper": {"provider": "glpi"; "location": "Assistance/Ticket/1"; "operation": "read"; "repository": "tickets"}
         };
-        "outputs": 1;
-        "assert": @received.output.value.id == @expected;
-        "note": "Adapter.read delega a GET sulla risorsa richiesta";
+        "outputs": none;
+        "assert": @received.is_success == false & @received.output.value == @expected;
+        "note": "Adapter.read applica il metodo GET del Port e richiede autenticazione";
     },
     {
-        "action": adapter.update;
+        "action": exports.adapter.update;
         "inputs": {
-            "resource": "posts";
+            "resource": "Assistance/Ticket";
             "item_id": 1;
-            "payload": {"id": 1; "title": "Aggiornato"; "body": "test"; "userId": 1};
+            "payload": {"name": "Aggiornato"};
             "session": session
         };
-        "outputs": "Aggiornato";
-        "assert": @received.output.value.title == @expected;
-        "note": "Adapter.update delega a PUT e restituisce il payload aggiornato";
+        "outputs": none;
+        "assert": @received.is_success == false & @received.output.value == @expected;
+        "note": "Adapter.update applica PATCH e richiede autenticazione";
     },
     {
-        "action": adapter.delete;
+        "action": exports.adapter.delete;
         "inputs": {
-            "resource": "posts";
+            "resource": "Assistance/Ticket";
             "item_id": 1;
             "session": session
         };
-        "outputs": {};
-        "assert": @received.output.value == @expected;
-        "note": "Adapter.delete delega a DELETE e accetta la risposta senza payload";
+        "outputs": none;
+        "assert": @received.is_success == false & @received.output.value == @expected;
+        "note": "Adapter.delete applica DELETE e richiede autenticazione";
     },
     {
-        "action": adapter.query;
+        "action": exports.adapter.query;
         "inputs": {
-            "resource": "posts";
+            "resource": "Assistance/Ticket";
             "session": session
         };
-        "outputs": 1;
-        "assert": @received.output.value.id == @expected;
-        "note": "Adapter.query usa GET per interrogare una risorsa API";
+        "outputs": none;
+        "assert": @received.is_success == false & @received.output.value == @expected;
+        "note": "Adapter.query delega alla lettura di una collezione autenticata";
     },
     {
-        "action": adapter.view;
+        "action": exports.adapter.view;
         "inputs": {
-            "resource": "posts";
-            "session": session
+            "session": session;
+            "storekeeper": {"provider": "glpi"; "location": "Assistance/Ticket"; "operation": "view"; "repository": "tickets"}
         };
-        "outputs": 1;
-        "assert": @received.output.value.id == @expected;
-        "note": "Adapter.view usa GET per leggere la rappresentazione della risorsa"
+        "outputs": none;
+        "assert": @received.is_success == false & @received.output.value == @expected;
+        "note": "Adapter.view applica la lettura del Port senza una risorsa implicita"
     }
 );
