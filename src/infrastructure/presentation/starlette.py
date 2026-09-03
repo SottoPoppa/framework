@@ -78,11 +78,10 @@ except Exception as e:
 class ServerSessionMiddleware(BaseHTTPMiddleware):
     """Mantiene i dati di sessione sul server e nel cookie conserva solo un riferimento opaco."""
 
-    def __init__(self, app, secret_key, storekeeper, persistence="workfolder", cookie_name="session_state", secure=False):
+    def __init__(self, app, secret_key, storekeeper, cookie_name="session_state", secure=False):
         super().__init__(app)
         self.secret_key = secret_key.encode("utf-8")
         self.storekeeper = storekeeper
-        self.persistence = persistence
         self.cookie_name = cookie_name
         self.secure = secure
 
@@ -93,24 +92,27 @@ class ServerSessionMiddleware(BaseHTTPMiddleware):
         if not cookie:
             return None, False
         session_id, separator, signature = cookie.partition(".")
+        try:
+            uuid.UUID(session_id)
+        except (ValueError, AttributeError):
+            return None, False
         if not separator or not hmac.compare_digest(signature, self._signature(session_id)):
             return None, False
         return session_id, True
 
+    @staticmethod
+    def _new_session_id():
+        return str(uuid.uuid4())
+
     async def _load_session(self, session_id, verified):
-        context = {
-            "session_id": session_id,
-            "cookie_verified": verified,
-        }
         session = {"id": session_id}
         if not verified:
-            return session, context
+            return session
 
         result = await self.storekeeper.gather(
             session,
             repository="sessions",
-            persistence=self.persistence,
-            context=context,
+            filter={"eq": {"id": session_id}},
         )
         if not flow.check(result):
             raise RuntimeError(f"Impossibile leggere la sessione: {flow.output(result)}")
@@ -125,15 +127,14 @@ class ServerSessionMiddleware(BaseHTTPMiddleware):
                 if isinstance(loaded, dict):
                     session.update(loaded)
         session["id"] = session_id
-        return session, context
+        return session
 
-    async def _save_session(self, session, context):
+    async def _save_session(self, session):
         result = await self.storekeeper.change(
             session,
             repository="sessions",
-            persistence=self.persistence,
+            filter={"eq": {"id": session["id"]}},
             payload={"content": json.dumps(session)},
-            context=context,
         )
         if not flow.check(result):
             raise RuntimeError(f"Impossibile salvare la sessione: {flow.output(result)}")
@@ -149,23 +150,21 @@ class ServerSessionMiddleware(BaseHTTPMiddleware):
                 break
         cookie = cookies.get(self.cookie_name)
         session_id, verified = self._session_id(cookie.value if cookie else None)
-        session_id = session_id or secrets.token_urlsafe(32)
-        session, context = await self._load_session(session_id, verified)
+        session_id = session_id or self._new_session_id()
+        session = await self._load_session(session_id, verified)
         scope["session"] = session
-        scope["security_context"] = context
         try:
             await self.app(scope, receive, send)
         finally:
-            await self._save_session(session, context)
+            await self._save_session(session)
 
     async def dispatch(self, request, call_next):
         session_id, verified = self._session_id(request.cookies.get(self.cookie_name))
-        session_id = session_id or secrets.token_urlsafe(32)
-        session, context = await self._load_session(session_id, verified)
+        session_id = session_id or self._new_session_id()
+        session = await self._load_session(session_id, verified)
         request.scope["session"] = session
-        request.scope["security_context"] = context
         response = await call_next(request)
-        await self._save_session(session, context)
+        await self._save_session(session)
         response.set_cookie(
             self.cookie_name,
             f"{session_id}.{self._signature(session_id)}",
@@ -233,7 +232,7 @@ class DefenderMiddleware(BaseHTTPMiddleware):
             ):
                 return HTMLResponse(status_code=403, content="CSRF validation failed")
         # Logica di decisione (senza scomodare il resolve del router)
-        authorized = self.defender.authorized('presentation', session=request.session, context=request.scope.get("security_context", {}), action=method, resource=request.state.metadata.get('view'), location=request.state.metadata.get('path'))
+        authorized = self.defender.authorized('presentation', session=request.session, action=method, resource=request.state.metadata.get('view'), location=request.state.metadata.get('path'))
                     
         if not authorized:
             # Rifiutiamo la richiesta con un 403 Forbidden o 404
@@ -752,7 +751,6 @@ class Adapter(presentation.Port):
                 cookie_name="session_state",
                 secret_key=self._session_secret(),
                 storekeeper=self.storekeeper,
-                persistence=self.config.get("persistence", "workfolder"),
                 secure=bool(self.config.get("ssl_certfile")),
             ),
             Middleware(

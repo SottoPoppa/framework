@@ -105,14 +105,16 @@ class Manager(manager.Port):
         tasks = []
         repository_profiles = set(repository.location)
         providers = self.persistences
+        operation = str(storekeeper.get("operation", "")).upper()
+        resource = storekeeper.get("repository", "")
         policy = self.defender.get_policy("persistence") if self.defender else None
         security = policy.get("security", {}) if isinstance(policy, dict) else {}
         if self.defender and not self.defender.authorized(
             "persistence",
             session=session,
-            context=storekeeper.get("context", {}),
-            action=str(storekeeper.get("operation", "")).upper(),
-            resource=storekeeper.get("repository", ""),
+            action=operation,
+            resource=resource,
+            adapter=storekeeper,
         ):
             return flow.error("Persistence policy denied the operation")
         if self.defender and security:
