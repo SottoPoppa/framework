@@ -1,30 +1,20 @@
 {
     selected: "src/infrastructure/presentation/console.py";
     select(deps:false,default:selected,entry:false) -> select;
-    //dependencies: loader.file_dependencies(selected);
-    dependencies: [];
-    
-    //files: storekeeper.overview(sid, repository: "file",filter: {"startswith":{"relative_path": "/src"};"eq": {"type": "file"}});
-    files: {};
+    dependencies: [selected];
+    files:storekeeper.overview(session, repository: "file", filter: {"eq": {"type": "file"}});
 
 
     editor: {
-        application:storekeeper.gather(sid, repository: "file",filter: {"eq": {"filename": get(dependencies,"0")}});
-        framework:storekeeper.gather(sid, repository: "file",filter: {"eq": {"filename": get(dependencies,"1")}});
-        infrastructure:storekeeper.gather(sid, repository: "file",filter: {"eq": {"filename": get(dependencies,"2")}});
+        application:storekeeper.gather(session, repository: "file",filter: {"eq": {"filename": selected}});
+        framework:storekeeper.gather(session, repository: "file",filter: {"eq": {"filename": selected}});
+        infrastructure:storekeeper.gather(session, repository: "file",filter: {"eq": {"filename": selected}});
     };
 
-    gg(deps:false,entry:false) -> presenter.rebuild("editor-application",sid,{});
+    gg(deps:false,entry:false) -> presenter.rebuild("editors",session,{});
+    stampa(deps:false) -> messenger.send(session, domain: "console:info", message: select);
 
-
-    //close(deps:false) -> exit();
-    submit(deps:false) -> messenger.send(sid, domain: "console:info", message: submit);
-    //stampa() -> [storekeeper.overview(sid, repository: "file",filter: {"type": {"eq": "file"}}),exit(1)];
-    stampa(deps:false) -> messenger.send(sid, domain: "console:info", message:   dire);
-    new(deps:false) -> presenter.rebuild("editor-application",sid);
     cmd:{
-        //new(deps:false) -> presenter.rebuild("editor-application",sid);
         close(deps:false, entry:false) -> exit(1);
-        //close(deps:false) -> messenger.send(sid, domain: "console:error", message: "ciao");
     };
 }

@@ -1,8 +1,4 @@
 {
-  "requires": [
-    "textual>=0.40.0",
-    "rich>=13.0.0"
-  ],
   "adapter": {
     "post": {
       "production": "1d399c57a27c2909d65a7660955bc1e0eeb21baf6d47103476b5f8414cb199c6",
@@ -14,113 +10,30 @@
     }
   },
   "hashes": {
-    "attrs": {
-      "production": "e50d7c11fc1d5065fade9725b71e1e67d4d83e858ce18adcf98dae4e3e6fa048"
-    },
-    "widget": {
-      "production": "3c3afc22284582962a6a958f6319c34c62c706ac6e2cf18d21f3583bb4e7d68a"
-    },
-    "XmlScreen": {
-      "compose": {
-        "production": "fd165beea9fa6bd207770521669ce3eec75e4f3127468e04b4cf791c54136033"
-      }
-    },
-    "XmlModalScreen": {
-      "compose": {
-        "production": "84a93dc6cc5164b8f16336bc17d36c7e041d6c9600a38f4dbb49c8897a483636"
-      },
-      "action_dismiss_modal": {
-        "production": "41178d2d794126d88f0f045597b5af93b8f27fd4456f10348999e62df657298d"
-      },
-      "open_modal": {
-        "production": "649cd293e4988f4844f2260048ac7cd611ebe968a0ac98e1b7914fa33fbf308f"
-      },
-      "open_registered_modal": {
-        "production": "357501c90c09f648c72566687a634e79415952a2615428b0cdd2bfc4ad2de923"
-      },
-      "close_modal": {
-        "production": "46a13678626d41392e4f412dc72ec22d7176e5c8b343c200fca9ab7b12cdde9c"
-      }
-    },
-    "AppDinamica": {
-      "check_action": {
-        "production": "7036f6faa60d14395fecbb7d3eb3e3cca3d438ce940302e40730cd27283ea72b"
-      },
-      "action_save": {
-        "production": "ac0c6f63eacb5224bd0cd47bb8315bd2a7fffee0c7b3690c1b3269c00409678d"
-      },
-      "on_mount": {
-        "production": "65ccf8bc703f263904aa91c2c8205c8eb8c6eef24cc0ff4f3b43354766733629"
-      },
-      "on_button_pressed": {
-        "production": "a1f14e8a1711ddfe4820934ed7e3a5847812a3f7a3859886571ac3fe64ccb31f"
-      },
-      "on_input_submitted": {
-        "production": "c1896ff32d69e3d7f062b364c2e6b9fd1da7d3e7aa405fc34434e31147050d46"
-      },
-      "on_input_changed": {
-        "production": "602e7dc644ad9ab38bfc6415325da4a85db4b345b77fa2ec8f6ddfdd1c05ba7e"
-      },
-      "on_select_changed": {
-        "production": "235d789c4b09e73308846c0b6fb015bce765e357c01af11e3deaf4194b1e8947"
-      },
-      "on_checkbox_changed": {
-        "production": "206c82935ae174d13c6b0cc11195bbeffd6b9f19ccb89884532b754c1d08be3a"
-      },
-      "on_radio_set_changed": {
-        "production": "90e5c4bf2a9099cecb7726150d8653f6eecf30ec5bc1337f50f94792f222faf2"
-      },
-      "on_switch_changed": {
-        "production": "470a5d96c5a31c3c0ed2f1513d690b9ba66b33bd277b29022ebb995d75f40435"
-      },
-      "on_tabs_tab_activated": {
-        "production": "e5f25835cbaa8b9a45fe74624c57dbdeb32c04d5fae2c74ce82df16c32746578"
-      },
-      "on_list_view_selected": {
-        "production": "407f07d8c99ecb089cd9173eddf4e3e44b3ae7ab8447b6ab3a256314926b317f"
-      }
-    },
-    "DomRegistry": {
-      "register": {
-        "production": "7d54cfb4cd99dbd59163924f39718adc269da188cb0cd197e42d27de4afa5ec1"
-      },
-      "get": {
-        "production": "f92e542ad146948c491e8121c6da1a122346b5de7a97fa4e49c18b57307f9a83"
-      },
-      "forget": {
-        "production": "a8d20e2f4a78d78b08a694db693ef912ea132c9d06348d359ae68bf0bad26bb7"
-      },
-      "forget_all": {
-        "production": "d7f74a98b06e5745730dc48e22806e57a0b9591996a64ed716cdafeb503e49f9"
-      }
-    },
     "Adapter": {
-      "start": {
-        "production": "b5f5e87d0571c54a2a8ac811493a5dd33d7b7d2c8d8e76c82eaa5cd282e64036"
+      "dom_get": {
+        "production": "d83065abaee804ab709fda5a2efff048224bde8f216646e0c9ec1677de426bc6"
+      },
+      "dom_remove": {
+        "production": "34f4a7c4a5e5b3897ea8458deb58494946fd21205aff4684bcf07f8e9a4e6bce"
+      },
+      "dom_replace": {
+        "production": "f01036a5b404a692f90a6c15265128ce70056506013929738f0195e2d2350db2"
+      },
+      "dom_update": {
+        "production": "02f1790e1f880e3c71ac71b4a4dc2597c1f6d0e577dab7677977fb723d905346"
       },
       "mount_css": {
         "production": "fd524636f432e3274695a49d1120ef110b83464ba7893a0385c3d8141f1f697c"
       },
-      "mount_view": {
-        "production": "3244e4624336947334980db862a1756f78ac8c05a1c19cb413d2b8e254c2c0d9"
-      },
-      "render_view": {
-        "production": "6d9b56b9685496d326fe91f668835e5df7ad635fdab15757c226e40f953e61a3"
-      },
       "mount_route": {
         "production": "0c23ff7a9af4cebc25eec2f6a912e55d552c7f8f736339b2a4303479d6623a30"
       },
-      "rebuild": {
-        "production": "0c5021d54562d5e7215a0566406920162052410b360704a55c592473657a36bc"
-      },
-      "rebuild2": {
-        "production": "2f9f3e344989e13d08da99f3a102314da2b8edaaf9c5a8a6c3b79b3fff6b13b4"
-      },
-      "dom_get": {
-        "production": "d83065abaee804ab709fda5a2efff048224bde8f216646e0c9ec1677de426bc6"
+      "mount_view": {
+        "production": "bb5205dc931dae9113cbba61947b254cc90920a06a4e7781789411723938d44f"
       },
       "node_create": {
-        "production": "0bce52c120e1594bd3cf5e115e29c21218e6b31324bbf074724cfa1e8c4f155f"
+        "production": "cad3b783e4b1bff7764d23cbec10954484a00a428e866743b5be6688e27458ab"
       },
       "node_union": {
         "production": "196529c65296383e283674f3080a92c3dd7bb4a59f80a13881c3a22b5dd56886"
@@ -128,15 +41,105 @@
       "node_update": {
         "production": "4a01e2166eb4593cc7808b643a7fcbbd267a745a00f59d4ad0364b315859912c"
       },
-      "dom_update": {
-        "production": "02f1790e1f880e3c71ac71b4a4dc2597c1f6d0e577dab7677977fb723d905346"
+      "rebuild": {
+        "production": "0c5021d54562d5e7215a0566406920162052410b360704a55c592473657a36bc"
       },
-      "dom_replace": {
-        "production": "f01036a5b404a692f90a6c15265128ce70056506013929738f0195e2d2350db2"
+      "rebuild2": {
+        "production": "2f9f3e344989e13d08da99f3a102314da2b8edaaf9c5a8a6c3b79b3fff6b13b4"
       },
-      "dom_remove": {
-        "production": "34f4a7c4a5e5b3897ea8458deb58494946fd21205aff4684bcf07f8e9a4e6bce"
+      "render_view": {
+        "production": "8c7d1f394b675e0f53417164cf8ef7e6d68d4c50e236ae6d54c3b9d880087ad8"
+      },
+      "shutdown": {
+        "production": "1cb5843c5c07cffbe83bd6a8a528d4b91da35e65e2e1cb89b1b39ecda7c46591"
+      },
+      "start": {
+        "production": "df812c39215ee4f8bfc342c31ad1c94357a80d683228454371a01730b0d1a9fb"
       }
+    },
+    "AppDinamica": {
+      "action_save": {
+        "production": "ac0c6f63eacb5224bd0cd47bb8315bd2a7fffee0c7b3690c1b3269c00409678d"
+      },
+      "check_action": {
+        "production": "7036f6faa60d14395fecbb7d3eb3e3cca3d438ce940302e40730cd27283ea72b"
+      },
+      "on_button_pressed": {
+        "production": "e18ea305377ded0f6a77445be1830f4e2f9a495d0febcc2763150f1e3c236c0a"
+      },
+      "on_checkbox_changed": {
+        "production": "206c82935ae174d13c6b0cc11195bbeffd6b9f19ccb89884532b754c1d08be3a"
+      },
+      "on_input_changed": {
+        "production": "602e7dc644ad9ab38bfc6415325da4a85db4b345b77fa2ec8f6ddfdd1c05ba7e"
+      },
+      "on_input_submitted": {
+        "production": "274f7a341ed5b3c9c2987dd60975da4a2efc66e703938760d3593dffc2445d60"
+      },
+      "on_list_view_selected": {
+        "production": "407f07d8c99ecb089cd9173eddf4e3e44b3ae7ab8447b6ab3a256314926b317f"
+      },
+      "on_mount": {
+        "production": "65ccf8bc703f263904aa91c2c8205c8eb8c6eef24cc0ff4f3b43354766733629"
+      },
+      "on_radio_set_changed": {
+        "production": "90e5c4bf2a9099cecb7726150d8653f6eecf30ec5bc1337f50f94792f222faf2"
+      },
+      "on_select_changed": {
+        "production": "bebb9d95d00eadc52518f60c546c5432c94e968432545438281a28bb8b42bbe8"
+      },
+      "on_switch_changed": {
+        "production": "470a5d96c5a31c3c0ed2f1513d690b9ba66b33bd277b29022ebb995d75f40435"
+      },
+      "on_tabs_tab_activated": {
+        "production": "e5f25835cbaa8b9a45fe74624c57dbdeb32c04d5fae2c74ce82df16c32746578"
+      }
+    },
+    "DomRegistry": {
+      "forget": {
+        "production": "a8d20e2f4a78d78b08a694db693ef912ea132c9d06348d359ae68bf0bad26bb7"
+      },
+      "forget_all": {
+        "production": "d7f74a98b06e5745730dc48e22806e57a0b9591996a64ed716cdafeb503e49f9"
+      },
+      "get": {
+        "production": "f92e542ad146948c491e8121c6da1a122346b5de7a97fa4e49c18b57307f9a83"
+      },
+      "register": {
+        "production": "7d54cfb4cd99dbd59163924f39718adc269da188cb0cd197e42d27de4afa5ec1"
+      }
+    },
+    "XmlModalScreen": {
+      "action_dismiss_modal": {
+        "production": "41178d2d794126d88f0f045597b5af93b8f27fd4456f10348999e62df657298d"
+      },
+      "close_modal": {
+        "production": "46a13678626d41392e4f412dc72ec22d7176e5c8b343c200fca9ab7b12cdde9c"
+      },
+      "compose": {
+        "production": "84a93dc6cc5164b8f16336bc17d36c7e041d6c9600a38f4dbb49c8897a483636"
+      },
+      "open_modal": {
+        "production": "5d82a2d1081ee00799a56ce8faf235a73eb841d7a7ca74e7f5b3c621a3677fdc"
+      },
+      "open_registered_modal": {
+        "production": "357501c90c09f648c72566687a634e79415952a2615428b0cdd2bfc4ad2de923"
+      }
+    },
+    "XmlScreen": {
+      "compose": {
+        "production": "fd165beea9fa6bd207770521669ce3eec75e4f3127468e04b4cf791c54136033"
+      }
+    },
+    "attrs": {
+      "production": "e50d7c11fc1d5065fade9725b71e1e67d4d83e858ce18adcf98dae4e3e6fa048"
+    },
+    "widget": {
+      "production": "3c3afc22284582962a6a958f6319c34c62c706ac6e2cf18d21f3583bb4e7d68a"
     }
-  }
+  },
+  "requires": [
+    "textual>=0.40.0",
+    "rich>=13.0.0"
+  ]
 }

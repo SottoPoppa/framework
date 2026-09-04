@@ -64,5 +64,12 @@ tuple:test_suite := (
         "outputs": {"name": "Mario"; "age": 30;};
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "normalize valida e restituisce i dati normalizzati";
+    },
+    {
+        "action": exports.normalize;
+        "inputs": ([{"name": "Mario"; "age": 30;}, {"name": "Luigi"; "age": 40;}], schema);
+        "outputs": [{"name": "Mario"; "age": 30;}, {"name": "Luigi"; "age": 40;}];
+        "assert": @received.is_success == true & @received.output.value == @expected;
+        "note": "normalize accetta una collezione e normalizza ogni elemento secondo lo schema";
     }
 );

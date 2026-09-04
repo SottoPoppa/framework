@@ -3,7 +3,11 @@ factory:repository := {
     location: {
         "WORKFOLDER": [
             "/tmp/{{filter.eq.filename}}",
-            "/tmp",
+            "/tmp"
+        ];
+        "SOURCE": [
+            "{{filter.eq.filename}}",
+            "src"
         ]
     };
     

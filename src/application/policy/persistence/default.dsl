@@ -32,6 +32,7 @@ policies: {
     policy:SESSION_ACCESS := { effect: "allow"; target: { resource: "sessions" }; condition: (@action == "READ" | @action == "UPDATE") & @resource == "sessions" & @request.filter.eq.id == @session.id };
     policy:CREATE := { effect: "allow"; target: { action: "CREATE" }; condition: @action == "CREATE" & @session.user.id != none };
     policy:READ := { effect: "allow"; target: { action: "READ" }; condition: @action == "READ" & @session.user.id != none };
+    policy:VIEW := { effect: "allow"; target: { action: "VIEW" }; condition: @action == "VIEW" };
     policy:UPDATE := { effect: "allow"; target: { action: "UPDATE" }; condition: @action == "UPDATE" & @session.user.id != none };
     policy:DELETE := { effect: "allow"; target: { action: "DELETE" }; condition: @action == "DELETE" & @session.user.id != none }
 };
@@ -40,6 +41,7 @@ rules: {
     "sessions": [policies.SESSION_ACCESS];
     "CREATE": [policies.CREATE];
     "READ": [policies.READ];
+    "VIEW": [policies.VIEW];
     "UPDATE": [policies.UPDATE];
     "DELETE": [policies.DELETE]
 };

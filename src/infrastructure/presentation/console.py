@@ -28,6 +28,7 @@ from framework.manager.defender import Manager as Defender
 from framework.manager.presenter import Manager as Presenter
 from framework.manager.messenger import Manager as Messenger
 from framework.manager.loader import Loader
+from framework.manager.authenticator import Manager as Authenticator
 
 
 # ==========================================================================
@@ -650,7 +651,7 @@ class Adapter(presentation.Port):
         },
     }
 
-    def __init__(self, loader: Loader, defender: Defender, presenter: Presenter, messenger: Messenger, **constants):
+    def __init__(self, loader: Loader, defender: Defender, presenter: Presenter, messenger: Messenger, authenticator: Authenticator, **constants):
         """
         Inizializza l'adapter Textual.
 
@@ -662,7 +663,7 @@ class Adapter(presentation.Port):
             presenter: Manager per presentazione
             **constants: Configurazione da pyproject.toml (adapter.registry)
         """
-        super().__init__(loader, defender, presenter, messenger, **constants)
+        super().__init__(loader, defender, presenter, messenger, authenticator, **constants)
         self._render_lock = asyncio.Lock()
         self.sessions: Dict[str, Dict[str, Any]] = {}
         self.active_screens: Dict[str, 'TUIScreen'] = {}
@@ -712,7 +713,10 @@ class Adapter(presentation.Port):
         self._ensure_active_app()
         self.url = url
         async with self._render_lock:
-            screen = await self.mount_view(url)
+            result = await self.mount_view(url)
+            if not flow.check(result):
+                return result
+            screen = flow.output(result)
 
             if self.app.screen.id == "_default":
                 await self.app.push_screen(screen)

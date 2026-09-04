@@ -145,7 +145,7 @@ class Adapter(persistence.Port):
 
                 return flow.success(self._record(path, data))
             case 'VIEW':
-                return await self.query(**constants)
+                return await self.query(**values)
             case _:
                 return flow.error()
 

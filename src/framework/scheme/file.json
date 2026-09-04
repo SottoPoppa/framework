@@ -1,7 +1,7 @@
 {
   "path": {
     "type": "string",
-    "required": true,
+    "required": false,
     "empty": false,
     "comment": "Percorso completo del file, comprensivo di nome ed estensione."
   },
@@ -13,7 +13,7 @@
   },
   "extension": {
     "type": "string",
-    "required": true,
+    "required": false,
     "empty": false,
     "regex": "^[a-zA-Z0-9]+$",
     "comment": "Estensione del file, senza il punto (es. txt, json, pdf)."
@@ -49,6 +49,18 @@
     "default": "",
     "nullable": true,
     "comment": "Contenuto del file. Utilizzato principalmente per file testuali."
+  },
+  "type": {
+    "type": "string",
+    "required": false
+  },
+  "relative_path": {
+    "type": "string",
+    "required": false
+  },
+  "absolute_path": {
+    "type": "string",
+    "required": false
   },
   "metadata": {
     "type": "dict",

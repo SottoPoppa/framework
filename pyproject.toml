@@ -36,17 +36,17 @@ name = "stub"
 [[message.bus]]
 name = "broker"
 
-#[[presentation.console]]
-#name = "tui"
+#[[presentation.starlette]]
+#name = "web"
+#host = "127.0.0.1"
+#port = 8000
+#protocol = "http"
+#persistence = "workfolder"
+#cors_origins = []
+#cors_credentials = false
 
-[[presentation.starlette]]
-name = "web"
-host = "127.0.0.1"
-port = 8000
-protocol = "http"
-persistence = "workfolder"
-cors_origins = []
-cors_credentials = false
+[[presentation.console]]
+name = "tui"
 
 [[persistence.filesystem]]
 name = "log"

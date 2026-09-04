@@ -35,6 +35,21 @@ any:mapped_file_data := {
     "extension": "txt"
 };
 
+any:file_tree_data := [
+    {
+        "type": "file";
+        "name": "first.py";
+        "relative_path": "application/first.py";
+        "absolute_path": "src/application/first.py"
+    },
+    {
+        "type": "file";
+        "name": "second.py";
+        "relative_path": "application/second.py";
+        "absolute_path": "src/application/second.py"
+    }
+];
+
 tuple:test_suite := (
     {
         "action": exports.get_requirements;
@@ -117,5 +132,45 @@ tuple:test_suite := (
         };
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "results mappa le chiavi del provider verso il modello canonico";
+    },
+    {
+        "action": exports.results;
+        "inputs": (file_tree_data, "source");
+        "outputs": [
+            {
+                "type": "file";
+                "name": "first.py";
+                "relative_path": "application/first.py";
+                "absolute_path": "src/application/first.py";
+                "mime_type": "application/octet-stream";
+                "size": 0;
+                "encoding": "utf-8";
+                "content": "";
+                "metadata": {};
+                "permissions": "";
+                "owner": "";
+                "created_at": none;
+                "modified_at": none;
+                "accessed_at": none
+            },
+            {
+                "type": "file";
+                "name": "second.py";
+                "relative_path": "application/second.py";
+                "absolute_path": "src/application/second.py";
+                "mime_type": "application/octet-stream";
+                "size": 0;
+                "encoding": "utf-8";
+                "content": "";
+                "metadata": {};
+                "permissions": "";
+                "owner": "";
+                "created_at": none;
+                "modified_at": none;
+                "accessed_at": none
+            }
+        ];
+        "assert": @received.is_success == true & @received.output.value == @expected;
+        "note": "results normalizza una collezione di file secondo lo schema file";
     }
 );

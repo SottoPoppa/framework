@@ -103,7 +103,19 @@ async def transform(
 
 
 def normalize(value: Any, schema: dict) -> flow.Result:
-    """Normalizza e valida un dizionario tramite pipeline sincrona."""
+    """Normalizza un documento o una collezione di documenti tramite schema."""
+    if isinstance(value, (list, tuple)):
+        normalized = []
+        for index, item in enumerate(value):
+            result = normalize(item, schema)
+            if not result.is_success:
+                return flow.error({
+                    "index": index,
+                    "error": flow.output(result),
+                })
+            normalized.append(flow.output(result))
+        return flow.success(normalized)
+
     validation_schema = {
         field: {rule: option for rule, option in definition.items() if rule != "comment"}
         for field, definition in schema.items()

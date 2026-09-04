@@ -1,24 +1,24 @@
 <?xml version='1.0' encoding='utf-8'?>
-<Window type="page" title="Omniport" background="#fdfbf7,#f5f2eb" font="sans">
-    <Window id="confirm_dialog" type="modal">
-        <Column>
-            <Input type="text" id="confirm_input" placeholder="Scrivi qualcosa..."></Input>
-        </Column>
-    </Window>
-    <Row>
-        <Input id="select" height="20px" change="terminal:gg" placeholder="Scrivi qualcosa..." type="select">
-            {% for item in terminal.files %}
-                <Text value="{{ item }}">{{ item.relative_path }}</Text>
+<Window type="page" title="Omniport Code Terminal" background="#111827" font="mono" padding="1">
+    <Row id="toolbar" align="center" justify="between" height="5">
+        <Row align="center">
+            <Input id="select" width="48" height="3" change="terminal:gg" placeholder="Seleziona un file" type="select">
+            {% if terminal.files | result_success %}
+            {% for item in terminal.files | result_value %}
+                <Text>src/{{ item["relative_path"] }}</Text>
             {% endfor %}
-        </Input>
-        <Action id="stampa" width="50px" type="button" click="terminal:stampa"><Text>CMD</Text></Action>
-    </Row>
-    <Group type="tab" height="100%">
-        <Column id="application" width="100%">
-            <Input type="editor" language="python" id="editor-application" >
-                <Text>{{ terminal.editor.application }}</Text>
+            {% endif %}
             </Input>
-            <Navigation type="tabs" height="13%">
+            <Action id="stampa" width="10" height="3" margin="0,0,0,1" type="button" click="terminal:stampa"><Text>Path</Text></Action>
+        </Row>
+    </Row>
+    <Group id="editors" type="tab" height="1fr">
+        <Column id="application" width="1fr" padding="0,1">
+            <Text type="h4" color="#93c5fd">Application</Text>
+            <Input type="editor" language="python" id="editor-application" height="1fr">
+                {% if terminal.editor.application | result_success %}{{ (terminal.editor.application | result_value)["content"] }}{% endif %}
+            </Input>
+            <Navigation type="tabs" height="5">
                 {% for item in terminal.dependencies %}
                 {% if item.startswith('src/application/') %}
                 <Text value="{{ item }}">{{ item }}</Text>
@@ -26,11 +26,12 @@
                 {% endfor %}
             </Navigation>
         </Column>
-        <Column id="framework" width="100%">
-            <Input type="editor" id="editor-framework" >
-                <Text>{{ terminal.editor.framework }}</Text>
+        <Column id="framework" width="1fr" padding="0,1">
+            <Text type="h4" color="#86efac">Framework</Text>
+            <Input type="editor" language="python" id="editor-framework" height="1fr">
+                {% if terminal.editor.framework | result_success %}{{ (terminal.editor.framework | result_value)["content"] }}{% endif %}
             </Input>
-            <Navigation type="tabs" height="13%">
+            <Navigation type="tabs" height="5">
                 {% for item in terminal.dependencies %}
                 {% if item.startswith('src/framework/') %}
                 <Text value="{{ item }}">{{ item }}</Text>
@@ -38,11 +39,12 @@
                 {% endfor %}
             </Navigation>
         </Column>
-        <Column id="infrastructure" width="100%">
-            <Input type="editor" id="editor-infrastructure" height="90%" >
-                <Text>{{ terminal.editor.infrastructure }}</Text>
+        <Column id="infrastructure" width="1fr" padding="0,1">
+            <Text type="h4" color="#fcd34d">Infrastructure</Text>
+            <Input type="editor" language="python" id="editor-infrastructure" height="1fr">
+                {% if terminal.editor.infrastructure | result_success %}{{ (terminal.editor.infrastructure | result_value)["content"] }}{% endif %}
             </Input>
-            <Navigation type="tabs">
+            <Navigation type="tabs" height="5">
                 {% for item in terminal.dependencies %}
                 {% if item.startswith('src/infrastructure/') %}
                 <Text value="{{ item }}">{{ item }}</Text>

@@ -11,6 +11,34 @@ import framework.core.flow as flow
 
 jinja_env = Environment()
 
+
+def _result_output(value):
+    """Restituisce il payload sia da un Result sia dalla sua forma serializzata."""
+    if flow.is_result(value):
+        return flow.output(value)
+    if isinstance(value, dict):
+        output = value.get("output")
+        if isinstance(output, dict) and "is_success" in output:
+            return output.get("value") if output["is_success"] else output.get("error")
+    return value
+
+
+def _result_success(value):
+    """Indica se un valore rappresenta un risultato riuscito."""
+    if flow.is_result(value):
+        return value.is_success
+    if isinstance(value, dict):
+        output = value.get("output")
+        if isinstance(output, dict) and "is_success" in output:
+            return bool(output["is_success"])
+    return True
+
+
+jinja_env.filters.update({
+    "result_value": _result_output,
+    "result_success": _result_success,
+})
+
 async def format(target, **constants):
     """Formatta una stringa usando Jinja2 e l'environment condiviso (jinja)."""
     try:
@@ -36,6 +64,7 @@ async def render(loader, runtime_session, render_node, text=None, file=None, con
         autoescape=select_autoescape(["html", "xml"]),
         undefined=DebugUndefined,
     )
+    environment.filters.update(jinja_env.filters)
     template = environment.from_string(text)
     data = {}
     managers = {"manager": loader.get_managers()}
@@ -49,7 +78,7 @@ async def render(loader, runtime_session, render_node, text=None, file=None, con
     #raise Exception(data)
 
     content = template.render(
-        constants | {"sid": runtime_session} | data | {"manager": loader.get_managers()}
+        constants | data | {"manager": loader.get_managers()}
     )
     xml = ET.fromstring(content)
     return await render_node(content, xml, constants, runtime_session=runtime_session)
