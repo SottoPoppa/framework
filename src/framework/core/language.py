@@ -60,6 +60,7 @@ from lark import Lark, Token, Transformer, v_args
 import framework.core.flow as flow
 import framework.core.runner as runner
 import framework.core.scheme as scheme
+from framework.service.introspection import Reflection
 
 # ── Grammar ───────────────────────────────────────────────────────────────────
 
@@ -137,6 +138,9 @@ TYPE_MAP = {
 DSL_FUNCTIONS: Dict[str, Any] = {
     'random':    random.randint,
     'transform': scheme.transform,
+    'map_get_value': flow.map_get_value,
+    'tuple_filter_tuple': flow.tuple_filter_tuple,
+    'file_dependencies': Reflection.file_dependencies,
     'get':       scheme.get,
     'normalize': scheme.normalize,
     'put':       scheme.put,
@@ -246,6 +250,24 @@ def _foreach(values, fn):
     return [fn(value) for value in values]
 
 
+def _tuple_filter_tuple(values, predicate):
+    if not isinstance(values, (list, tuple)) or not callable(predicate):
+        return ()
+    return tuple(value for value in values if predicate(value))
+
+
+def _take(values, count):
+    return values[:int(count)] if isinstance(values, (list, tuple)) else []
+
+
+def _prefix_match(field, prefix):
+    def matches(value):
+        if isinstance(value, Mapping):
+            return str(value.get(field, "")).startswith(prefix)
+        return field == "relative_path" and str(value).startswith(prefix)
+    return matches
+
+
 def _switch(value, cases, default=None):
     fn = cases.get(value, default) if isinstance(cases, Mapping) else default
     return fn(value) if callable(fn) else fn
@@ -268,6 +290,9 @@ def _result(value=None):
 
 DSL_FUNCTIONS.update({
     'foreach': _foreach,
+    'tuple_filter_tuple': _tuple_filter_tuple,
+    'take': _take,
+    'prefix_match': _prefix_match,
     'switch': _switch,
     'branch': _branch,
     'reset': _reset,

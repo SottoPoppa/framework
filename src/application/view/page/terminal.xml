@@ -14,38 +14,33 @@
     <Group id="editors" type="tab" height="1fr">
         <Column id="application" width="1fr" padding="0,1">
             <Input type="editor" language="python" id="editor-application" height="1fr">
-                {{ terminal.editor.application["content"] }}
+                <Text>{{ terminal.editor.application["content"] }}</Text>
             </Input>
             <Navigation type="tabs" height="5">
-                {% for item in terminal.dependencies %}
-                {% if item.startswith('src/application/') %}
-                <Text value="{{ item }}">{{ item }}</Text>
-                {% endif %}
-                {% endfor %}
+                {% for item in terminal.application_files %}
+                <Text>{{ item }}</Text>
+                {% endfor %}    
             </Navigation>
         </Column>
         <Column id="framework" width="1fr" padding="0,1">
             <Input type="editor" language="python" id="editor-framework" height="1fr">
-                {{ terminal.editor.framework["content"] }}
+                <Text>{{ terminal.editor.framework["content"] }}</Text>
             </Input>
             <Navigation type="tabs" height="5">
-                {% for item in terminal.dependencies %}
-                {% if item.startswith('src/framework/') %}
-                <Text value="{{ item }}">{{ item }}</Text>
-                {% endif %}
-                {% endfor %}
+                {% for item in terminal.framework_files %}
+                <Text>{{ item }}</Text>
+                {% endfor %}    
             </Navigation>
         </Column>
         <Column id="infrastructure" width="1fr" padding="0,1">
             <Input type="editor" language="python" id="editor-infrastructure" height="1fr">
-                <Text>{{ terminal.editor.infrastructure}} </Text>
+                <Text>{{ terminal.editor.infrastructure.content }} </Text>
             </Input>
             <Navigation type="tabs" height="5">
-                {% for item in terminal.dependencies %}
-                {% if item.startswith('src/infrastructure/') %}
-                <Text value="{{ item }}">{{ item }}</Text>
-                {% endif %}
-                {% endfor %}
+                {% for item in terminal.infrastructure_files %}
+                <Text>{{ item }}</Text>
+                {% endfor %}    
+                
             </Navigation>
         </Column>
     </Group>

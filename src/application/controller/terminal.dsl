@@ -1,8 +1,13 @@
 {
     selected: "src/infrastructure/presentation/console.py";
     select(deps:false,default:selected,entry:false) -> select;
-    dependencies: [selected];
+    dependencies:file_dependencies(selected);
+
     files:storekeeper.overview(session, repository: "file", filter: {"eq": {"type": "file"}}) |> result();
+    
+    application_files:dependencies |> tuple_filter_tuple(prefix_match("relative_path", "src/application/"));
+    framework_files:dependencies |> tuple_filter_tuple(prefix_match("relative_path", "src/framework/"));
+    infrastructure_files:dependencies |> tuple_filter_tuple(prefix_match("relative_path", "src/infrastructure/"));
 
 
     editor: {
