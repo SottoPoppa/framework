@@ -11,12 +11,13 @@
 
 
     editor: {
-        application:storekeeper.gather(session, repository: "file",filter: {"eq": {"filename": selected}});
-        framework:storekeeper.gather(session, repository: "file",filter: {"eq": {"filename": selected}});
-        infrastructure:storekeeper.gather(session, repository: "file",filter: {"eq": {"filename": selected}});
+        application:storekeeper.gather(session, repository: "file",filter: {"eq": {"filename": application_files.0}});
+        framework:storekeeper.gather(session, repository: "file",filter: {"eq": {"filename": framework_files.0}});
+        infrastructure:storekeeper.gather(session, repository: "file",filter: {"eq": {"filename": infrastructure_files.0}});
     };
 
     gg(deps:false,entry:false) -> presenter.rebuild("editors",session,{});
+    
     stampa(deps:false) -> messenger.send(session, domain: "console:info", message: select);
 
     cmd:{

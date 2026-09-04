@@ -2,7 +2,7 @@
 <Window type="page" title="Omniport Code Terminal" background="#111827" font="mono" padding="1">
     <Row id="toolbar" align="center" justify="between" height="5">
         
-            <Input id="select" width="48" height="3" change="terminal:gg" placeholder="Seleziona un file" type="select">
+            <Input id="select"  height="3" value="{{ terminal.selected }}" change="terminal:gg" placeholder="Seleziona un file" type="select">
             {% if terminal.files | result_success %}
             {% for item in terminal.files | result_value %}
                 <Text>src/{{ item["relative_path"] }}</Text>
