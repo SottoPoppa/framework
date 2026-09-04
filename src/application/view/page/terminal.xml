@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <Window type="page" title="Omniport Code Terminal" background="#111827" font="mono" padding="1">
     <Row id="toolbar" align="center" justify="between" height="5">
-        <Row align="center">
+        
             <Input id="select" width="48" height="3" change="terminal:gg" placeholder="Seleziona un file" type="select">
             {% if terminal.files | result_success %}
             {% for item in terminal.files | result_value %}
@@ -9,14 +9,12 @@
             {% endfor %}
             {% endif %}
             </Input>
-            <Action id="stampa" width="10" height="3" margin="0,0,0,1" type="button" click="terminal:stampa"><Text>Path</Text></Action>
-        </Row>
+            <Action id="stampa" width="10" height="3" margin="0,0,0,1" type="button" click="terminal:stampa"><Text>Path</Text></Action> 
     </Row>
     <Group id="editors" type="tab" height="1fr">
         <Column id="application" width="1fr" padding="0,1">
-            <Text type="h4" color="#93c5fd">Application</Text>
             <Input type="editor" language="python" id="editor-application" height="1fr">
-                {% if terminal.editor.application | result_success %}{{ (terminal.editor.application | result_value)["content"] }}{% endif %}
+                {{ terminal.editor.application["content"] }}
             </Input>
             <Navigation type="tabs" height="5">
                 {% for item in terminal.dependencies %}
@@ -27,9 +25,8 @@
             </Navigation>
         </Column>
         <Column id="framework" width="1fr" padding="0,1">
-            <Text type="h4" color="#86efac">Framework</Text>
             <Input type="editor" language="python" id="editor-framework" height="1fr">
-                {% if terminal.editor.framework | result_success %}{{ (terminal.editor.framework | result_value)["content"] }}{% endif %}
+                {{ terminal.editor.framework["content"] }}
             </Input>
             <Navigation type="tabs" height="5">
                 {% for item in terminal.dependencies %}
@@ -40,9 +37,8 @@
             </Navigation>
         </Column>
         <Column id="infrastructure" width="1fr" padding="0,1">
-            <Text type="h4" color="#fcd34d">Infrastructure</Text>
             <Input type="editor" language="python" id="editor-infrastructure" height="1fr">
-                {% if terminal.editor.infrastructure | result_success %}{{ (terminal.editor.infrastructure | result_value)["content"] }}{% endif %}
+                <Text>{{ terminal.editor.infrastructure}} </Text>
             </Input>
             <Navigation type="tabs" height="5">
                 {% for item in terminal.dependencies %}

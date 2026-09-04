@@ -2,7 +2,7 @@
     selected: "src/infrastructure/presentation/console.py";
     select(deps:false,default:selected,entry:false) -> select;
     dependencies: [selected];
-    files:storekeeper.overview(session, repository: "file", filter: {"eq": {"type": "file"}});
+    files:storekeeper.overview(session, repository: "file", filter: {"eq": {"type": "file"}}) |> result();
 
 
     editor: {

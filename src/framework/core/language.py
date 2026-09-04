@@ -38,7 +38,6 @@ Invarianti mantenuti
 
 from __future__ import annotations
 
-import asyncio
 import contextvars
 import inspect
 import operator
@@ -62,7 +61,7 @@ import framework.core.flow as flow
 import framework.core.runner as runner
 import framework.core.scheme as scheme
 
-# ── Grammar (invariata) ───────────────────────────────────────────────────────
+# ── Grammar ───────────────────────────────────────────────────────────────────
 
 GRAMMAR = r"""
 start: dictionary | [item (item)*] -> dictionary_node
@@ -75,7 +74,7 @@ task: function_call "->" sequence ";"? -> task
 ?sequence: expr ("," expr)* ","?
 ?expr: pipe
 ?pipe: logic
-     | logic (PIPE (pair|logic))+ -> pipe_node
+    | logic (PIPE (pair|logic))+ -> pipe_node
 ?logic: comparison
       | ("not" | "!") logic        -> not_op
       | logic ("and" | "&") logic  -> and_op
@@ -243,31 +242,6 @@ DSL_FUNCTIONS.update({
 })
 
 
-def _flow_output(result: flow.Result) -> Any:
-    """Estrae il valore di successo dal contratto Result di flow."""
-    if isinstance(result.output, flow.Success):
-        return result.output.value
-    return result.output.error
-
-
-def _flow_result(value: Any, *, action: str = "language") -> flow.Result:
-    return flow.Result(
-        input=value,
-        output=flow.Success(value),
-        action=action,
-        component=__name__,
-    )
-
-
-def _flow_error(error: Any, *, action: str = "language") -> flow.Result:
-    return flow.Result(
-        input=None,
-        output=flow.Failure(error),
-        action=action,
-        component=__name__,
-    )
-
-
 def _foreach(values, fn):
     return [fn(value) for value in values]
 
@@ -286,11 +260,18 @@ def _reset(value=None):
     return value
 
 
+def _result(value=None):
+    if isinstance(value, flow.Result):
+        return flow.Success(value)
+    return flow.Success(flow.success(value))
+
+
 DSL_FUNCTIONS.update({
     'foreach': _foreach,
     'switch': _switch,
     'branch': _branch,
     'reset': _reset,
+    'result': _result,
 })
 
 
@@ -673,7 +654,7 @@ class Interpreter:
 
     # ── session management ────────────────────────────────────────────────────
 
-    def session_create(self, sid: str | dict, env: dict = {}) -> None:
+    def session_create(self, sid: str | dict, env: Optional[Dict] = None) -> None:
         """Inizializza la struttura interna. Chiamato solo dal Defender."""
         if isinstance(sid, Mapping):
             session = sid
@@ -681,7 +662,7 @@ class Interpreter:
             if not sid:
                 raise ValueError("Una sessione deve contenere un id.")
             self._session_data[sid] = session
-        self._runner.create_session(sid, DSL_FUNCTIONS | env)
+        self._runner.create_session(sid, DSL_FUNCTIONS | (env or {}))
 
     def session_exists(self, sid: str) -> bool:
         return sid in self._runner.sessions 
@@ -761,7 +742,7 @@ class Interpreter:
         # Esegui il motore per i nodi reattivi/task
         dag_results = await self._runner.run_file(sid, file, ast_result)
         dag_outputs = {
-            name: _flow_output(result)
+            name: flow.output(result)
             for name, result in dag_results.items()
         }
         
@@ -779,7 +760,7 @@ class Interpreter:
         if isinstance(fn, LazyCall):
             merged = ChainMap(kwargs, fn.env)
             res, _ = await self.visit_call(fn.call_node, merged, path=path)
-            return _flow_result(res, action=path or "language.lazy_call")
+            return flow.success(res)
         if callable(fn):
             async def step(_):
                 out = fn(*args, **kwargs)
@@ -800,9 +781,7 @@ class Interpreter:
             action=path or getattr(step, "__name__", "language.invoke"),
             component=__name__,
         )
-        if not result.is_success:
-            return _flow_error(result.output.error, action=result.action)
-        return _flow_result(_flow_output(result), action=result.action)
+        return result
 
     # ── visita generica ───────────────────────────────────────────────────────
 
@@ -919,7 +898,7 @@ class Interpreter:
     async def visit_identifier(self, n, e, path=""):  return n["name"], e
     async def visit_var(self, n, e, path=""):
         result = await scheme.get(e, n["name"], n["name"])
-        return _flow_output(result), e
+        return flow.output(result), e
     async def visit_context_var(self, n, e, path=""): return ContextVar(n["name"]), e
 
     async def visit_function_def(self, n, e, path=""):
@@ -999,18 +978,37 @@ class Interpreter:
 
     async def visit_pipe(self, node, env, path=""):
         steps = node["steps"]
-        val, env = await self.visit(steps[0], env, path)
+        wants_result = steps and self._is_result_call(steps[-1])
+        if wants_result and steps[0].get("type") == "call":
+            val, env = await self.visit_call(steps[0], env, path, preserve_result=True)
+            if isinstance(val, flow.Result) and val.is_success:
+                val = flow.output(val)
+        else:
+            val, env = await self.visit(steps[0], env, path)
         pipe_vars = {"_": val}
         for i, step in enumerate(steps[1:]):
             name = i
             if step.get("type") == "pair":
                 name = step["key"].get("name", i)
                 step = step["value"]
+            if self._is_result_call(step):
+                val = _result(val).value
+                pipe_vars[name] = val
+                continue
             pipe_vars["_"] = val
             local_env = env | pipe_vars
             val, _ = await self.visit_call(step, local_env, path, args=[val])
             pipe_vars[name] = val
         return val, env
+
+    @staticmethod
+    def _is_result_call(step):
+        return (
+            step.get("type") == "call"
+            and step.get("name") == "result"
+            and not step.get("args")
+            and not step.get("kwargs")
+        )
 
     async def visit_binop(self, node, env, path=""):
         left,  env = await self.visit(node["left"],  env, path=path + ".left")
@@ -1039,7 +1037,7 @@ class Interpreter:
 
     # ── chiamate a funzione ───────────────────────────────────────────────────
 
-    async def visit_call(self, node, env, path="", args=(), kwargs={}):
+    async def visit_call(self, node, env, path="", args=(), kwargs=None, preserve_result=False):
         name, meta = node.get("name"), node.get("meta")
         if node.get("lazy"):
             return LazyCall(self, name, node, env), env
@@ -1047,13 +1045,12 @@ class Interpreter:
         ast_args   = [(await self.visit(a, env, path=f"{call_path}[{i}]"))[0] for i, a in enumerate(node.get("args", []))]
         ast_kwargs = {k: (await self.visit(v, env, path=f"{call_path}.{k}"))[0] for k, v in node.get("kwargs", {}).items()}
         all_args   = list(args) + ast_args
-        all_kwargs = {**kwargs, **ast_kwargs}
+        all_kwargs = {**(kwargs or {}), **ast_kwargs}
         fn_result = await scheme.get(env, str(name))
-        fn = _flow_output(fn_result)
+        fn = flow.output(fn_result)
         res = await self._invoke(fn, all_args, all_kwargs, path=call_path)
-        if not res.is_success:
-            return res, env
-        return _flow_output(res), env
+        value = res if preserve_result else flow.output(res)
+        return value, env
 
     async def _call_dsl_fn(self, fn_triple, args, kwargs, path=""):
         params_ast, body_ast, return_ast = fn_triple[:3]
@@ -1123,23 +1120,23 @@ class Interpreter:
                 t = ast.get("type")
                 if t == "pipe":
                     val, _ = await self.visit(ast, env_dict, path=t_path)
-                    return val
+                    return flow.Success(val) if flow.is_result(val) else val
                 if t == "call":
                     call_result = await scheme.get(env_dict, ast["name"])
-                    call = _flow_output(call_result)
+                    call = flow.output(call_result)
                     args   = [(await self.visit(a, env_dict, path=f"{t_path}.args[{i}]"))[0]
                                for i, a in enumerate(ast.get("args", []))]
                     kwargs = {k: (await self.visit(v, env_dict, path=f"{t_path}.{k}"))[0]
                                for k, v in ast.get("kwargs", {}).items()}
                     res    = await self._invoke(call, args, kwargs, path=t_path)
-                    return _flow_output(res)
+                    return flow.output(res)
                 val, _ = await self.visit(ast, env_dict, path=t_path)
                 if callable(val):
                     res = await self._invoke(val, [], {}, path=t_path)
-                    return _flow_output(res)
+                    return flow.output(res)
                 return val
             except Exception as e:
-                return _flow_error(str(e), action=t_path)
+                return flow.error(str(e))
         return task_fn
 
 

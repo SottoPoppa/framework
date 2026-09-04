@@ -22,5 +22,12 @@ tuple:test_suite := (
         "outputs": true;
         "assert": @received.is_success == true & @received.output.value != none;
         "note": "parse_only gestisce una seconda dichiarazione DSL valida";
+    },
+    {
+        "action": exports.parse_only;
+        "inputs": "value: reset(10) |> result();";
+        "outputs": true;
+        "assert": @received.is_success == true & @received.output.value != none;
+        "note": "parse_only accetta la richiesta esplicita del Result completo";
     }
 );

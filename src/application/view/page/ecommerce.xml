@@ -1,4 +1,0 @@
-<Window type="page" title="NOVA MARKET | Catalogo locale" background="#f4f1ea,#e9f0ed" font="sans">
-    <Text>{{catalog.tickets.0.name | escape}}</Text>
-    <Text>{{session}}</Text>
-</Window>
