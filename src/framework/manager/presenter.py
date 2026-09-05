@@ -63,7 +63,7 @@ class Manager(manager.Port):
     async def render(self, session, node_id, context=None):
         driver = self._get_driver()
         if driver and hasattr(driver, 'rebuild'):
-            return await driver.rebuild(node_id, context)
+            return await driver.rebuild(session, node_id, context)
         return None
     
     @flow.result()
@@ -72,11 +72,11 @@ class Manager(manager.Port):
         return await driver.apply_route(**constants) if driver else None
         
     @flow.result()
-    async def rebuild(self, session, node_id, session_id, context):
-        
+    async def rebuild(self, session, node_id, context=None):
         driver = self._get_driver()
         if driver and hasattr(driver, 'rebuild'):
-            await driver.rebuild(node_id,session_id,context)
+            return await driver.rebuild(session, node_id, context)
+        return None
 
     def sono_stessa_risorsa(self, p1: str, p2: str) -> bool:
         if not p1 or not p2:

@@ -30,7 +30,6 @@ from framework.manager.messenger import Manager as Messenger
 from framework.manager.loader import Loader
 from framework.manager.authenticator import Manager as Authenticator
 
-
 # ==========================================================================
 # HELPER GENERICI
 #
@@ -388,7 +387,22 @@ class AppDinamica(App):
             print("Nessun editor attivo")
 
     async def on_mount(self) -> None:
-        await self.adapter.render_view(url="/")
+        self.run_worker(
+            self._render_initial_view(),
+            exclusive=True,
+            name="initial-render",
+        )
+
+    async def _render_initial_view(self) -> None:
+        try:
+            await self.adapter.render_view(url="/")
+        except Exception as error:
+            await self.mount(
+                Static(
+                    f"Initial render failed: {type(error).__name__}: {error}",
+                    id="initial-render-error",
+                )
+            )
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         
@@ -407,24 +421,39 @@ class AppDinamica(App):
             return"""
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
-        a = self._dsl_attrs(event.input.id)
-        raise Exception(f"[on_input_submitted] Nessun attributo 'submit' per Input {event.input.id} (DSL: {a})")
-        if a and 'submit' in a:
-            await self.adapter.messenger.send(self.adapter.session, domain=a['submit'], message=str(event.value))
-        raise Exception(f"[on_input_submitted] Nessun attributo 'submit' per Input {event.input.id} (DSL: {a})")
+        node = self.adapter.node_get(event.input.id)
+        if node is None:
+            return
+        attributes = self.adapter.presenter.estrai_attributi_tag(node)
+        if 'submit' in attributes:
+            await self.adapter.messenger.send(
+                self.adapter.session,
+                domain=attributes['submit'],
+                message=str(event.value),
+            )
     
     async def on_input_changed(self, event: Input.Changed) -> None:
-        a = self._dsl_attrs(event.input.id)
-        exit(a)
-        #a = self._dsl_attrs(event.input.id)
-        #raise Exception(f"[on_input_changed] Nessun attributo 'change' per Input {event.input.id} (DSL: {a})")
+        node = self.adapter.node_get(event.input.id)
+        if node is None:
+            return
+        attributes = self.adapter.presenter.estrai_attributi_tag(node)
+        if 'change' in attributes:
+            await self.adapter.messenger.send(
+                self.adapter.session,
+                domain=attributes['change'],
+                message=str(event.value),
+            )
 
     async def on_select_changed(self, event: Select.Changed) -> None:
         w = self.adapter.node_get(event.select.id)
 
         if w is not None:
             attrs_tag = self.adapter.presenter.estrai_attributi_tag(w)
-            await self.adapter.messenger.send(self.adapter.session, domain=attrs_tag['change'], message=str(event.value))
+            await self.adapter.messenger.send(
+                self.adapter.session,
+                domain=attrs_tag['change'],
+                message=str(event.value),
+            )
         
         #a = self._dsl_attrs(event.select.id)
         #raise Exception(f"[on_select_changed] Nessun attributo 'change' per Select {event.select.id} (DSL: {a})")
@@ -666,7 +695,7 @@ class Adapter(presentation.Port):
         super().__init__(loader, defender, presenter, messenger, authenticator, **constants)
         self._render_lock = asyncio.Lock()
         self.sessions: Dict[str, Dict[str, Any]] = {}
-        self.active_screens: Dict[str, 'TUIScreen'] = {}
+        self.active_screens: Dict[str, Screen] = {}
         self.widgets = DomRegistry()  # registro dei widget live, per id
         self.app = AppDinamica(self)
         self.validate_adapter()
@@ -707,6 +736,8 @@ class Adapter(presentation.Port):
         controllers = [controller] if controller else []
 
         xml_view = flow.output(await self.presenter.get_view(self.session, view_path))
+        self._current_view_text = xml_view
+        self._current_view_controllers = controllers
         return await self.render_template(self.session, controllers=controllers, text=xml_view)
 
     async def render_view(self, url):
@@ -728,8 +759,8 @@ class Adapter(presentation.Port):
             for method, data in methods_dict.items():
                 self.views[path] = data.get('view')
 
-    async def rebuild(self, node_id: str, session_id: str = None, context: Dict[str, Any] = None, dsl_alias: str = None):
-        """Ricostruisce il widget live a partire dal frammento XML aggiornato nel DOM."""
+    async def rebuild(self, session,node_id: str, context: Dict[str, Any] = None, dsl_alias: str = None):
+        """Ricalcola il DOM e sostituisce solo il widget richiesto."""
         self._ensure_active_app()
 
         # IMPORTANTE: va preso PRIMA di chiamare render_template(), perché
@@ -738,8 +769,21 @@ class Adapter(presentation.Port):
         # Se lo prendi dopo, dom_get() ti restituisce rendered_node stesso.
         old_widget = self.dom_get(node_id)
         if old_widget is None:
-            print("Widget non montato:", node_id)
             return None
+
+        # Il DOM contiene XML già elaborato da Jinja. Ricalcoliamo la sorgente
+        # in memoria per aggiornare DOM senza sostituire la schermata attiva.
+        view_text = getattr(self, "_current_view_text", None)
+        if view_text:
+            try:
+                await self.render_template(
+                    session,
+                    controllers=getattr(self, "_current_view_controllers", []),
+                    text=view_text,
+                )
+            except Exception as e:
+                print(f"[rebuild] Impossibile ricalcolare la view: {e}")
+                return None
 
         xml_fragment = self.DOM.get(node_id)
         if xml_fragment is None:
@@ -748,7 +792,7 @@ class Adapter(presentation.Port):
 
         try:
             rendered_node = await self.render_template(
-                self.session, controllers=['terminal'], text=xml_fragment
+                session, controllers=[], text=xml_fragment
             )
         except Exception as e:
             print(f"[rebuild] Impossibile ricostruire il nodo '{node_id}': {e}")
@@ -759,8 +803,9 @@ class Adapter(presentation.Port):
             print(f"[rebuild] '{node_id}' non ha un parent montato, impossibile sostituire")
             return None
 
-        await parent.mount(rendered_node, before=old_widget)
+        sibling_index = list(parent.children).index(old_widget)
         await old_widget.remove()
+        await parent.mount(rendered_node, before=sibling_index)
 
         self.widgets.register(node_id, rendered_node)  # ridondante (node_create l'ha già fatto), ma innocuo
 
@@ -833,7 +878,10 @@ class Adapter(presentation.Port):
 
     def dom_get(self, widget_id: str):
         """Restituisce il widget Textual live con quell'id, o None."""
-        return self.widgets.get(widget_id)
+        try:
+            return self.app.query_one(f"#{widget_id}")
+        except Exception:
+            return self.widgets.get(widget_id)
 
     async def dom_update(self, widget_id: str, context: Dict[str, Any]):
         """Applica node_update() al widget live con quell'id."""

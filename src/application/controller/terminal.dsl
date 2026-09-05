@@ -1,6 +1,6 @@
 {
     selected: "src/infrastructure/presentation/console.py";
-    select(deps:false,default:selected,entry:false) -> select;
+    select(deps:false,default:selected,entry:false,on_end:"gg") -> select;
     dependencies:file_dependencies(selected);
 
     files:storekeeper.overview(session, repository: "file", filter: {"eq": {"type": "file"}}) |> result();
@@ -16,9 +16,9 @@
         infrastructure:storekeeper.gather(session, repository: "file",filter: {"eq": {"filename": infrastructure_files.0}});
     };
 
-    gg(deps:false,entry:false) -> presenter.rebuild("editors",session,{});
+    gg(deps:false,entry:false) -> presenter.rebuild(session,"editors",{});
     
-    stampa(deps:false) -> messenger.send(session, domain: "console:info", message: select);
+    stampa(deps:false, entry:false) -> messenger.send(session, domain: "console:info", message: select);
 
     cmd:{
         close(deps:false, entry:false) -> exit(1);

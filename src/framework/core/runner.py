@@ -151,12 +151,12 @@ class ExecutionContext(scheme.Scheme):
         "sid": {
             "required": True,
             "nullable": False,
-            "type": str,
+            "type": "string",
         },
         "fname": {
             "required": True,
             "nullable": False,
-            "type": str,
+            "type": "string",
         },
         "node": {
             "required": True,
@@ -165,7 +165,7 @@ class ExecutionContext(scheme.Scheme):
         "started_at": {
             "required": True,
             "nullable": False,
-            "type": (int, float),
+            "type": "float",
         },
     }
 
@@ -818,15 +818,7 @@ class DagRunner:
                 #
                 # Non possiamo aspettare indefinitamente nodi che
                 # nessuno ha intenzione di attivare.
-                reactive = [
-                    session.done[
-                        _key(fname, node_name)
-                    ].wait()
-                    for node_name in self.nodes[fname]
-                ]
-
-                if reactive:
-                    await asyncio.gather(*reactive)
+                pass
 
         finally:
 
@@ -1484,9 +1476,18 @@ class DagRunner:
 
             try:
 
+                async def invoke_node(context):
+                    if isinstance(context, dict):
+                        result = node.fn(**context)
+                    else:
+                        result = node.fn(context)
+                    if inspect.isawaitable(result):
+                        result = await result
+                    return result
+
                 last_result = await flow.pipe(
                     execution.ctx,
-                    node.fn,
+                    invoke_node,
                     action=f"{execution.fname}.{node.name}",
                     component=execution.fname,
                 )

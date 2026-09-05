@@ -69,6 +69,7 @@ async def render(loader, runtime_session, render_node, text=None, file=None, con
     data = {}
     managers = {"manager": loader.get_managers()}
     for controller in controllers or []:
+        runtime_session.context()["session"] = runtime_session
         run_result = await runtime_session.run(
             controller,
             {"session": runtime_session}|managers,

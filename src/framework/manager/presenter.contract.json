@@ -1,0 +1,16 @@
+{
+  "contract_version": 2,
+  "exports": {
+    "rebuild": [
+      "Manager.rebuild"
+    ]
+  },
+  "hashes": {
+    "Manager": {
+      "rebuild": {
+        "production": "5aec2e8c3d15cb9c2dd24e79acedbe647b709a421d9258cab2e23d19f72fa87a",
+        "test": "222f74a5a27742e3b95ff6e34b1c0962befe5ab52c6b73e9cef6f2cb370f72c6"
+      }
+    }
+  }
+}
