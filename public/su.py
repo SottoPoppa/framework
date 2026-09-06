@@ -15,7 +15,7 @@ class DummyRegistry:
     def resolve(self, name: str):
         # Esempio di funzioni registrate
         registry = {
-            "print_info": lambda msg: f"[LOG] Executed: {msg}",
+            "print_info": lambda msg: (print(f"[INFO]: {msg}"), msg)[1],
         }
         if name in registry:
             return registry[name]
@@ -32,6 +32,8 @@ async def main():
         aaa: "sdsod";
         a: 10;
         b: 10 + a;
+        zio: a |> print_info; 
+        g:print_info("ciao!!!!!!!!!!!!!!!");
     }
     """
 
@@ -63,11 +65,9 @@ async def main():
 
     print("\n=== 5. RISULTATI NEL CONTESTO FINALE ===")
     final_context = session.context.data
-    
-    print(f"selected : {final_context.get('selected')}")
-    print(f"aaa      : {final_context.get('aaa')}")
-    print(f"a        : {final_context.get('a')}")
-    print(f"b (10+a) : {final_context.get('b')}")
+
+    for k, v in final_context.items():
+        print(f"{k:<10} : {v}")
 
     # Pulizia della sessione
     runner.close_session(session.id)

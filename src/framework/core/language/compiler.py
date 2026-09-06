@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 from typing import Any
 
-from typing import Any
-
 from .ast import ASTNode, Declaration, Task
 
 # Import dei moduli AST e Model
@@ -16,6 +14,7 @@ from .ast import (
     NotOp,
     NumberLiteral,
     Pair,
+    PipeNode,  # <--- Aggiunto PipeNode
     Program,
     SequenceNode,
     StringLiteral,
@@ -90,7 +89,7 @@ class Compiler:
         if isinstance(v, (StringLiteral, NumberLiteral, BoolLiteral)):
             return Literal(v.value)
 
-        # ---> AGGIUNGI QUESTO BLOCCO PER GLI OPERATORI BINARI (+, -, *, ==, and, etc.) <---
+        # Gestione Operatori Binari (+, -, *, ==, and, etc.)
         if isinstance(v, BinaryOp):
             return Call(
                 function=v.op,
@@ -104,6 +103,42 @@ class Compiler:
                 arguments=(self._expr(v.value),),
                 keywords={}
             )
+
+        # ---> GESTIONE PIPE (|>) <---
+        # Trasforma `a |> print_info` oppure `a |> f |> g` in oggetti Call ricorsivi
+        if isinstance(v, PipeNode):
+            steps = getattr(v, "steps", [])
+            if not steps:
+                return Literal(None)
+
+            # Il primo elemento è l'argomento/dato iniziale
+            current_expr = self._expr(steps[0])
+
+            # Ogni step successivo avvolge la corrente espressione come suo primo argomento
+            for step in steps[1:]:
+                fn_name = None
+
+                if isinstance(step, (Var, ContextVar)):
+                    fn_name = step.name
+                elif isinstance(step, FunctionCall):
+                    fn_name = step.name
+                elif isinstance(step, str):
+                    fn_name = step
+                else:
+                    fn_name = self._extract_key_name(step) or str(step)
+
+                # Se lo step era già una FunctionCall (es. `f(x)`), uniamo gli argomenti esistenti
+                if isinstance(step, FunctionCall):
+                    existing_args = tuple(self._expr(x) for x in step.args)
+                    args = (current_expr,) + existing_args
+                    kwargs = {k: self._expr(val) for k, val in step.kwargs.items()}
+                else:
+                    args = (current_expr,)
+                    kwargs = {}
+
+                current_expr = Call(function=fn_name, arguments=args, keywords=kwargs)
+
+            return current_expr
 
         if isinstance(v, FunctionCall):
             fn_name = v.name or ""
