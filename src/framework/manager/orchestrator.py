@@ -78,14 +78,16 @@ class Manager(manager.Port):
         except Exception as e:
             print(f"Errore durante l'esecuzione: {e}")'''
 
-    async def add_file(self, session, name, source):
-        return await self.interpreter.add_file(name, source)
+    async def load_file(self, session, name, source):
+        return await self.interpreter.load_file(name, source)
 
-    async def create_session(self, session, env={}):
-        return await self.interpreter.session_create(session, env|self.language.DSL_FUNCTIONS)
+    async def open_session(self, session, env=None):
+        env = env or {}
+        return self.interpreter.open_session(env=env, sid=session)
 
-    async def run_session(self, session, file, env={}):
-        return await self.interpreter.run_session(session, file, env|self.language.DSL_FUNCTIONS)
+    async def run(self, session, file, env=None):
+        env = env or {}
+        return await session.run(file, env)
         
     # ── PROVIDER ────────────────────────────────────────────────────────────────
 

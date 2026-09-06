@@ -16,6 +16,10 @@ from cerberus import Validator
 import framework.core.flow as flow
 
 
+# Registry condiviso: il loader lo aggiorna in-place durante il bootstrap.
+schemes: dict[str, dict] = {}
+
+
 # ==============================================================================
 # API PUBBLICA UNIFICATA (Tutte basate su Pipe)
 # ==============================================================================

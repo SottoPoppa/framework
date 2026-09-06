@@ -6,7 +6,7 @@ factory:repository := {
             "/tmp"
         ];
         "SOURCE": [
-            "{{filter.eq.filename}}",
+            "src/{{filter.eq.filename}}",
             "src"
         ]
     };

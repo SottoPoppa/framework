@@ -7,9 +7,42 @@ import time
 import traceback
 from typing import Any, Callable, Dict, Generic, Iterable, List, Tuple, TypeVar
 
+from framework.service.diagnostic import configure_log_file, get_logger
+
 T = TypeVar("T")
 F = TypeVar("F")
 Step = Callable[[Any], Any]
+
+_dev_logger = get_logger("flow")
+_dev_logging_enabled = False
+
+
+def configure_dev_logging(
+    enabled: bool = False,
+    path: str = "/tmp/omniport-dev.log",
+) -> None:
+    """Abilita o disabilita il tracing Flow tramite il logger diagnostico."""
+    global _dev_logging_enabled
+    _dev_logging_enabled = bool(enabled)
+    configure_log_file(
+        path if _dev_logging_enabled else None,
+        component="flow",
+        console=False,
+    )
+
+
+def _dev_log(
+    message: str,
+    *args: Any,
+    exc_info: bool = False,
+    exception: BaseException | None = None,
+) -> None:
+    if _dev_logging_enabled:
+        rendered = message % args if args else message
+        if exc_info:
+            _dev_logger.error(rendered, exception=exception)
+        else:
+            _dev_logger.debug(rendered)
 
 # ==============================================================================
 # CHANGELOG rispetto all'originale
@@ -200,6 +233,13 @@ async def _invoke(step: Step, value: Any, transactions: list["Result"]) -> Valor
             out = await out
         return _normalize(out, transactions)
     except Exception as exc:
+        _dev_log(
+            "step.error step=%s error=%r",
+            getattr(step, "__name__", repr(step)),
+            exc,
+            exc_info=True,
+            exception=exc,
+        )
         return Failure(error=exc, tb=traceback.format_exc())
 
 
@@ -207,7 +247,6 @@ async def pipe(value: Any, *steps: Step, action: str = "flow.pipe", component: s
     start = time.perf_counter()
     transactions: list[Result] = []
     current: Valor = _normalize(value, transactions)
-
     for step in steps:
         match current:
             # 1. Short-circuit immediato se lo stato corrente è un Failure
@@ -220,7 +259,6 @@ async def pipe(value: Any, *steps: Step, action: str = "flow.pipe", component: s
                 step_name = getattr(step, "__name__", str(step))
 
                 current = await _invoke(step, step_input, transactions)
-                
                 transactions.append(Result(
                     input=step_input,
                     output=current,
@@ -233,7 +271,7 @@ async def pipe(value: Any, *steps: Step, action: str = "flow.pipe", component: s
             case Immutable(is_success=False):
                 break
 
-    return Result(
+    result = Result(
         input=value,
         output=current,
         execution_time_ms=(time.perf_counter() - start) * 1000,
@@ -241,13 +279,22 @@ async def pipe(value: Any, *steps: Step, action: str = "flow.pipe", component: s
         component=component,
         transactions=tuple(transactions)
     )
+    _dev_log(
+        "pipe.result action=%s component=%s success=%s output_type=%s transactions=%d elapsed_ms=%.2f",
+        action,
+        component,
+        result.is_success,
+        type(current).__name__,
+        len(transactions),
+        result.execution_time_ms,
+    )
+    return result
 
 def pipe_sync(value: Any, *steps: Step, action: str = "flow.pipe_sync", component: str | None = None) -> Result:
     """Esegue una pipeline composta da step sincroni."""
     start = time.perf_counter()
     transactions: list[Result] = []
     current: Valor = _normalize(value, transactions)
-
     for step in steps:
         match current:
             case Failure():
@@ -269,7 +316,7 @@ def pipe_sync(value: Any, *steps: Step, action: str = "flow.pipe_sync", componen
             case Immutable(is_success=False):
                 break
 
-    return Result(
+    result = Result(
         input=value,
         output=current,
         execution_time_ms=(time.perf_counter() - start) * 1000,
@@ -277,6 +324,16 @@ def pipe_sync(value: Any, *steps: Step, action: str = "flow.pipe_sync", componen
         component=component,
         transactions=tuple(transactions)
     )
+    _dev_log(
+        "pipe_sync.result action=%s component=%s success=%s output_type=%s transactions=%d elapsed_ms=%.2f",
+        action,
+        component,
+        result.is_success,
+        type(current).__name__,
+        len(transactions),
+        result.execution_time_ms,
+    )
+    return result
 
 def result(inputs=[], outputs=[], action: str | None = None, component: str | None = None) -> Callable:
     def decorator(func: Callable) -> Callable:
@@ -284,22 +341,41 @@ def result(inputs=[], outputs=[], action: str | None = None, component: str | No
         async def wrapper(*args: Any, **kwargs: Any) -> Result:
             start = time.perf_counter()
             txs: list[Result] = []
+            operation = action or getattr(func, "__qualname__", repr(func))
             try:
                 out = func(*args, **kwargs)
                 if inspect.isawaitable(out):
                     out = await out
                 valor = _normalize(out, txs)
             except Exception as exc:
+                _dev_log(
+                    "result.error operation=%s error=%r",
+                    operation,
+                    exc,
+                    exc_info=True,
+                    exception=exc,
+                )
                 valor = Failure(error=exc, tb=traceback.format_exc())
 
-            return Result(
+            result = Result(
                 input={"args": args, "kwargs": kwargs},
                 output=valor,
                 execution_time_ms=(time.perf_counter() - start) * 1000,
-                action=action or getattr(func, "__qualname__", repr(func)),
+                action=operation,
                 component=component or getattr(func, "__module__", None),
                 transactions=tuple(txs),
             )
+            _dev_log(
+                "result.end operation=%s component=%s success=%s output_type=%s error_type=%s transactions=%d elapsed_ms=%.2f",
+                operation,
+                component or getattr(func, "__module__", None),
+                result.is_success,
+                type(valor).__name__,
+                type(valor.error).__name__ if isinstance(valor, Failure) else None,
+                len(txs),
+                result.execution_time_ms,
+            )
+            return result
         return wrapper
     return decorator
 

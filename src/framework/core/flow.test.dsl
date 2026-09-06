@@ -8,7 +8,8 @@ exports: {
     'success': imports.flow.success;
     'check': imports.flow.check;
     'unwrap': imports.flow.unwrap;
-    'output': imports.flow.output
+    'output': imports.flow.output;
+    'configure_dev_logging': imports.flow.configure_dev_logging;
 };
 
 tuple:test_suite := (
@@ -53,5 +54,12 @@ tuple:test_suite := (
         "outputs": "invalid credentials";
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "output estrae l'errore da un Result fallito";
+    },
+    {
+        "action": exports.configure_dev_logging;
+        "inputs": false;
+        "outputs": none;
+        "assert": @received.is_success == true & @received.output.value == @expected;
+        "note": "configure_dev_logging disattiva il tracing senza produrre un payload";
     }
 );

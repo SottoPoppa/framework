@@ -169,12 +169,13 @@ class Manager(manager.Port):
             return flow.error(f"Policy '{port}' non valida: il risultato DSL non è un dizionario")
         policy = dict(policy)
         schema_name = policy.get("port_schema", port)
-        configuration = policy.get("configuration")
+        schema_key = schema_name if isinstance(schema_name, str) else port
+        configuration = policy.get("configuration") or policy.get(f"{port}:configuration") or (policy.get(port, {}).get("configuration") if isinstance(policy.get(port), dict) else None)
         if configuration is None:
             return flow.error(f"Configurazione globale mancante per la Port '{port}'")
-        schema = scheme.schemes.get(schema_name)
+        schema = scheme.schemes.get(schema_key)
         if not schema:
-            return flow.error(f"Schema '{schema_name}' non trovato per la policy '{port}'")
+            return flow.error(f"Schema '{schema_key}' non trovato per la policy '{port}'")
         normalized = scheme.normalize(configuration, schema)
         if not normalized.is_success:
             return flow.error(f"Configurazione policy '{port}' non valida: {normalized.output.error}")
@@ -190,15 +191,14 @@ class Manager(manager.Port):
         env = env | {**self.managers}
         if not session.get("id"):
             session["id"] = token_urlsafe(16)
-        self.interpreter.session_create(sid=session, env=env)
-        return language.SessionHandle(self.interpreter, session=session)
+        return self.interpreter.open_session(env=env, sid=session["id"])
 
     def session_get(self, sid) -> language.SessionHandle | None:
         """Restituisce l'handle della sessione DSL esistente, se disponibile."""
         # ricostruisce l'handle senza duplicare stato
         if sid not in self.interpreter._runner.sessions:
             return None
-        return language.SessionHandle(self.interpreter, sid)
+        return self.interpreter.open_session(sid=sid)
     
     def get_policy(self, policy):
         """Restituisce la policy caricata con il nome indicato."""

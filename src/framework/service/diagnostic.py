@@ -9,6 +9,7 @@ from typing import Dict, Any, List, Optional
 from contextlib import contextmanager
 import time
 import contextvars
+import threading
 
 
 # =====================================================================
@@ -208,6 +209,23 @@ _COMPONENT_PALETTE = [
 _COMPONENT_WIDTH = 12
 
 _log_indent: contextvars.ContextVar[int] = contextvars.ContextVar("log_indent", default=0)
+_log_file_path: Optional[str] = None
+_log_file_component: Optional[str] = None
+_log_file_console = True
+_log_file_lock = threading.Lock()
+
+
+def configure_log_file(
+    path: Optional[str] = None,
+    *,
+    component: Optional[str] = None,
+    console: bool = True,
+) -> None:
+    """Configura il file diagnostico e, opzionalmente, la sua destinazione console."""
+    global _log_file_path, _log_file_component, _log_file_console
+    _log_file_path = path
+    _log_file_component = component
+    _log_file_console = console
 
 
 def _component_color(name: str) -> str:
@@ -278,7 +296,19 @@ def log(level: str, message: str, component: Optional[str] = None,
         exception: Optional[BaseException] = None, **metadata):
     """Log immediato: stampa subito a schermo (comportamento storico)."""
     indent = _log_indent.get()
-    print(_format_entry(level, message, component, indent, metadata, exception))
+    entry = _format_entry(level, message, component, indent, metadata, exception)
+    file_enabled = (
+        _log_file_path is not None
+        and (_log_file_component is None or _log_file_component == component)
+    )
+    if not (file_enabled and not _log_file_console):
+        print(entry)
+
+    if file_enabled:
+        with _log_file_lock:
+            os.makedirs(os.path.dirname(_log_file_path) or ".", exist_ok=True)
+            with open(_log_file_path, "a", encoding="utf-8") as logfile:
+                logfile.write(entry + "\n")
 
 
 @contextmanager

@@ -1029,7 +1029,7 @@ class Adapter(presentation.Port):
                     if file_path not in self.executor.interpreter.runner.nodes:
                         try:
                             content = await self.loader.resource(file_path)
-                            await self.executor.add_file(file_path, content)
+                            await self.executor.load_file(None, file_path, content)
                         except Exception as e:
                             print(f"Errore caricamento file {file_path}: {e}")
                     

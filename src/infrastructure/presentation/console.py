@@ -3,6 +3,7 @@ import framework.core.flow as flow
 import uuid
 import json
 import os
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple, Callable
 
@@ -21,6 +22,40 @@ from textual.widgets import (
 from rich.text import Text
 from textual.screen import Screen, ModalScreen
 from textual.binding import Binding
+
+
+def _protect_editor_jinja_delimiters(root):
+    replacements = {
+        "{{": "__OMNI_LBRACE____OMNI_LBRACE__",
+        "}}": "__OMNI_RBRACE____OMNI_RBRACE__",
+        "{%": "__OMNI_LBRACE____OMNI_PERCENT__",
+        "%}": "__OMNI_PERCENT____OMNI_RBRACE__",
+        "{#": "__OMNI_LBRACE____OMNI_HASH__",
+        "#}": "__OMNI_HASH____OMNI_RBRACE__",
+    }
+
+    def protect(value):
+        if not value:
+            return value
+        for source, target in replacements.items():
+            value = value.replace(source, target)
+        return value
+
+    for editor in root.iter():
+        if editor.attrib.get("type") != "editor":
+            continue
+        for descendant in editor.iter():
+            descendant.text = protect(descendant.text)
+            descendant.tail = protect(descendant.tail)
+
+    protected = ET.tostring(root, encoding="unicode")
+    return (
+        protected
+        .replace("__OMNI_LBRACE__", "&#123;")
+        .replace("__OMNI_RBRACE__", "&#125;")
+        .replace("__OMNI_PERCENT__", "%")
+        .replace("__OMNI_HASH__", "#")
+    )
 
 
 import framework.port.presentation as presentation
@@ -447,6 +482,13 @@ class AppDinamica(App):
     async def on_select_changed(self, event: Select.Changed) -> None:
         w = self.adapter.node_get(event.select.id)
 
+        flow._dev_log(
+            "tui.select id=%s value=%r type=%s",
+            event.select.id,
+            event.value,
+            type(event.value).__name__,
+        )
+
         if w is not None:
             attrs_tag = self.adapter.presenter.estrai_attributi_tag(w)
             await self.adapter.messenger.send(
@@ -763,45 +805,49 @@ class Adapter(presentation.Port):
         """Ricalcola il DOM e sostituisce solo il widget richiesto."""
         self._ensure_active_app()
 
+        flow._dev_log("tui.rebuild node=%s", node_id)
+
         # IMPORTANTE: va preso PRIMA di chiamare render_template(), perché
         # render_template -> mount_tag -> node_create sovrascrive subito
         # self.widgets[node_id] con la nuova istanza (ancora non montata).
         # Se lo prendi dopo, dom_get() ti restituisce rendered_node stesso.
         old_widget = self.dom_get(node_id)
         if old_widget is None:
-            return None
+            raise LookupError(f"Widget '{node_id}' non trovato nella TUI")
 
         # Il DOM contiene XML già elaborato da Jinja. Ricalcoliamo la sorgente
         # in memoria per aggiornare DOM senza sostituire la schermata attiva.
         view_text = getattr(self, "_current_view_text", None)
         if view_text:
-            try:
-                await self.render_template(
-                    session,
-                    controllers=getattr(self, "_current_view_controllers", []),
-                    text=view_text,
-                )
-            except Exception as e:
-                print(f"[rebuild] Impossibile ricalcolare la view: {e}")
-                return None
+            await self.render_template(
+                session,
+                controllers=getattr(self, "_current_view_controllers", []),
+                text=view_text,
+            )
 
         xml_fragment = self.DOM.get(node_id)
         if xml_fragment is None:
-            print(f"[rebuild] Nessun nodo con id '{node_id}' in DOM")
-            return None
+            raise LookupError(f"Nodo XML '{node_id}' non trovato nel DOM")
 
-        try:
-            rendered_node = await self.render_template(
-                session, controllers=[], text=xml_fragment
-            )
-        except Exception as e:
-            print(f"[rebuild] Impossibile ricostruire il nodo '{node_id}': {e}")
-            return None
+        flow._dev_log(
+            "tui.rebuild.ready node=%s fragment_size=%d",
+            node_id,
+            len(xml_fragment),
+        )
+
+        fragment_root = ET.fromstring(xml_fragment)
+        protected_fragment = _protect_editor_jinja_delimiters(fragment_root)
+        rendered_node = await self.render_template(
+            session,
+            controllers=[],
+            text=protected_fragment,
+        )
 
         parent = old_widget.parent
         if parent is None:
-            print(f"[rebuild] '{node_id}' non ha un parent montato, impossibile sostituire")
-            return None
+            raise RuntimeError(
+                f"Widget '{node_id}' non ha un parent montato"
+            )
 
         sibling_index = list(parent.children).index(old_widget)
         await old_widget.remove()

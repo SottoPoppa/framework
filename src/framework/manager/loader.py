@@ -556,7 +556,7 @@ class Loader:
     cores = {
 
         "flow": "src/framework/core/flow.py",
-        "language": "src/framework/core/language.py",
+        "language": "src/framework/core/language/__init__.py",
         "scheme": "src/framework/core/scheme.py",
     }
 
@@ -910,7 +910,8 @@ class Loader:
     async def _prepare_core(self, context: LoaderContext) -> LoaderContext:
         schemes = await self.load_schemes(["src/framework/scheme", "src/application/model"])
         core_scheme = importlib.import_module("framework.core.scheme")
-        core_scheme.schemes = schemes
+        core_scheme.schemes.clear()
+        core_scheme.schemes.update(schemes)
         core_scheme.jinja_env = self.infra.jinja_env
         await self.framework.load_core(
             self.services,

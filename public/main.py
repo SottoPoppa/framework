@@ -8,6 +8,8 @@ import subprocess
 cwd = os.getcwd()
 sys.path.insert(1, cwd + '/src')
 
+import framework.core.flow as flow
+
 
 
 def setup_core_dependencies():
@@ -24,6 +26,7 @@ def setup_core_dependencies():
     )
 
 async def main(config):
+    flow.configure_dev_logging(config.get('dev', False))
 
     if config.get('setup'):
         setup_core_dependencies()

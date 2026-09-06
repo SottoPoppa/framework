@@ -278,7 +278,7 @@ class Manager(manager.Port):
             }
         )
 
-        session = language.SessionHandle(interp, session=session_dict)
+        session = interp.open_session(sid=session_id)
 
         try:
             run_result = await session.run(path)

@@ -1,23 +1,28 @@
 <?xml version='1.0' encoding='utf-8'?>
 <Window type="page" title="Omniport Code Terminal" background="#111827" font="mono" padding="1">
     <Row id="toolbar" align="center" justify="between" height="5">
-        
-            <Input id="select"  height="3" value="{{ terminal.select }}" bind="terminal:select" change="terminal:select" placeholder="Seleziona un file" type="select">
+            
+            <Input id="select"  height="3" change="terminal:select" placeholder="Seleziona un file" type="select">
             {% if terminal.files | result_success %}
             {% for item in terminal.files | result_value %}
-                <Text>src/{{ item["relative_path"] }}</Text>
+                <Text>{{ item["relative_path"] }}</Text>
             {% endfor %}
             {% endif %}
             </Input>
             <Action id="stampa" width="10" height="3" margin="0,0,0,1" type="button" click="terminal:stampa"><Text>Path</Text></Action> 
     </Row>
+
     <Group id="editors" type="tab" height="1fr">
+        <Text>{{ terminal.select }}
+            {{ terminal.dependencies }}
+        </Text>
         <Column id="application" width="1fr" padding="0,1">
             <Input type="editor" language="python" id="editor-application" height="1fr">
+                {% if terminal.editor.application is mapping %}
                 <Text>{{ terminal.editor.application["content"] }}</Text>
+                {% endif %}
             </Input>
             <Navigation type="tabs" height="5">
-                <Text>{{terminal.gg}}</Text>
                 {% for item in terminal.application_files %}
                 <Text>{{ item }}</Text>
                 {% endfor %}    
@@ -25,7 +30,9 @@
         </Column>
         <Column id="framework" width="1fr" padding="0,1">
             <Input type="editor" language="python" id="editor-framework" height="1fr">
+                {% if terminal.editor.framework is mapping %}
                 <Text>{{ terminal.editor.framework["content"] }}</Text>
+                {% endif %}
             </Input>
             <Navigation type="tabs" height="5">
                 {% for item in terminal.framework_files %}
@@ -35,7 +42,9 @@
         </Column>
         <Column id="infrastructure" width="1fr" padding="0,1">
             <Input type="editor" language="python" id="editor-infrastructure" height="1fr">
-                <Text>{{ terminal.editor.infrastructure.content }} </Text>
+                {% if terminal.editor.infrastructure is mapping %}
+                <Text>{{ terminal.editor.infrastructure["content"] }}</Text>
+                {% endif %}
             </Input>
             <Navigation type="tabs" height="5">
                 {% for item in terminal.infrastructure_files %}
