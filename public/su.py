@@ -34,6 +34,7 @@ async def main():
         b: 10 + a;
         zio: a |> print_info; 
         g:print_info("ciao!!!!!!!!!!!!!!!");
+        ss() -> print_info("SONO IL DAG");
     }
     """
 

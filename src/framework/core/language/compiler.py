@@ -44,10 +44,29 @@ class Compiler:
             # Gestione Mappe / DictNode generici a livello root
             elif isinstance(st, DictNode):
                 for item in st.items:
+                    # 1. Se l'elemento è un assegnamento tipo "chiave: valore"
                     if isinstance(item, Pair):
                         key_name = self._extract_key_name(item.key)
                         if key_name:
                             context[key_name] = self._expr(item.value)
+
+                    # 2. AGGIUNGI QUESTO: Se l'elemento dentro il blocco è un Task ("trigger() -> action")
+                    elif isinstance(item, Task):
+                        expr = self._expr(item.action)
+                        task_name = (
+                            self._extract_key_name(item.trigger)
+                            or "unnamed_task"
+                        )
+                        deps = tuple(sorted(self._refs(expr)))
+
+                        nodes.append(
+                            NodeDefinition(
+                                name=task_name,
+                                action=ExecutionSpec(expr),
+                                deps=deps,
+                                entry=True,
+                            )
+                        )
 
             # Gestione Task
             elif isinstance(st, Task):

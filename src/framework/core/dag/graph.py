@@ -28,7 +28,7 @@ class Dag:
         context_keys = getattr(definition, 'context', {})
 
         for node in definition.nodes:
-            for dep in node.dependencies:
+            for dep in node.deps:
                 if dep not in self.nodes and dep not in context_keys:
                     raise DagDefinitionError(
                         f'Node {node.name!r} depends on unknown node/context variable {dep!r}'
@@ -52,14 +52,14 @@ class Dag:
         """Ritorna i nomi dei nodi di ingresso (is_entry=True e nessuna dipendenza da altri task)."""
         return tuple(
             n.name for n in self.definition.nodes
-            if n.is_entry and not any(dep in self.nodes for dep in n.dependencies)
+            if n.entry and not any(dep in self.nodes for dep in n.deps)
         )
 
     def _validate(self):
         """Verifica l'assenza di cicli nel DAG tramite ordinamento topologico (Algoritmo di Kahn)."""
         # Consideriamo il grado di ingresso basato solo sulle dipendenze da altri task
         indegree = {
-            n: sum(1 for dep in v.dependencies if dep in self.nodes)
+            n: sum(1 for dep in v.deps if dep in self.nodes)
             for n, v in self.nodes.items()
         }
         

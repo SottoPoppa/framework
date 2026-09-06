@@ -43,7 +43,7 @@ class DagRunner:
         session = Session(dag.name, sid, context)
         self.sessions[sid] = session
 
-        # ---> Risoluzione ASINCRONA con await <---
+        # Risoluzione asincrona del contesto iniziale
         for key, expr in raw_ctx.items():
             resolved_val = await self.executor.execute(expr, context)
             context.set(key, resolved_val)
@@ -57,7 +57,6 @@ class DagRunner:
         self, dag_name: str, *, session: Session | None = None
     ) -> Session:
         dag = self.dags[dag_name]
-        # ---> Chiamata con await a create_session <---
         session = session or await self.create_session(dag_name)
 
         await asyncio.gather(
@@ -77,7 +76,7 @@ class DagRunner:
             return
 
         # 1. Verifica e attesa delle dipendenze
-        for dep in node.dependencies:
+        for dep in node.deps:
             # Se la dipendenza è un altro nodo task nel DAG, attendi il suo completamento
             if dep in dag.nodes:
                 await s.wait(dep)
@@ -85,7 +84,7 @@ class DagRunner:
                     s.errors[n] = DependencyFailed(
                         f"Node {n!r} blocked by failed/skipped dependency {dep!r}"
                     )
-                    s.mark(n,NodeState.SKIPPED)
+                    s.mark(n, NodeState.SKIPPED)
                     return
 
         # 2. Esecuzione con Gestione Concorrenza e Retry
@@ -98,8 +97,8 @@ class DagRunner:
 
             while True:
                 try:
-                    # Esegue la spec/espressione associata al nodo
-                    exec_coro = self.executor.execute(node.spec, s.context)
+                    # ---> FIX 1: Usa node.action invece di node.spec <---
+                    exec_coro = self.executor.execute(node.action, s.context)
 
                     if inspect.isawaitable(exec_coro):
                         if timeout:
@@ -111,17 +110,21 @@ class DagRunner:
                     else:
                         value = exec_coro
 
-                    # Salvataggio del risultato nel contesto e aggiornamento dello stato
+                    # Salvataggio del risultato nel contesto e nella mappa della sessione
                     s.results[n] = value
                     s.context.set(n, value)
                     s.mark(n, NodeState.SUCCESS)
 
+                    # ---> FIX 2: Usa il metodo dag.successors(n) se 'successors' è un metodo <---
+                    successors = (
+                        dag.successors(n)
+                        if callable(getattr(dag, "successors", None))
+                        else dag.successors.get(n, [])
+                    )
+
                     # Attiva in parallelo tutti i nodi successori
                     await asyncio.gather(
-                        *(
-                            self._run_node(dag, s, child)
-                            for child in dag.successors[n]
-                        )
+                        *(self._run_node(dag, s, child) for child in successors)
                     )
                     return
 
