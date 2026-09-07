@@ -309,6 +309,7 @@ class Manager(manager.Port):
         export_methods = {
             alias: set()
             for alias, target in exports.items()
+            if callable(target)
         } if isinstance(exports, dict) else {}
         invalid_exports = [
             alias for alias, target in exports.items()
@@ -371,7 +372,9 @@ class Manager(manager.Port):
 
             # ── fase 1: invocazione dell'azione ─────────────────────────
             try:
-                if isinstance(args, dict) and ('args' in args or 'kwargs' in args):
+                if flow.is_result(args):
+                    received = await interp.call(target, (args,))
+                elif isinstance(args, dict) and ('args' in args or 'kwargs' in args):
                     positional = args.get('args', ())
                     keyword = args.get('kwargs', {})
                     if not isinstance(positional, (list, tuple)):
@@ -380,11 +383,40 @@ class Manager(manager.Port):
                         raise TypeError("'inputs.kwargs' deve essere un dizionario")
                     received = await interp.call(target, tuple(positional), keyword)
                 elif isinstance(args, dict):
-                    received = await interp.call(target, (), args)
+                    try:
+                        parameters = inspect.signature(target).parameters
+                        accepts_keywords = any(name in parameters for name in args) or any(
+                            parameter.kind is inspect.Parameter.VAR_KEYWORD
+                            for parameter in parameters.values()
+                        )
+                    except (TypeError, ValueError):
+                        accepts_keywords = False
+                    received = (
+                        await interp.call(target, (), args)
+                        if accepts_keywords
+                        else await interp.call(target, (args,))
+                    )
                 elif isinstance(args, (list, tuple)):
                     received = await interp.call(target, args)
                 else:
-                    received = await interp.call(target, (args,))
+                    if isinstance(args, dict):
+                        try:
+                            parameters = inspect.signature(target).parameters
+                            accepts_keywords = any(
+                                name in parameters for name in args
+                            ) or any(
+                                parameter.kind is inspect.Parameter.VAR_KEYWORD
+                                for parameter in parameters.values()
+                            )
+                        except (TypeError, ValueError):
+                            accepts_keywords = False
+                        received = await interp.call(
+                            target,
+                            (),
+                            args if accepts_keywords else None,
+                        ) if accepts_keywords else await interp.call(target, (args,))
+                    else:
+                        received = await interp.call(target, (args,))
             except Exception as e:
                 results["failed"] += 1
                 results["errors"].append({"target": str(target), "error": str(e), "test_note": test_note, "phase": "action"})
@@ -428,7 +460,7 @@ class Manager(manager.Port):
             alias: sorted(methods)
             for alias, methods in export_methods.items()
         }
-        missing_exports = set(exports) - used_exports if isinstance(exports, dict) else set()
+        missing_exports = set(export_methods) - used_exports
         if missing_exports:
             message = f"Export non testati: {', '.join(sorted(missing_exports))}"
             results["export_errors"].append(message)

@@ -9,7 +9,7 @@
     "Manager": {
       "rebuild": {
         "production": "013a1948139cfa7b349f721a1607ccfb9adad870b8b71fae0625ca424555009d",
-        "test": "222f74a5a27742e3b95ff6e34b1c0962befe5ab52c6b73e9cef6f2cb370f72c6"
+        "test": "013a1948139cfa7b349f721a1607ccfb9adad870b8b71fae0625ca424555009d"
       }
     }
   }

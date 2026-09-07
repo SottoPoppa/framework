@@ -57,8 +57,8 @@ class Manager(manager.Port):
     async def startup(self, session=None):
         return None
 
-    def _authorized(self, action):
-        return self.defender.authorized("authentication", action=action)
+    async def _authorized(self, action):
+        return await self.defender.authorized("authentication", action=action)
 
     @staticmethod
     def _merge_authentication_result(session, authentication, session_result):
@@ -90,7 +90,7 @@ class Manager(manager.Port):
         :return: True se la sessione è stata terminata, False se l'utente non esiste.
         """
 
-        if not self._authorized("sign_out"):
+        if not await self._authorized("sign_out"):
             return flow.error("Authentication policy denied sign_out")
         for authentication in self.authentications:
             session_result = await authentication.sign_out(session)
@@ -110,7 +110,7 @@ class Manager(manager.Port):
         :param constants: Deve includere 'identifier', 'ip' e credenziali.
         :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
         """
-        if not self._authorized("sign_aid"):
+        if not await self._authorized("sign_aid"):
             return flow.error("Authentication policy denied sign_aid")
         for authentication in self.authentications:
             session_result = await authentication.sign_aid(**constants)
@@ -127,7 +127,7 @@ class Manager(manager.Port):
         :param constants: Deve includere 'identifier', 'ip' e credenziali.
         :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
         """
-        if not self._authorized("sign_in"):
+        if not await self._authorized("sign_in"):
             return flow.error("Authentication policy denied sign_in")
         for authentication in self.authentications:
             session_result = await authentication.sign_in(**constants)
@@ -145,7 +145,7 @@ class Manager(manager.Port):
         :param constants: Deve includere 'identifier', 'ip' e credenziali.
         :return: Dizionario di sessione aggiornato se la registrazione ha successo, altrimenti None.
         """
-        if not self._authorized("sign_up"):
+        if not await self._authorized("sign_up"):
             return flow.error("Authentication policy denied sign_up")
         for authentication in self.authentications:
             session_result = await authentication.sign_up(**constants)

@@ -1,3 +1,4 @@
+import inspect
 from secrets import token_urlsafe
 from typing import Dict, Any
 from urllib.parse import urlparse, parse_qs, urljoin
@@ -208,7 +209,7 @@ class Manager(manager.Port):
         """Restituisce la configurazione globale validata di una Port."""
         return self.port_configurations.get(port)
 
-    def authorized(self, policy, **constants) -> bool:
+    async def authorized(self, policy, **constants) -> bool:
         """Valuta le regole DSL di una policy per azione, risorsa, posizione e sessione."""
         policy_name = policy
         policy = self.get_policy(policy_name)
@@ -245,6 +246,8 @@ class Manager(manager.Port):
             condition = rule.get('condition')
             if callable(condition):
                 tes = condition(**for_target)
+                if inspect.isawaitable(tes):
+                    tes = await tes
                 effect = rule.get('effect')
                 if effect == 'allow':
                     all_resutl.append(tes)

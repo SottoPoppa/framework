@@ -17,9 +17,9 @@ class DependencyFailed(Exception):
 
 class DagRunner:
 
-    def __init__(self, registry=None, *, concurrency: int = 32):
+    def __init__(self, registry=None, executor=None, *, concurrency: int = 32):
         self.registry = registry
-        self.executor = Executor(self.registry)
+        self.executor = executor or Executor(self.registry)
         self.dags: dict[str, Dag] = {}
         self.sessions: dict[str, Session] = {}
         self._sem = asyncio.Semaphore(concurrency)
@@ -31,7 +31,11 @@ class DagRunner:
         return dag_obj
 
     async def create_session(
-        self, dag_name: str, *, initial_context: dict[str, Any] | None = None
+        self,
+        dag_name: str,
+        *,
+        initial_context: dict[str, Any] | None = None,
+        resolve_context: bool = True,
     ) -> Session:
         dag = self.dags[dag_name]
         sid = uuid.uuid4().hex
@@ -43,10 +47,11 @@ class DagRunner:
         session = Session(dag.name, sid, context)
         self.sessions[sid] = session
 
-        # Risoluzione asincrona del contesto iniziale
-        for key, expr in raw_ctx.items():
-            resolved_val = await self.executor.execute(expr, context)
-            context.set(key, resolved_val)
+        if resolve_context:
+            # Compatibilita per gli utilizzatori diretti del runner.
+            for key, expr in raw_ctx.items():
+                resolved_val = await self.executor.execute(expr, context)
+                context.set(key, resolved_val)
 
         for node_name in dag.nodes:
             session.mark(node_name, NodeState.PENDING)

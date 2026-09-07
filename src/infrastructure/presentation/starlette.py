@@ -232,7 +232,7 @@ class DefenderMiddleware(BaseHTTPMiddleware):
             ):
                 return HTMLResponse(status_code=403, content="CSRF validation failed")
         # Logica di decisione (senza scomodare il resolve del router)
-        authorized = self.defender.authorized('presentation', session=request.session, action=method, resource=request.state.metadata.get('view'), location=request.state.metadata.get('path'))
+        authorized = await self.defender.authorized('presentation', session=request.session, action=method, resource=request.state.metadata.get('view'), location=request.state.metadata.get('path'))
                     
         if not authorized:
             # Rifiutiamo la richiesta con un 403 Forbidden o 404

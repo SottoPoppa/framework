@@ -2,6 +2,7 @@ import inspect
 import operator
 from typing import Any
 
+from .context import ExecutionContext
 from .model import Call, ExecutionSpec, Literal, Ref
 
 
@@ -36,7 +37,9 @@ class LazyValue:
             new_ctx.update(override_vars)
             return new_ctx
 
-        if hasattr(self.context, "copy"):
+        if isinstance(self.context, ExecutionContext):
+            new_ctx = ExecutionContext(self.context.data)
+        elif hasattr(self.context, "copy"):
             new_ctx = self.context.copy()
         else:
             new_ctx = dict(self.context)
@@ -160,10 +163,17 @@ class Executor:
     def _get_from_context(self, context: Any, key: str) -> Any:
         """Helper per accedere al contesto sia che sia un dict sia un oggetto con .get()."""
         if isinstance(context, dict):
-            return context.get(key)
-        if hasattr(context, 'get'):
-            return context.get(key)
-        return getattr(context, key, None)
+            value = context.get(key)
+        elif hasattr(context, 'get'):
+            value = context.get(key)
+        else:
+            value = getattr(context, key, None)
+        if value is not None:
+            return value
+        try:
+            return self.registry.resolve(key)
+        except Exception:
+            return None
 
     def _set_in_context(self, context: Any, key: str, value: Any) -> None:
         """Helper per salvare valori valutati nel contesto."""

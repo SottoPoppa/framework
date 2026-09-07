@@ -21,6 +21,7 @@ exports: {
     'signout': imports.module.Adapter.signout;
     'signin': imports.module.Adapter.signin;
     'signup': imports.module.Adapter.signup;
+    'signaid': imports.module.Adapter.signaid;
         "inputs": {"args": (adapter.views)};
     'action': imports.module.Adapter.action;
     'mount_route': imports.module.Adapter.mount_route;

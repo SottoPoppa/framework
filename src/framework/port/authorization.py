@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 
+import framework.core.flow as flow
+
 
 class port(ABC):
     def __init__(self):
@@ -9,10 +11,12 @@ class port(ABC):
         pass
 
     @abstractmethod
+    @flow.result()
     def load_data_store(self):
         raise NotImplementedError()
 
     @abstractmethod
+    @flow.result()
     def load_policies(self):
         raise NotImplementedError()
     

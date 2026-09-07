@@ -29,10 +29,6 @@ class Dag:
 
         for node in definition.nodes:
             for dep in node.deps:
-                if dep not in self.nodes and dep not in context_keys:
-                    raise DagDefinitionError(
-                        f'Node {node.name!r} depends on unknown node/context variable {dep!r}'
-                    )
                 # Costruiamo il grafo dei successori solo tra i nodi di esecuzione (task)
                 if dep in self.nodes:
                     self.successors[dep].add(node.name)

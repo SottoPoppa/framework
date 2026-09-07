@@ -7,6 +7,7 @@ from .ast import ASTNode, Declaration, Task
 from .ast import (
     BinaryOp,
     BoolLiteral,
+    AnyVal,
     ContextVar,  # Mantenuto se il parser lo emette ancora, altrimenti usa solo Var
     DictNode,
     FunctionCall,
@@ -29,15 +30,22 @@ class Compiler:
 
     def compile(self, program: Program, *, name: str = "main") -> DagDefinition:
         context: dict[str, Any] = {}
+        custom_types: set[str] = set()
+        typed_declarations: list[tuple[str, str]] = []
         nodes: list[NodeDefinition] = []
         triggers: list[TriggerDefinition] = []
 
         for st in program.statements:
             if isinstance(st, Declaration):
+                typed_declarations.extend(self._typed_declarations(st))
                 for var_name, value in self._declaration_entries(st):
                     context[var_name] = value
+                for target_kind, var_name in st.targets:
+                    if target_kind == "type" and var_name:
+                        custom_types.add(var_name)
 
             elif isinstance(st, DictNode):
+                typed_declarations.extend(self._typed_declarations(st))
                 for item in st.items:
                     if isinstance(item, Pair):
                         key_name = self._extract_key_name(item.key)
@@ -47,6 +55,9 @@ class Compiler:
                     elif isinstance(item, Declaration):
                         for var_name, value in self._declaration_entries(item):
                             context[var_name] = value
+                        for target_kind, var_name in item.targets:
+                            if target_kind == "type" and var_name:
+                                custom_types.add(var_name)
 
                     elif isinstance(item, Task):
                         expr = self._expr(item.action)
@@ -54,7 +65,7 @@ class Compiler:
                             self._extract_key_name(item.trigger)
                             or "unnamed_task"
                         )
-                        deps = tuple(sorted(self._refs(expr)))
+                        deps = tuple(sorted(self._refs(expr) - {task_name}))
 
                         nodes.append(
                             NodeDefinition(
@@ -70,7 +81,7 @@ class Compiler:
                 task_name = self._extract_key_name(st.trigger) or "unnamed_task"
                 
                 # I Ref con lazy=True verranno ignorati da _refs, evitando dipendenze bloccanti
-                deps = tuple(sorted(self._refs(expr)))
+                deps = tuple(sorted(self._refs(expr) - {task_name}))
 
                 nodes.append(
                     NodeDefinition(
@@ -82,8 +93,33 @@ class Compiler:
                 )
 
         return DagDefinition.from_nodes(
-            name, nodes, context=context, triggers=triggers
+            name,
+            nodes,
+            context=context,
+            triggers=triggers,
+            metadata={
+                "custom_types": tuple(sorted(custom_types)),
+                "typed_declarations": typed_declarations,
+            },
         )
+
+    def _typed_declarations(self, node: Any, path: tuple[str, ...] = ()) -> list[tuple[str, str]]:
+        """Raccoglie le dichiarazioni `type:name` con il loro percorso DSL."""
+        declarations = []
+        if isinstance(node, Declaration):
+            for type_name, value_name in node.targets:
+                if type_name and type_name != "type" and value_name:
+                    declarations.append((".".join((*path, value_name)), type_name))
+            return declarations
+
+        if isinstance(node, Pair):
+            key = self._extract_key_name(node.key)
+            return self._typed_declarations(node.value, (*path, key) if key else path)
+
+        if isinstance(node, DictNode):
+            for item in node.items:
+                declarations.extend(self._typed_declarations(item, path))
+        return declarations
 
     def _declaration_entries(self, decl: Declaration) -> list[tuple[str, Any]]:
         value = self._expr(decl.value)
@@ -117,6 +153,9 @@ class Compiler:
         # 2. Valori Letterali
         if isinstance(v, (StringLiteral, NumberLiteral, BoolLiteral)):
             return Literal(v.value)
+
+        if isinstance(v, AnyVal):
+            return Literal(None)
 
         # 3. Operatori Binari (+, -, *, ==, &, in, ecc.)
         if isinstance(v, BinaryOp):

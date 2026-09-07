@@ -3,19 +3,19 @@
   "hashes": {
     "Manager": {
       "activate": {
-        "production": "05641684a0507cdadd6148bf92baa224728651f65df0ab9a8c028abfe03abfe4"
+        "production": "8b88a1578a37548fa323afb4c9c445413668fdc1fbea19832f69872736e61348"
       },
       "authenticate": {
-        "production": "652f709a16264ac8bd136a8654c89a2c40c6866a4e5763a28ee1b066522cbd5c"
+        "production": "d7f8f42eeebb99ff8a14863920b50052bd0a6d3e7796bb5c5621db531ad89111"
       },
       "invalidate": {
-        "production": "2f0e4d917693727a1cb6085a78ed99da5f46821153a801b57ca7bdfcb8725fd1"
+        "production": "a67a5e9172ba7e8f40f456ed5b5520db64676b8c5601f427ef85cd762007566a"
       },
       "policy_allows_method": {
         "production": "ba3dec9d2da55701633dd17a405ac0d2ab0d17723e9e0421c2793ba54e9742ef"
       },
       "regenerate": {
-        "production": "5f46d1c3a8068d05ab73adef4de65540dd027009b18683a027d614be7cdd6cc2"
+        "production": "37e195bed9035dd7553d86ce5476b2ffb8012d7c29f0648f59bd901e59b0cca6"
       },
       "reinstate": {
         "production": "7c6e648460db783fed04778d248f12801d3a2a7a19ba38ccfc4f68bcc1ca2f78"

@@ -109,7 +109,7 @@ class Manager(manager.Port):
         resource = storekeeper.get("repository", "")
         policy = self.defender.get_policy("persistence") if self.defender else None
         security = policy.get("security", {}) if isinstance(policy, dict) else {}
-        if self.defender and not self.defender.authorized(
+        if self.defender and not await self.defender.authorized(
             "persistence",
             session=session,
             action=operation,
