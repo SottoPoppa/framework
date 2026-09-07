@@ -556,7 +556,17 @@ class Loader:
     cores = {
 
         "flow": "src/framework/core/flow.py",
-        "language": "src/framework/core/language/__init__.py",
+        "interpreter": "src/framework/core/interpreter.py",
+        "compiler": "src/framework/core/compiler.py",
+        "parser": "src/framework/core/parser.py",
+        "model": "src/framework/core/model.py",
+        "session": "src/framework/core/session.py",
+        "runner": "src/framework/core/runner.py",
+        "graph": "src/framework/core/graph.py",
+        "execution": "src/framework/core/execution.py",
+        "context": "src/framework/core/context.py",
+        "ast": "src/framework/core/ast.py",
+        "data": "src/framework/core/data.py",
         "scheme": "src/framework/core/scheme.py",
     }
 

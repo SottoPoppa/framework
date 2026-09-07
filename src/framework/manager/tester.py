@@ -4,7 +4,7 @@ import uuid
 from typing import Optional
 
 import framework.service.diagnostic as diagnostic
-import framework.core.language as language
+import framework.core.interpreter as interpreter
 import framework.port.manager as manager
 import framework.core.flow as flow
 import framework.manager.loader as loader_module
@@ -162,7 +162,7 @@ class Manager(manager.Port):
             file_trovati=len(test_files),
         )
 
-        interp = language.Interpreter()
+        interp = interpreter.Interpreter()
         await interp.start()
 
         summary = {
@@ -242,7 +242,7 @@ class Manager(manager.Port):
 
     async def _execute_dsl(
         self,
-        interp: language.Interpreter,
+        interp: interpreter.Interpreter,
         path: str,
         s: "diagnostic.LogScope",
         integration: bool = False,
@@ -265,7 +265,7 @@ class Manager(manager.Port):
 
         interp.session_create(
             sid=session_id,
-            env=language.DSL_FUNCTIONS | {
+            env=interpreter.DSL_FUNCTIONS | {
                 'resource': self.loader.resource,
                 'import': self.loader.import_module,
                 'test': {
@@ -293,7 +293,7 @@ class Manager(manager.Port):
             )
             return {"success": False, "data": {"error": str(e)}}
 
-        test_suite = language.flatten_records(ctx.get('test_suite', []))
+        test_suite = interpreter.flatten_records(ctx.get('test_suite', []))
 
         exports = ctx.get('exports', {}) or {}
         exported_targets = {

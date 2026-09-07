@@ -3,7 +3,7 @@ from typing import Dict, Any
 from urllib.parse import urlparse, parse_qs, urljoin
 
 
-import framework.core.language as language
+import framework.core.interpreter as interpreter
 import framework.core.scheme as scheme
 import framework.core.flow as flow
 import framework.manager.loader as loader
@@ -31,7 +31,7 @@ class Manager(manager.Port):
         """
 
         # Interpreta i file DSL e gestisce le sessioni dell'interprete.
-        self.interpreter = language.Interpreter(scheme.schemes)
+        self.interpreter = interpreter.Interpreter(scheme.schemes)
 
         # Loader condiviso dal framework per leggere risorse e manager.
         self.loader = loader
@@ -193,7 +193,7 @@ class Manager(manager.Port):
             session["id"] = token_urlsafe(16)
         return self.interpreter.open_session(env=env, sid=session["id"])
 
-    def session_get(self, sid) -> language.SessionHandle | None:
+    def session_get(self, sid):
         """Restituisce l'handle della sessione DSL esistente, se disponibile."""
         # ricostruisce l'handle senza duplicare stato
         if sid not in self.interpreter._runner.sessions:

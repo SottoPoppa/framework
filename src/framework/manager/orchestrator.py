@@ -3,7 +3,7 @@ from typing import List, Dict, Any, Callable
 import re
 import traceback
 
-import framework.core.language as language
+import framework.core.interpreter as interpreter
 import framework.core.flow as flow
 import framework.core.scheme as scheme
 import framework.manager.messenger as messenger
@@ -14,7 +14,7 @@ class Manager(manager.Port):
     def __init__(self, messenger: messenger.Manager,**constants):
         self.defender = constants.get('defender')
         self.messenger = constants.get('messenger')
-        self.interpreter = language.Interpreter(scheme.schemes)
+        self.interpreter = interpreter.Interpreter(scheme.schemes)
 
     # ── INTERPRETER ────────────────────────────────────────────────────────────────
 
