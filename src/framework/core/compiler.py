@@ -7,7 +7,7 @@ from .ast import ASTNode, Declaration, Task
 from .ast import (
     BinaryOp,
     BoolLiteral,
-    ContextVar,
+    ContextVar,  # Mantenuto se il parser lo emette ancora, altrimenti usa solo Var
     DictNode,
     FunctionCall,
     ListNode,
@@ -33,28 +33,21 @@ class Compiler:
         triggers: list[TriggerDefinition] = []
 
         for st in program.statements:
-            # Gestione Dichiarazioni / Assegnamenti
             if isinstance(st, Declaration):
                 for var_name, value in self._declaration_entries(st):
                     context[var_name] = value
 
-            # Gestione Mappe / DictNode generici a livello root
             elif isinstance(st, DictNode):
                 for item in st.items:
-                    # 1. Se l'elemento è un assegnamento tipo "chiave: valore"
                     if isinstance(item, Pair):
                         key_name = self._extract_key_name(item.key)
                         if key_name:
                             context[key_name] = self._expr(item.value)
 
-                    # 1bis. Se l'elemento è una dichiarazione "tipo:nome := valore"
-                    # annidata direttamente in un blocco {...} di primo livello
-                    # (es. "type:route := {...}" nel file principale).
                     elif isinstance(item, Declaration):
                         for var_name, value in self._declaration_entries(item):
                             context[var_name] = value
 
-                    # 2. AGGIUNGI QUESTO: Se l'elemento dentro il blocco è un Task ("trigger() -> action")
                     elif isinstance(item, Task):
                         expr = self._expr(item.action)
                         task_name = (
@@ -72,13 +65,11 @@ class Compiler:
                             )
                         )
 
-            # Gestione Task
             elif isinstance(st, Task):
                 expr = self._expr(st.action)
-                # Estrazione del nome del task dal trigger
                 task_name = self._extract_key_name(st.trigger) or "unnamed_task"
-
-                # Calcolo dipendenze automatico dai riferimenti (Ref)
+                
+                # I Ref con lazy=True verranno ignorati da _refs, evitando dipendenze bloccanti
                 deps = tuple(sorted(self._refs(expr)))
 
                 nodes.append(
@@ -95,12 +86,6 @@ class Compiler:
         )
 
     def _declaration_entries(self, decl: Declaration) -> list[tuple[str, Any]]:
-        """Risolve una Declaration ('prefisso:nome := valore') in coppie
-        (nome_variabile, valore_risolto). Il prefisso prima dei ':' (es.
-        'type', 'any', 'presentation', 'role', 'route', 'policy') è solo
-        un'annotazione nel linguaggio sorgente: qui viene usato come nome
-        soltanto se non è stato dichiarato un nome più specifico dopo di esso
-        (stesso comportamento già usato per le Declaration di primo livello)."""
         value = self._expr(decl.value)
         entries: list[tuple[str, Any]] = []
         for target_pair in decl.targets:
@@ -110,7 +95,6 @@ class Compiler:
         return entries
 
     def _extract_key_name(self, node: ASTNode) -> str | None:
-        """Estrae la chiave in formato stringa da un nodo Var, StringLiteral o FunctionCall."""
         if isinstance(node, (Var, ContextVar)):
             return node.name
         if isinstance(node, StringLiteral):
@@ -120,14 +104,21 @@ class Compiler:
         return None
 
     def _expr(self, v: Any) -> Any:
-        """Converte un nodo AST in una struttura dati esecutiva (Ref, Call, Literal, dict, list)."""
-        if isinstance(v, (Var, ContextVar)):
-            return Ref(v.name)
+        """Converte un nodo AST in una struttura dati esecutiva (Ref, Call, Literal, dict, list).
+        Mantiene intatte le espressioni sospese (@lazy) senza valutarle.
+        """
+        # 1. Riferimenti a Variabili (Eager vs Lazy)
+        if isinstance(v, ContextVar):
+            return Ref(v.name, lazy=True)
 
+        if isinstance(v, Var):
+            return Ref(v.name, lazy=False)
+
+        # 2. Valori Letterali
         if isinstance(v, (StringLiteral, NumberLiteral, BoolLiteral)):
             return Literal(v.value)
 
-        # Gestione Operatori Binari (+, -, *, ==, and, etc.)
+        # 3. Operatori Binari (+, -, *, ==, &, in, ecc.)
         if isinstance(v, BinaryOp):
             return Call(
                 function=v.op,
@@ -135,6 +126,7 @@ class Compiler:
                 keywords={}
             )
 
+        # 4. Operatore Unario Not
         if isinstance(v, NotOp):
             return Call(
                 function="not",
@@ -142,20 +134,16 @@ class Compiler:
                 keywords={}
             )
 
-        # ---> GESTIONE PIPE (|>) <---
-        # Trasforma `a |> print_info` oppure `a |> f |> g` in oggetti Call ricorsivi
+        # 5. Gestione Pipe (|>)
         if isinstance(v, PipeNode):
             steps = getattr(v, "steps", [])
             if not steps:
                 return Literal(None)
 
-            # Il primo elemento è l'argomento/dato iniziale
             current_expr = self._expr(steps[0])
 
-            # Ogni step successivo avvolge la corrente espressione come suo primo argomento
             for step in steps[1:]:
                 fn_name = None
-
                 if isinstance(step, (Var, ContextVar)):
                     fn_name = step.name
                 elif isinstance(step, FunctionCall):
@@ -165,7 +153,6 @@ class Compiler:
                 else:
                     fn_name = self._extract_key_name(step) or str(step)
 
-                # Se lo step era già una FunctionCall (es. `f(x)`), uniamo gli argomenti esistenti
                 if isinstance(step, FunctionCall):
                     existing_args = tuple(self._expr(x) for x in step.args)
                     args = (current_expr,) + existing_args
@@ -178,12 +165,14 @@ class Compiler:
 
             return current_expr
 
+        # 6. Chiamate di Funzione
         if isinstance(v, FunctionCall):
             fn_name = v.name or ""
             args = tuple(self._expr(x) for x in v.args)
             kwargs = {k: self._expr(val) for k, val in v.kwargs.items()}
             return Call(fn_name, args, kwargs)
 
+        # 7. Oggetti Dict / Mappe
         if isinstance(v, DictNode):
             res = {}
             for item in v.items:
@@ -192,41 +181,39 @@ class Compiler:
                     if key_str:
                         res[key_str] = self._expr(item.value)
                 elif isinstance(item, Declaration):
-                    # Es. dentro "roles: { role:admin := {...}; role:user := {...}; }"
-                    # ogni "role:X := {...}" è una Declaration, non una Pair.
                     for var_name, value in self._declaration_entries(item):
                         res[var_name] = value
             return res
 
-        # NB: "[...]" è sempre e solo una lista letterale nella grammatica, quindi
-        # va sempre risolta in una list Python, anche con un solo elemento
-        # (es. resources: ["all"] deve restare una lista, non collassare nello
-        # scalare "all"). "(...)" invece è ambiguo tra raggruppamento e tupla
-        # (la grammatica non li distingue: "(x)" e "(x,)" producono lo stesso
-        # albero), quindi per le TupleNode/SequenceNode manteniamo il
-        # comportamento originale che collassa un singolo elemento, altrimenti
-        # espressioni come "(@resource in ...) & (@action == ...)" si
-        # romperebbero (il "(...)" qui è un raggruppamento, non un 1-tupla).
+        # 8. Liste
         if isinstance(v, ListNode):
             return [self._expr(x) for x in v.items]
 
+        # 9. Tuple e Sequenze (Collassa elemento singolo per le parentesi di raggruppamento)
         if isinstance(v, (SequenceNode, TupleNode)):
             items = [self._expr(x) for x in v.items]
             if len(items) == 1:
                 return items[0]
             return items
 
+        # 10. Coppie Chiave-Valore
         if isinstance(v, Pair):
             return {self._extract_key_name(v.key): self._expr(v.value)}
 
+        # Fallback per nodi con attributo .value o valori nativi
         if hasattr(v, "value"):
             return Literal(v.value)
 
         return Literal(v)
 
     def _refs(self, x: Any) -> set[str]:
-        """Trova ricorsivamente tutti i nomi di variabili/node usati nei Ref."""
+        """Trova ricorsivamente tutti i nomi di variabili/node usati nei Ref.
+        Ignora i Ref con lazy=True per non creare dipendenze d'esecuzione rigide nel DAG.
+        """
+        # --- MODIFICA 2: Filtra i Ref Lazy ---
         if isinstance(x, Ref):
+            if x.lazy:
+                return set()  # Le variabili @ non bloccano l'esecuzione del nodo!
             return {x.path.split(".")[0]}
 
         if isinstance(x, Call):

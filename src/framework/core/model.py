@@ -9,6 +9,7 @@ class Literal:
 @dataclass(frozen=True, slots=True)
 class Ref:
     path: str
+    lazy: bool = False
 
 @dataclass(frozen=True, slots=True)
 class Call:
