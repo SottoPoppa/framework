@@ -3,10 +3,10 @@ from dataclasses import dataclass
 
 # --- IMPORT DEI TUOI MODULI AGGIORNATI ---
 # Assicurati che i file siano nello stesso modulo o nei rispettivi pacchetti
-from framework.core.language.parser import Parser          # Il tuo parser con propagate_positions=True
-from framework.core.language.compiler import Compiler      # Il tuo compiler aggiornato per Dataclass AST
-from framework.core.dag.graph import Dag              # Il tuo DAG con gestione context
-from framework.core.dag.runner import DagRunner       # Il tuo runner asincrono aggiornato
+from framework.core.parser import Parser          # Il tuo parser con propagate_positions=True
+from framework.core.compiler import Compiler      # Il tuo compiler aggiornato per Dataclass AST
+from framework.core.graph import Dag              # Il tuo DAG con gestione context
+from framework.core.runner import DagRunner       # Il tuo runner asincrono aggiornato
 
 
 # --- 1. MOCK / REGISTRY DELLE FUNZIONI (OPZIONALE) ---

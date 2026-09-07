@@ -21,7 +21,7 @@ from .ast import (
     TupleNode,
     Var,
 )
-from ..dag.model import Call, DagDefinition, ExecutionSpec, Literal, NodeDefinition, Ref, TriggerDefinition
+from .model import Call, DagDefinition, ExecutionSpec, Literal, NodeDefinition, Ref, TriggerDefinition
 
 
 @dataclass

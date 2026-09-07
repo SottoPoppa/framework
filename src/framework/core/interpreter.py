@@ -4,9 +4,9 @@ import uuid
 
 import framework.core.flow as flow
 
-from ..dag.context import ExecutionContext
-from ..dag.model import Call, Literal, Ref
-from ..dag.runner import DagRunner
+from .context import ExecutionContext
+from .model import Call, Literal, Ref
+from .runner import DagRunner
 from .compiler import Compiler
 from .parser import Parser
 

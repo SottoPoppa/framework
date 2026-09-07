@@ -90,8 +90,8 @@ Il runtime DAG non conosce nulla del DSL.
 import asyncio
 from pprint import pprint
 
-from framework.core.language.parser import Parser
-from framework.core.language.compiler import Compiler
+from framework.core.parser import Parser
+from framework.core.compiler import Compiler
 
 
 # ============================================================================
