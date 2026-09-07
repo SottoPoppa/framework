@@ -14,7 +14,7 @@ from .ast import (
     NotOp,
     NumberLiteral,
     Pair,
-    PipeNode,  # <--- Aggiunto PipeNode
+    PipeNode,
     Program,
     SequenceNode,
     StringLiteral,
@@ -35,11 +35,8 @@ class Compiler:
         for st in program.statements:
             # Gestione Dichiarazioni / Assegnamenti
             if isinstance(st, Declaration):
-                for target_pair in st.targets:
-                    # target_pair è una tupla (chiave, nome_variabile)
-                    var_name = target_pair[1] or target_pair[0]
-                    if var_name:
-                        context[var_name] = self._expr(st.value)
+                for var_name, value in self._declaration_entries(st):
+                    context[var_name] = value
 
             # Gestione Mappe / DictNode generici a livello root
             elif isinstance(st, DictNode):
@@ -49,6 +46,13 @@ class Compiler:
                         key_name = self._extract_key_name(item.key)
                         if key_name:
                             context[key_name] = self._expr(item.value)
+
+                    # 1bis. Se l'elemento è una dichiarazione "tipo:nome := valore"
+                    # annidata direttamente in un blocco {...} di primo livello
+                    # (es. "type:route := {...}" nel file principale).
+                    elif isinstance(item, Declaration):
+                        for var_name, value in self._declaration_entries(item):
+                            context[var_name] = value
 
                     # 2. AGGIUNGI QUESTO: Se l'elemento dentro il blocco è un Task ("trigger() -> action")
                     elif isinstance(item, Task):
@@ -80,15 +84,30 @@ class Compiler:
                 nodes.append(
                     NodeDefinition(
                         name=task_name,
-                        spec=ExecutionSpec(expr),
-                        dependencies=deps,
-                        is_entry=True,
+                        action=ExecutionSpec(expr),
+                        deps=deps,
+                        entry=True,
                     )
                 )
 
         return DagDefinition.from_nodes(
             name, nodes, context=context, triggers=triggers
         )
+
+    def _declaration_entries(self, decl: Declaration) -> list[tuple[str, Any]]:
+        """Risolve una Declaration ('prefisso:nome := valore') in coppie
+        (nome_variabile, valore_risolto). Il prefisso prima dei ':' (es.
+        'type', 'any', 'presentation', 'role', 'route', 'policy') è solo
+        un'annotazione nel linguaggio sorgente: qui viene usato come nome
+        soltanto se non è stato dichiarato un nome più specifico dopo di esso
+        (stesso comportamento già usato per le Declaration di primo livello)."""
+        value = self._expr(decl.value)
+        entries: list[tuple[str, Any]] = []
+        for target_pair in decl.targets:
+            var_name = target_pair[1] or target_pair[0]
+            if var_name:
+                entries.append((var_name, value))
+        return entries
 
     def _extract_key_name(self, node: ASTNode) -> str | None:
         """Estrae la chiave in formato stringa da un nodo Var, StringLiteral o FunctionCall."""
@@ -172,9 +191,26 @@ class Compiler:
                     key_str = self._extract_key_name(item.key)
                     if key_str:
                         res[key_str] = self._expr(item.value)
+                elif isinstance(item, Declaration):
+                    # Es. dentro "roles: { role:admin := {...}; role:user := {...}; }"
+                    # ogni "role:X := {...}" è una Declaration, non una Pair.
+                    for var_name, value in self._declaration_entries(item):
+                        res[var_name] = value
             return res
 
-        if isinstance(v, (SequenceNode, ListNode, TupleNode)):
+        # NB: "[...]" è sempre e solo una lista letterale nella grammatica, quindi
+        # va sempre risolta in una list Python, anche con un solo elemento
+        # (es. resources: ["all"] deve restare una lista, non collassare nello
+        # scalare "all"). "(...)" invece è ambiguo tra raggruppamento e tupla
+        # (la grammatica non li distingue: "(x)" e "(x,)" producono lo stesso
+        # albero), quindi per le TupleNode/SequenceNode manteniamo il
+        # comportamento originale che collassa un singolo elemento, altrimenti
+        # espressioni come "(@resource in ...) & (@action == ...)" si
+        # romperebbero (il "(...)" qui è un raggruppamento, non un 1-tupla).
+        if isinstance(v, ListNode):
+            return [self._expr(x) for x in v.items]
+
+        if isinstance(v, (SequenceNode, TupleNode)):
             items = [self._expr(x) for x in v.items]
             if len(items) == 1:
                 return items[0]
