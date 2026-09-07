@@ -12,4 +12,6 @@ class Session:
         return self.results.get(node)
     def mark(self,node,state):
         self.states[node]=state
+        if state == NodeState.PENDING:
+            self._events[node] = asyncio.Event()
         if state in (NodeState.SUCCESS,NodeState.FAILED,NodeState.SKIPPED): self.event_for(node).set()

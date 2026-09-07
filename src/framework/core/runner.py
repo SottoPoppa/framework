@@ -77,8 +77,13 @@ class DagRunner:
             NodeState.SUCCESS,
             NodeState.FAILED,
             NodeState.SKIPPED,
+            NodeState.RUNNING,
         ):
             return
+
+        # Prenota il nodo prima di attendere le dipendenze. Più predecessori
+        # possono raggiungere lo stesso successore nello stesso istante.
+        s.mark(n, NodeState.RUNNING)
 
         # 1. Verifica e attesa delle dipendenze
         for dep in node.deps:
@@ -94,7 +99,6 @@ class DagRunner:
 
         # 2. Esecuzione con Gestione Concorrenza e Retry
         async with self._sem:
-            s.mark(n, NodeState.RUNNING)
             attempt = 0
             max_retries = getattr(node, "retries", 0)
             retry_delay = getattr(node, "retry_delay", 0)
@@ -158,7 +162,35 @@ class DagRunner:
             raise NodeNotFound(node)
 
         s.context.set(f"events.{node}", payload)
-        return await self._run_node(dag, s, node)
+        for output in dag.get(node).outputs:
+            s.context.set(output, payload)
+        self._reset_subgraph(dag, s, node)
+        await self._run_node(dag, s, node)
+        on_end = dag.get(node).on_end
+        if (
+            on_end
+            and on_end in dag.nodes
+            and s.states.get(on_end) not in (
+                NodeState.SUCCESS,
+                NodeState.RUNNING,
+            )
+        ):
+            self._reset_subgraph(dag, s, on_end)
+            await self._run_node(dag, s, on_end)
+        return s.results.get(node)
+
+    def _reset_subgraph(self, dag: Dag, session: Session, node: str) -> None:
+        pending = [node]
+        visited = set()
+        while pending:
+            current = pending.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            session.results.pop(current, None)
+            session.errors.pop(current, None)
+            session.mark(current, NodeState.PENDING)
+            pending.extend(dag.successors.get(current, ()))
 
     def close_session(self, session_id: str) -> None:
         """Rimuove e chiude una sessione attiva."""

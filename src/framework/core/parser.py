@@ -269,7 +269,7 @@ class Parser:
         if parser is not None:
             self.parser = parser
         else:
-            self._lark = Lark(GRAMMAR, start="start", parser="earley", propagate_positions=True)
+            self._lark = Lark(GRAMMAR, start="start", parser="lalr", propagate_positions=True)
             self._transformer = DSLTransformer()
             self.parser = None
 

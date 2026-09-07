@@ -36,6 +36,8 @@ class NodeDefinition:
     timeout: float | None = None
     retries: int = 0
     retry_delay: float = 0.0
+    on_end: str | None = None
+    outputs: tuple[str, ...] = ()
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
 @dataclass(frozen=True, slots=True)

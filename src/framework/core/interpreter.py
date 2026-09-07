@@ -12,6 +12,7 @@ from .runner import DagRunner
 from .compiler import Compiler
 from .parser import Parser
 from .data import Registry
+from framework.service.introspection import Reflection
 
 def map_records(records: Any, builder: Any, *args, **kwargs) -> list:
     if not isinstance(records, (list, tuple)) or not callable(builder):
@@ -47,6 +48,23 @@ def tag_variants(tags: Any) -> list:
     ]
 
 
+def prefix_match(field: str, prefix: str):
+    return lambda record: (
+        (
+            str(record).startswith(str(prefix))
+            if isinstance(record, str) and field == "relative_path"
+            else isinstance(record, Mapping)
+            and str(record.get(field, "")).startswith(str(prefix))
+        )
+    )
+
+
+def tuple_filter_tuple(records: Any, predicate: Any) -> tuple:
+    if not isinstance(records, (list, tuple)) or not callable(predicate):
+        return ()
+    return tuple(record for record in records if predicate(record))
+
+
 DSL_FUNCTIONS: Dict[str, Any] = {
     "map_records": map_records,
     "tag_variants": tag_variants,
@@ -58,6 +76,10 @@ DSL_FUNCTIONS: Dict[str, Any] = {
     "int": int,
     "str": str,
     "bool": bool,
+    "result": lambda value=None: value,
+    "file_dependencies": Reflection.file_dependencies,
+    "prefix_match": prefix_match,
+    "tuple_filter_tuple": tuple_filter_tuple,
 }
 
 
@@ -83,8 +105,15 @@ class SessionHandle:
     ):
         self.runner = runner
         self.sid = sid or uuid.uuid4().hex
-        self.env = env or {}
+        self.env = dict(env or {})
         self._context_preparer = context_preparer
+        self._closed = False
+        self._pending_context = ExecutionContext(self.env)
+
+    @property
+    def context(self):
+        session = self.runner.sessions.get(self.sid)
+        return session.context if session else self._pending_context
 
     def _register_functions(self, env: dict):
         """Registra automaticamente tutte le callable nel FunctionRegistry."""
@@ -94,7 +123,12 @@ class SessionHandle:
                     self.runner.registry.register(k, v)
 
     async def run(self, dag_name: str, env: dict = None):
+        if self._closed:
+            raise RuntimeError("La sessione è stata chiusa")
+        if dag_name not in self.runner.dags:
+            raise KeyError(f"DAG non registrato: {dag_name}")
         merged_env = {**self.env, **(env or {})}
+        self.env.update(env or {})
         self._register_functions(merged_env)
 
         session = self.runner.sessions.get(self.sid)
@@ -110,6 +144,11 @@ class SessionHandle:
             if self._context_preparer:
                 await self._context_preparer(dag_name, session, merged_env)
         else:
+            if session.dag_name != dag_name:
+                raise ValueError(
+                    f"La sessione {self.sid!r} appartiene al DAG "
+                    f"{session.dag_name!r}, non a {dag_name!r}"
+                )
             # Aggiorna il contesto esistente con i nuovi valori dell'env
             for k, v in merged_env.items():
                 session.context.set(k, v)
@@ -117,15 +156,37 @@ class SessionHandle:
         # Esegue l'orchestrazione dei Task del DAG
         await self.runner.run(dag_name, session=session)
 
-        # Restituisce il contesto risolto e pulito.
-        unwrapped = session.context.data
-        return flow.success(unwrapped)
+        if session.errors:
+            return flow.error(dict(session.errors))
+        return flow.success(dict(session.context.data))
+
+    async def emit(
+        self,
+        node_or_controller: str,
+        payload_or_node: Any = None,
+        payload: Any = None,
+    ):
+        if self._closed:
+            raise RuntimeError("La sessione è stata chiusa")
+        if payload is not None:
+            node = payload_or_node
+            event_payload = payload
+        else:
+            node = node_or_controller
+            event_payload = payload_or_node
+        return await self.runner.emit(self.sid, node, event_payload)
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
+        await self.close()
+
+    async def close(self):
+        if self._closed:
+            return
+        self.runner.close_session(self.sid)
+        self._closed = True
 
 
 class Interpreter:
@@ -134,12 +195,14 @@ class Interpreter:
         self.parser = Parser()
         self.compiler = Compiler()
         self.registry = registry or Registry()
+        self.registry.register_dict(DSL_FUNCTIONS)
         self._runner = DagRunner(
             registry=self.registry,
             executor=Executor(self.registry),
         )
         self.runner = self._runner
         self.session_envs = {}
+        self._started = False
 
     async def call(self, fn, args=(), kwargs=None):
         kwargs = kwargs or {}
@@ -148,7 +211,9 @@ class Interpreter:
         if hasattr(fn, "tree"):
             fn = fn.tree
 
-        if hasattr(fn, "data") and hasattr(fn, "children"):
+        if isinstance(fn, (Call, Literal, Ref)) or (
+            hasattr(fn, "data") and hasattr(fn, "children")
+        ):
             ctx_dict = dict(kwargs)
             if "received" in kwargs:
                 ctx_dict["@received"] = kwargs["received"]
@@ -161,7 +226,7 @@ class Interpreter:
             res = await self.runner.executor.execute(
                 fn, ExecutionContext(ctx_dict)
             )
-            return flow.success(res)
+            return res if flow.is_result(res) else flow.success(res)
 
         if callable(fn):
             res = fn(*args, **kwargs)
@@ -217,10 +282,10 @@ class Interpreter:
 
     def session_create(self, sid: str = None, env: dict = None):
         sid = sid or uuid.uuid4().hex
-        if env:
-            self.session_envs[sid] = env
+        if env is not None:
+            self.session_envs[sid] = dict(env)
             if self.runner.registry:
-                for k, v in env.items():
+                for k, v in self.session_envs[sid].items():
                     if callable(v):
                         self.runner.registry.register(k, v)
         return self.open_session(env=env, sid=sid)
@@ -228,7 +293,7 @@ class Interpreter:
     def open_session(self, env: dict = None, sid: str = None):
         sid = sid or uuid.uuid4().hex
         merged_env = dict(self.session_envs.get(sid, {}))
-        if env:
+        if env is not None:
             merged_env.update(env)
             self.session_envs[sid] = merged_env
 
@@ -245,7 +310,17 @@ class Interpreter:
         )
 
     async def start(self):
-        pass
+        self._started = True
+        return self
 
     async def stop(self):
-        pass
+        for sid in tuple(self.runner.sessions):
+            self.runner.close_session(sid)
+        self.session_envs.clear()
+        self._started = False
+
+    async def __aenter__(self):
+        return await self.start()
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.stop()

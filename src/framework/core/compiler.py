@@ -65,30 +65,32 @@ class Compiler:
                             self._extract_key_name(item.trigger)
                             or "unnamed_task"
                         )
-                        deps = tuple(sorted(self._refs(expr) - {task_name}))
+                        entry, deps, on_end = self._task_options(item.trigger, expr, task_name)
 
                         nodes.append(
                             NodeDefinition(
                                 name=task_name,
                                 action=ExecutionSpec(expr),
                                 deps=deps,
-                                entry=True,
+                                entry=entry,
+                                on_end=on_end,
+                                outputs=self._output_names(item.action),
                             )
                         )
 
             elif isinstance(st, Task):
                 expr = self._expr(st.action)
                 task_name = self._extract_key_name(st.trigger) or "unnamed_task"
-                
-                # I Ref con lazy=True verranno ignorati da _refs, evitando dipendenze bloccanti
-                deps = tuple(sorted(self._refs(expr) - {task_name}))
+                entry, deps, on_end = self._task_options(st.trigger, expr, task_name)
 
                 nodes.append(
                     NodeDefinition(
                         name=task_name,
                         action=ExecutionSpec(expr),
                         deps=deps,
-                        entry=True,
+                        entry=entry,
+                        on_end=on_end,
+                        outputs=self._output_names(st.action),
                     )
                 )
 
@@ -102,6 +104,43 @@ class Compiler:
                 "typed_declarations": typed_declarations,
             },
         )
+
+    def _task_options(self, trigger, expr, task_name):
+        options = getattr(trigger, "kwargs", {})
+        entry = self._literal(options.get("entry"), True)
+        declared_deps = options.get("deps")
+        if declared_deps is not None:
+            deps_value = self._literal(declared_deps)
+            if deps_value is False:
+                deps = ()
+            elif isinstance(deps_value, (list, tuple, set)):
+                deps = tuple(str(dep) for dep in deps_value)
+            else:
+                deps = (str(deps_value),)
+        else:
+            deps = tuple(sorted(self._refs(expr) - {task_name}))
+        on_end = self._literal(options.get("on_end"))
+        return bool(entry), deps, on_end if isinstance(on_end, str) else None
+
+    def _output_names(self, expression) -> tuple[str, ...]:
+        if isinstance(expression, (SequenceNode, TupleNode)):
+            values = expression.items
+        else:
+            values = (expression,)
+        return tuple(
+            value.name
+            for value in values
+            if isinstance(value, (Var, ContextVar))
+        )
+
+    def _literal(self, value, default=None):
+        if value is None:
+            return default
+        if isinstance(value, (BoolLiteral, NumberLiteral, StringLiteral, AnyVal)):
+            return getattr(value, "value", None)
+        if isinstance(value, (ListNode, TupleNode, SequenceNode)):
+            return [self._literal(item) for item in value.items]
+        return value
 
     def _typed_declarations(self, node: Any, path: tuple[str, ...] = ()) -> list[tuple[str, str]]:
         """Raccoglie le dichiarazioni `type:name` con il loro percorso DSL."""

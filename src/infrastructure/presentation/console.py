@@ -736,9 +736,11 @@ class Adapter(presentation.Port):
         """
         super().__init__(loader, defender, presenter, messenger, authenticator, **constants)
         self._render_lock = asyncio.Lock()
+        self._rebuild_lock = asyncio.Lock()
         self.sessions: Dict[str, Dict[str, Any]] = {}
         self.active_screens: Dict[str, Screen] = {}
         self.widgets = DomRegistry()  # registro dei widget live, per id
+        self._pending_rebuilds: Dict[str, tuple[Any, Dict[str, Any] | None]] = {}
         self.app = AppDinamica(self)
         self.validate_adapter()
 
@@ -795,17 +797,33 @@ class Adapter(presentation.Port):
                 await self.app.push_screen(screen)
             else:
                 await self.app.switch_screen(screen)
+            await self._flush_pending_rebuilds()
+
+    async def _flush_pending_rebuilds(self):
+        pending = self._pending_rebuilds
+        self._pending_rebuilds = {}
+        for node_id, (session, context) in pending.items():
+            await self.rebuild(session, node_id, context)
 
     async def mount_route(self, routes):
         for path, methods_dict in self.routes.items():
             for method, data in methods_dict.items():
                 self.views[path] = data.get('view')
 
-    async def rebuild(self, session,node_id: str, context: Dict[str, Any] = None, dsl_alias: str = None):
+    async def rebuild(self, session, node_id: str, context: Dict[str, Any] = None, dsl_alias: str = None):
+        async with self._rebuild_lock:
+            return await self._rebuild(session, node_id, context, dsl_alias)
+
+    async def _rebuild(self, session,node_id: str, context: Dict[str, Any] = None, dsl_alias: str = None):
         """Ricalcola il DOM e sostituisce solo il widget richiesto."""
         self._ensure_active_app()
 
         flow._dev_log("tui.rebuild node=%s", node_id)
+
+        # Un evento Select può arrivare nello stesso ciclo in cui il template
+        # sta ancora montando i widget. Lasciamo terminare quel mount prima di
+        # cercare il widget da sostituire.
+        await asyncio.sleep(0)
 
         # IMPORTANTE: va preso PRIMA di chiamare render_template(), perché
         # render_template -> mount_tag -> node_create sovrascrive subito
@@ -813,7 +831,9 @@ class Adapter(presentation.Port):
         # Se lo prendi dopo, dom_get() ti restituisce rendered_node stesso.
         old_widget = self.dom_get(node_id)
         if old_widget is None:
-            raise LookupError(f"Widget '{node_id}' non trovato nella TUI")
+            self._pending_rebuilds[node_id] = (session, context)
+            flow._dev_log("tui.rebuild.pending node=%s", node_id)
+            return None
 
         # Il DOM contiene XML già elaborato da Jinja. Ricalcoliamo la sorgente
         # in memoria per aggiornare DOM senza sostituire la schermata attiva.
