@@ -77,13 +77,8 @@ class DagRunner:
             NodeState.SUCCESS,
             NodeState.FAILED,
             NodeState.SKIPPED,
-            NodeState.RUNNING,
         ):
             return
-
-        # Prenota il nodo prima di attendere le dipendenze. Più predecessori
-        # possono raggiungere lo stesso successore nello stesso istante.
-        s.mark(n, NodeState.RUNNING)
 
         # 1. Verifica e attesa delle dipendenze
         for dep in node.deps:
@@ -99,6 +94,7 @@ class DagRunner:
 
         # 2. Esecuzione con Gestione Concorrenza e Retry
         async with self._sem:
+            s.mark(n, NodeState.RUNNING)
             attempt = 0
             max_retries = getattr(node, "retries", 0)
             retry_delay = getattr(node, "retry_delay", 0)
@@ -167,14 +163,7 @@ class DagRunner:
         self._reset_subgraph(dag, s, node)
         await self._run_node(dag, s, node)
         on_end = dag.get(node).on_end
-        if (
-            on_end
-            and on_end in dag.nodes
-            and s.states.get(on_end) not in (
-                NodeState.SUCCESS,
-                NodeState.RUNNING,
-            )
-        ):
+        if on_end and on_end in dag.nodes:
             self._reset_subgraph(dag, s, on_end)
             await self._run_node(dag, s, on_end)
         return s.results.get(node)

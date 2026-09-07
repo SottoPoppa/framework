@@ -3,6 +3,7 @@ import copy
 import re
 from functools import reduce as _reduce, wraps
 import inspect
+import linecache
 import time
 import traceback
 from typing import Any, Callable, Dict, Generic, Iterable, List, Tuple, TypeVar
@@ -36,13 +37,82 @@ def _dev_log(
     *args: Any,
     exc_info: bool = False,
     exception: BaseException | None = None,
+    **metadata: Any,
 ) -> None:
     if _dev_logging_enabled:
         rendered = message % args if args else message
         if exc_info:
-            _dev_logger.error(rendered, exception=exception)
+            _dev_logger.error(rendered, exception=exception, **metadata)
         else:
-            _dev_logger.debug(rendered)
+            _dev_logger.debug(rendered, **metadata)
+
+
+def _traceback_location(tb: Any) -> dict[str, Any]:
+    """Estrae file, riga, funzione e sorgente dall'ultimo frame noto."""
+    if tb is None:
+        return {}
+
+    frames = traceback.extract_tb(tb)
+    if not frames:
+        return {}
+    frame = frames[-1]
+    location = {
+        "source_file": frame.filename,
+        "source_line": frame.lineno,
+        "source_function": frame.name,
+        "source_code": frame.line,
+    }
+    location["source_context"] = _source_context(frame.filename, frame.lineno)
+    return location
+
+
+def _source_context(filename: str, lineno: int, radius: int = 2) -> str:
+    """Legge dal file sorgente la riga dell'errore e quelle immediatamente vicine."""
+    first = max(1, lineno - radius)
+    last = lineno + radius
+    context = []
+    for number in range(first, last + 1):
+        source_line = linecache.getline(filename, number)
+        if source_line:
+            marker = ">" if number == lineno else " "
+            context.append(f"{marker} {number}: {source_line.rstrip()}")
+    return "\n".join(context)
+
+
+def _exception_location(exception: BaseException) -> dict[str, Any]:
+    """Restituisce la posizione concreta in cui l'eccezione è stata sollevata."""
+    return {
+        "exception_type": type(exception).__name__,
+        "exception_message": str(exception),
+        **_traceback_location(exception.__traceback__),
+    }
+
+
+def _failure_location(failure: Any) -> dict[str, Any]:
+    """Estrae la posizione dal traceback testuale conservato in una Failure."""
+    if not failure.traceback:
+        return {}
+    matches = re.findall(r'File "([^"]+)", line (\d+), in (.+)', failure.traceback)
+    if not matches:
+        return {}
+    filename, lineno, function = matches[-1]
+    lines = failure.traceback.splitlines()
+    source_code = next(
+        (lines[index + 1].strip() for index, line in enumerate(lines[:-1])
+         if f'File "{filename}", line {lineno}, in {function}' in line
+         and index + 1 < len(lines)
+         and lines[index + 1][:1].isspace()),
+        None,
+    )
+    return {
+        "exception_type": type(failure.error).__name__,
+        "exception_message": str(failure.error),
+        "source_file": filename,
+        "source_line": int(lineno),
+        "source_function": function,
+        "source_code": source_code,
+        "source_context": _source_context(filename, int(lineno)),
+    }
 
 # ==============================================================================
 # CHANGELOG rispetto all'originale
@@ -239,6 +309,7 @@ async def _invoke(step: Step, value: Any, transactions: list["Result"]) -> Valor
             exc,
             exc_info=True,
             exception=exc,
+            **_exception_location(exc),
         )
         return Failure(error=exc, tb=traceback.format_exc())
 
@@ -305,6 +376,14 @@ def pipe_sync(value: Any, *steps: Step, action: str = "flow.pipe_sync", componen
                 try:
                     current = _normalize(step(step_input), transactions)
                 except Exception as exc:
+                    _dev_log(
+                        "step.error step=%s error=%r",
+                        step_name,
+                        exc,
+                        exc_info=True,
+                        exception=exc,
+                        **_exception_location(exc),
+                    )
                     current = Failure(error=exc, tb=traceback.format_exc())
                 transactions.append(Result(
                     input=step_input,
@@ -354,6 +433,7 @@ def result(inputs=[], outputs=[], action: str | None = None, component: str | No
                     exc,
                     exc_info=True,
                     exception=exc,
+                    **_exception_location(exc),
                 )
                 valor = Failure(error=exc, tb=traceback.format_exc())
 
@@ -374,6 +454,7 @@ def result(inputs=[], outputs=[], action: str | None = None, component: str | No
                 type(valor.error).__name__ if isinstance(valor, Failure) else None,
                 len(txs),
                 result.execution_time_ms,
+                **(_failure_location(valor) if isinstance(valor, Failure) else {}),
             )
             return result
         return wrapper
