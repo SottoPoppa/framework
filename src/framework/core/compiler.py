@@ -51,6 +51,12 @@ class Compiler:
                         key_name = self._extract_key_name(item.key)
                         if key_name:
                             context[key_name] = self._expr(item.value)
+                            if isinstance(item.value, DictNode):
+                                self._collect_nested_tasks(
+                                    item.value,
+                                    nodes,
+                                    prefix=key_name,
+                                )
 
                     elif isinstance(item, Declaration):
                         for var_name, value in self._declaration_entries(item):
@@ -104,6 +110,42 @@ class Compiler:
                 "typed_declarations": typed_declarations,
             },
         )
+
+    def _collect_nested_tasks(
+        self,
+        node: DictNode,
+        nodes: list[NodeDefinition],
+        *,
+        prefix: str,
+    ) -> None:
+        for item in node.items:
+            if isinstance(item, Task):
+                expr = self._expr(item.action)
+                task_name = self._extract_key_name(item.trigger) or "unnamed_task"
+                qualified_name = f"{prefix}.{task_name}"
+                entry, deps, on_end = self._task_options(
+                    item.trigger,
+                    expr,
+                    qualified_name,
+                )
+                nodes.append(
+                    NodeDefinition(
+                        name=qualified_name,
+                        action=ExecutionSpec(expr),
+                        deps=deps,
+                        entry=entry,
+                        on_end=on_end,
+                        outputs=self._output_names(item.action),
+                    )
+                )
+            elif isinstance(item, Pair) and isinstance(item.value, DictNode):
+                key_name = self._extract_key_name(item.key)
+                if key_name:
+                    self._collect_nested_tasks(
+                        item.value,
+                        nodes,
+                        prefix=f"{prefix}.{key_name}",
+                    )
 
     def _task_options(self, trigger, expr, task_name):
         options = getattr(trigger, "kwargs", {})

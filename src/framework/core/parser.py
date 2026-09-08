@@ -23,15 +23,16 @@ from .ast import (
     TupleNode,
     Var,
 )
+import framework.core.flow as flow
 
 GRAMMAR = r"""
 start: dictionary | [item (item)*] -> dictionary_node
 dictionary: "{" [item (item)*] "}" -> dictionary_node
-?item: declaration | entry | task
+?item: declaration | task | entry
 
 declaration: (entry|type_sequence) ":=" sequence ";"?
 entry: (atom|sequence) ":" sequence ";"?
-task: function_call "->" sequence ";"? -> task
+task.10: function_call "->" sequence ";"? -> task
 
 ?type_sequence: pair ("," pair)* ","? -> sequence
 ?sequence: expr ("," expr)* ","?
@@ -286,3 +287,7 @@ class Parser:
             return Program(statements=tuple(res))
 
         return Program(statements=(res,))
+
+    @flow.result()
+    def parse_result(self, source: str) -> Program:
+        return self.parse(source)

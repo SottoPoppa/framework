@@ -34,45 +34,48 @@
             prefix_match("relative_path", "infrastructure/")
         );
 
-    editor.application(entry: false) ->
-        storekeeper.gather(
-            session,
-            repository: "file",
-            filter: {
-                "eq": {
-                    "filename": application_files.0
+    editor: {
+        application(entry: false) ->
+            storekeeper.gather(
+                session,
+                repository: "file",
+                filter: {
+                    "eq": {
+                        "filename": application_files.0
+                    }
                 }
-            }
-        );
+            );
 
-    editor.framework(entry: false) ->
-        storekeeper.gather(
-            session,
-            repository: "file",
-            filter: {
-                "eq": {
-                    "filename": framework_files.0
+        framework(entry: false) ->
+            storekeeper.gather(
+                session,
+                repository: "file",
+                filter: {
+                    "eq": {
+                        "filename": framework_files.0
+                    }
                 }
-            }
-        );
+            );
 
-    editor.infrastructure(entry: false) ->
-        storekeeper.gather(
-            session,
-            repository: "file",
-            filter: {
-                "eq": {
-                    "filename": infrastructure_files.0
+        infrastructure(entry: false) ->
+            storekeeper.gather(
+                session,
+                repository: "file",
+                filter: {
+                    "eq": {
+                        "filename": infrastructure_files.0
+                    }
                 }
-            }
-        );
+            )
+    };
 
-    gg(
-        entry: false,
+    gg(entry: false,
         deps: ["editor.application", "editor.framework", "editor.infrastructure"]
     ) ->
         presenter.rebuild(session, "editors", {});
 
-    cmd.close(entry: false) ->
-        exit(1);
+    cmd: {
+        close(entry: false) ->
+            exit(1)
+    };
 }

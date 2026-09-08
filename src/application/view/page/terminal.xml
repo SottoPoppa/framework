@@ -3,8 +3,8 @@
     <Row id="toolbar" align="center" justify="between" height="5">
             
             <Input id="select"  height="3" change="terminal:select" placeholder="Seleziona un file" type="select">
-            {% if terminal.files | result_success %}
-            {% for item in terminal.files | result_value %}
+            {% if terminal.files %}
+            {% for item in terminal.files %}
                 <Text>{{ item["relative_path"] }}</Text>
             {% endfor %}
             {% endif %}
@@ -15,6 +15,12 @@
     <Group id="editors" type="tab" height="1fr">
         <Text>{{ terminal.select }}
             {{ terminal.dependencies }}
+            {{ terminal.application_files }}
+            {{ terminal.framework_files }}
+            {{ terminal.infrastructure_files }}
+            {{ terminal.editor.application }}
+            {{ terminal.editor.framework }}
+            {{ terminal.editor.infrastructure }}
         </Text>
         <Column id="application" width="1fr" padding="0,1">
             <Input type="editor" language="python" id="editor-application" height="1fr">

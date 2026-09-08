@@ -4,7 +4,8 @@ imports: {
 
 any:parser_instance := imports.parser.Parser();
 exports: {
-    'parse': parser_instance.parse
+    'parse': parser_instance.parse;
+    'parse_result': parser_instance.parse_result
 };
 
 tuple:test_suite := (
@@ -21,5 +22,12 @@ tuple:test_suite := (
         "outputs": 1;
         "assert": @received.is_success == true & @received.output.value.statements != none;
         "note": "Parser.parse riconosce pipe e chiamate DSL"
+    },
+    {
+        "action": exports.parse_result;
+        "inputs": "editor.application(entry: false) -> result();";
+        "outputs": none;
+        "assert": @received.is_success == true & @received.output.value.error != none;
+        "note": "Parser.parse_result restituisce un errore per task con trigger qualificato fuori da un blocco"
     }
 );

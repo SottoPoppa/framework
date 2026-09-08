@@ -118,11 +118,19 @@ class Reflection:
         except Exception:
             return []
 
-        deps = {file_path}
+        root_path = Path(root)
+
+        def relative_path(path):
+            try:
+                return str(Path(path).relative_to(root_path))
+            except ValueError:
+                return str(path)
+
+        deps = {relative_path(file_path)}
 
         def add(path):
             if path.exists():
-                deps.add(str(path))
+                deps.add(relative_path(path))
 
         for node in ast.walk(tree):
 
