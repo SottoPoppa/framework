@@ -102,6 +102,14 @@ class DagRunner:
 
             while True:
                 try:
+                    metadata = getattr(node, "metadata", {})
+                    if s.context.get(n) is None and "default" in metadata:
+                        default = await self.executor.execute(
+                            metadata["default"], s.context
+                        )
+                        if default is not None:
+                            s.context.set(n, default)
+
                     # ---> FIX 1: Usa node.action invece di node.spec <---
                     exec_coro = self.executor.execute(node.action, s.context)
 

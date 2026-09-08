@@ -220,7 +220,7 @@ _EVENTS = {
 
 _ATTRIBUTES_SCHEMA = {
     Tag.WINDOW.value: _IDENTITY | _LOCATION | _LAYOUT | _STYLE | {Attribute.TITLE.value:"title", Attribute.POINTER.value:"pointer"},
-    Tag.NAVIGATION.value: _IDENTITY | _LOCATION | _LAYOUT | _STYLE,
+    Tag.NAVIGATION.value: _IDENTITY | _LOCATION | _LAYOUT | _STYLE | {"value": "value"},
     Tag.TEXT.value: _TYPOGRAPHY | _STYLE, 
     Tag.INPUT.value: _EVENTS | _FIELD | _LAYOUT | _STYLE | {Attribute.LANGUAGE.value:"language"}, 
     Tag.ACTION.value: _EVENTS | {Attribute.ROUTE.value:"action", Attribute.ACT.value:"method", Attribute.HREF.value:"href"} | _LAYOUT | _STYLE | {Attribute.POINTER.value:"pointer"}, 

@@ -81,6 +81,7 @@ class Compiler:
                                 entry=entry,
                                 on_end=on_end,
                                 outputs=self._output_names(item.action),
+                                metadata=self._task_metadata(item.trigger),
                             )
                         )
 
@@ -97,6 +98,7 @@ class Compiler:
                         entry=entry,
                         on_end=on_end,
                         outputs=self._output_names(st.action),
+                        metadata=self._task_metadata(st.trigger),
                     )
                 )
 
@@ -136,6 +138,7 @@ class Compiler:
                         entry=entry,
                         on_end=on_end,
                         outputs=self._output_names(item.action),
+                        metadata=self._task_metadata(item.trigger),
                     )
                 )
             elif isinstance(item, Pair) and isinstance(item.value, DictNode):
@@ -163,6 +166,12 @@ class Compiler:
             deps = tuple(sorted(self._refs(expr) - {task_name}))
         on_end = self._literal(options.get("on_end"))
         return bool(entry), deps, on_end if isinstance(on_end, str) else None
+
+    def _task_metadata(self, trigger):
+        options = getattr(trigger, "kwargs", {})
+        if "default" not in options:
+            return {}
+        return {"default": self._expr(options["default"])}
 
     def _output_names(self, expression) -> tuple[str, ...]:
         if isinstance(expression, (SequenceNode, TupleNode)):

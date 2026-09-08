@@ -22,6 +22,7 @@ from textual.widgets import (
 from rich.text import Text
 from textual.screen import Screen, ModalScreen
 from textual.binding import Binding
+from textual.events import Click
 
 
 def _protect_editor_jinja_delimiters(root):
@@ -162,7 +163,7 @@ def _parse_data(raw) -> List[float]:
 
 _NON_STYLE_KEYS = {
     "id", "class", "type", "name", "value", "placeholder",
-    "title", "path", "label", "data",
+    "title", "path", "label", "data", "value",
     "required", "disabled", "readonly", "max", "min", "multiple",
     "route", "act",
     "click", "dblclick", "mouseover", "mouseout", "keydown", "keyup", "keypress",
@@ -267,6 +268,36 @@ def _build(children: bool = False, text: bool = False, default_text: str = "", e
 def _collapsible(default_title: str):
     """Collapsible con titolo di default diverso (usato da <group type="collapsible"> e <accordion>)."""
     return widget(Collapsible, _build(children=True, extra={"title": lambda x: _attr(x, "title", default_title)}))
+
+
+def _make_tabs(x):
+    tabs = []
+    tab_events = {}
+    for child in x.get("inner", []):
+        label = child if isinstance(child, str) else _widget_text(child)
+        tab = Tab(label)
+        tab._dsl_click = getattr(child, "_dsl_click", None)
+        tab._dsl_value = getattr(child, "_dsl_value", label)
+        tabs.append(tab)
+    active = _attr(x, "value")
+    tabs_widget = attrs(Tabs(*tabs, id=_attr(x, "id")), x.get("attrs", {}))
+    if active is not None:
+        for tab in tabs_widget._tabs:
+            if str(active) in (str(tab.id), str(getattr(tab, "_dsl_value", ""))):
+                tabs_widget._first_active = tab.id
+                break
+    for tab in tabs:
+        if getattr(tab, "_dsl_click", None):
+            tab_events[tab.id] = (tab._dsl_click, tab._dsl_value)
+    tabs_widget._dsl_tab_events = tab_events
+    return tabs_widget
+
+
+def _make_action(x):
+    action = widget(Button, lambda node: ((_text(node),), {"id": _attr(node, "id")}))(x)
+    action._dsl_click = _attr(x, "data-click", _attr(x, "click"))
+    action._dsl_value = _text(x)
+    return action
 
 class XmlScreen(Screen):
     """Una schermata che si auto-costruisce leggendo un file XML."""
@@ -490,6 +521,33 @@ class AppDinamica(App):
             await self.adapter.open_registered_modal(modal_id)
             return"""
 
+    async def on_click(self, event: Click) -> None:
+        widget = event.widget
+        source = widget
+        while source is not None and not getattr(source, "_dsl_click", None):
+            source = getattr(source, "parent", None)
+
+        if source is None:
+            parent = getattr(widget, "parent", None)
+            while parent is not None and not hasattr(parent, "_dsl_tab_events"):
+                parent = getattr(parent, "parent", None)
+            tab_events = getattr(parent, "_dsl_tab_events", {})
+            event_data = tab_events.get(getattr(widget, "id", None))
+            if event_data:
+                click, value = event_data
+                await self.adapter.messenger.send(
+                    self.adapter.session,
+                    domain=click,
+                    message=str(value),
+                )
+            return
+
+        await self.adapter.messenger.send(
+            self.adapter.session,
+            domain=source._dsl_click,
+            message=str(getattr(source, "_dsl_value", "")),
+        )
+
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         node = self.adapter.node_get(event.input.id)
         if node is None:
@@ -543,9 +601,6 @@ class AppDinamica(App):
 
     async def on_switch_changed(self, event: Switch.Changed) -> None:
         self._log_change("Switch", event.switch.id, event.value)
-
-    async def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
-        print(f"Tab attivata: {event.tab.id}")
 
     async def on_list_view_selected(self, event: ListView.Selected) -> None:
         print(f"ListView selezionata: {event.item}")
@@ -651,10 +706,7 @@ class Adapter(presentation.Port):
             # montabili): usare Container qui faceva sì che i widget annidati
             # (es. <Text> dentro <Navigation>) non venissero mai mostrati.
             "navigation": widget(Container, _build(children=True, extra={"id": lambda x: _attr(x, "id", "nav")})),
-            "tabs": widget(Tabs, lambda x: (
-                tuple(Tab(f if isinstance(f, str) else _widget_text(f)) for f in x.get("inner", [])),
-                {"id": _attr(x, "id")},
-            )),
+            "tabs": _make_tabs,
         },
 
         presentation.Tag.TEXT.value: {
@@ -701,8 +753,8 @@ class Adapter(presentation.Port):
         },
 
         presentation.Tag.ACTION.value: {
-            "action": widget(Button, lambda x: ((_text(x),), {"id": _attr(x, "id")})),
-            "button": widget(Button, lambda x: ((_text(x),), {"id": _attr(x, "id")})),
+            "action": _make_action,
+            "button": _make_action,
             "link": widget(Link, lambda x: ((_text(x) or _attr(x, "href", ""),), {"url": _attr(x, "href", "#")})),
         },
 
