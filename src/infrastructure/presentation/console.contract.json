@@ -12,7 +12,7 @@
     }
   },
   "requires": [
-    "textual>=0.40.0",
+    "textual[syntax]>=0.40.0",
     "rich>=13.0.0"
   ]
 }

@@ -2,6 +2,8 @@ import os
 import ast
 import inspect
 import hashlib
+import json
+import re
 from pathlib import Path
 
 class Reflection:
@@ -112,13 +114,13 @@ class Reflection:
 
     @staticmethod
     def file_dependencies(file_path: str, root="src"):
+        source_path = Path(file_path)
+        root_path = Path(root)
 
         try:
-            tree = ast.parse(Path(file_path).read_text())
-        except Exception:
+            source = source_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
             return []
-
-        root_path = Path(root)
 
         def rooted_path(path):
             try:
@@ -133,36 +135,70 @@ class Reflection:
             if path.exists():
                 deps.add(rooted_path(path))
 
-        for node in ast.walk(tree):
+        def add_import(module):
+            module_path = Path(root_path, *module.split("."))
+            add(module_path.with_suffix(".py"))
 
-            if isinstance(node, ast.Import):
+        if source_path.suffix == ".py":
+            try:
+                tree = ast.parse(source)
+            except SyntaxError:
+                return sorted(deps)
 
-                for alias in node.names:
-                    add(
-                        Path(root, *alias.name.split(".")).with_suffix(".py")
-                    )
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        add_import(alias.name)
 
-            elif isinstance(node, ast.ImportFrom):
-
-                if node.module is None:
-                    continue
-
-                base = Path(root, *node.module.split("."))
-
-                module = base.with_suffix(".py")
-
-                if module.exists():
-                    add(module)
-                    continue
-
-                for alias in node.names:
-
-                    if alias.name == "*":
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module is None:
                         continue
 
-                    add(
-                        (base / alias.name).with_suffix(".py")
-                    )
+                    base = Path(root_path, *node.module.split("."))
+                    module = base.with_suffix(".py")
+                    if module.exists():
+                        add(module)
+                        continue
+
+                    for alias in node.names:
+                        if alias.name != "*":
+                            add((base / alias.name).with_suffix(".py"))
+
+        elif source_path.suffix == ".dsl":
+            imports = re.search(
+                r"\bimports\s*:\s*\{(?P<body>.*?)\}",
+                source,
+                flags=re.DOTALL,
+            )
+            if imports:
+                for kind, reference in re.findall(
+                    r"\b(import|resource)\s*\(\s*[\"']([^\"']+)[\"']\s*\)",
+                    imports.group("body"),
+                ):
+                    if kind == "import":
+                        add_import(reference)
+                    else:
+                        add(Path(root_path, reference))
+
+        elif source_path.suffix == ".json":
+            try:
+                json.loads(source)
+            except json.JSONDecodeError:
+                return sorted(deps)
+
+            for reference in re.findall(
+                r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}",
+                source,
+            ):
+                candidates = (
+                    source_path.parent / f"{reference}.json",
+                    root_path / "framework" / "scheme" / f"{reference}.json",
+                    root_path / "application" / "model" / f"{reference}.json",
+                )
+                for candidate in candidates:
+                    if candidate.exists():
+                        add(candidate)
+                        break
 
         return sorted(deps)
 

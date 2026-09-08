@@ -1,0 +1,16 @@
+{
+  "contract_version": 2,
+  "exports": {
+    "file_dependencies": [
+      "Reflection.file_dependencies"
+    ]
+  },
+  "hashes": {
+    "Reflection": {
+      "file_dependencies": {
+        "production": "d20e9431c4309d81ff43b6dd79c94c0d10fe330423b3833d5dd9fd1aad7f6dfe",
+        "test": "d20e9431c4309d81ff43b6dd79c94c0d10fe330423b3833d5dd9fd1aad7f6dfe"
+      }
+    }
+  }
+}

@@ -1,5 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <Window type="page" title="Omniport Code Terminal" background="#111827" font="mono" padding="1">
+    {% macro editor_language(filename) -%}{% set path = (filename or '') | lower %}{% if path.endswith('.py') or path.endswith('.dsl') %}python{% elif path.endswith('.xml') %}xml{% elif path.endswith('.json') %}json{% elif path.endswith('.toml') %}toml{% elif path.endswith('.md') %}markdown{% else %}markdown{% endif %}{%- endmacro %}
     <Row id="toolbar" align="center" justify="between" height="5">
             <Input id="select" height="3" value="{{ terminal.select }}" change="terminal:select" placeholder="Seleziona un file" type="select">
             {% if terminal.files | check %}
@@ -13,7 +14,7 @@
 
     <Group id="editors" type="tab" height="1fr">
         <Column id="application" width="1fr" padding="0,1">
-            <Input type="editor" language="python" id="editor-application" height="1fr">
+            <Input type="editor" language="{{ editor_language(terminal.select_application) }}" id="editor-application" height="1fr">
                 {% if terminal.editor.application | check %}
                 <Text>{{ terminal.editor.application | value | get("content") | e }}</Text>
                 {% endif %}
@@ -25,7 +26,7 @@
             </Navigation>
         </Column>
         <Column id="framework" width="1fr" padding="0,1">
-            <Input type="editor" language="python" id="editor-framework" height="1fr">
+            <Input type="editor" language="{{ editor_language(terminal.select_framework) }}" id="editor-framework" height="1fr">
                 {% if terminal.editor.framework | check %}
                 <Text>{{ terminal.editor.framework | value | get("content") | e }}</Text>
                 {% endif %}
@@ -37,7 +38,7 @@
             </Navigation>
         </Column>
         <Column id="infrastructure" width="1fr" padding="0,1">
-            <Input type="editor" language="python" id="editor-infrastructure" height="1fr">
+            <Input type="editor" language="{{ editor_language(terminal.select_infrastructure) }}" id="editor-infrastructure" height="1fr">
                 {% if terminal.editor.infrastructure | check %}
                 <Text>{{ terminal.editor.infrastructure | value | get("content") | e }}</Text>
                 {% endif %}
