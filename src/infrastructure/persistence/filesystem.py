@@ -112,6 +112,8 @@ class Adapter(persistence.Port):
         if not isinstance(values, dict):
             values = constants
         path = self._resolve_path(**values)
+        if not os.path.isabs(path):
+            path = os.path.join(self.path, path)
         data = self._payload_data(**values)
         method = constants.get('method')
 

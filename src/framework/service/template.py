@@ -2,6 +2,7 @@ import xml.etree.ElementTree as ET
 
 from jinja2 import DebugUndefined, Environment, FileSystemLoader, select_autoescape
 import framework.core.flow as flow
+import framework.core.scheme as scheme
 
 '''jinja_env = Environment(
     loader=FileSystemLoader("src/application/view/layout/"),
@@ -9,7 +10,9 @@ import framework.core.flow as flow
     undefined=DebugUndefined,
 )'''
 
-jinja_env = Environment()
+jinja_env = Environment(
+    autoescape=select_autoescape(['html', 'xml'])
+)
 
 
 def _result_output(value):
@@ -35,8 +38,9 @@ def _result_success(value):
 
 
 jinja_env.filters.update({
-    "result_value": _result_output,
-    "result_success": _result_success,
+    "value": _result_output,
+    "check": _result_success,
+    "get": lambda d, key: d.get(key) if isinstance(d, dict) else None,
 })
 
 async def format(target, **constants):

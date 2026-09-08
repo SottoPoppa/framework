@@ -120,17 +120,18 @@ class Reflection:
 
         root_path = Path(root)
 
-        def relative_path(path):
+        def rooted_path(path):
             try:
-                return str(Path(path).relative_to(root_path))
+                relative = Path(path).relative_to(root_path)
+                return str(root_path / relative)
             except ValueError:
                 return str(path)
 
-        deps = {relative_path(file_path)}
+        deps = {rooted_path(file_path)}
 
         def add(path):
             if path.exists():
-                deps.add(relative_path(path))
+                deps.add(rooted_path(path))
 
         for node in ast.walk(tree):
 

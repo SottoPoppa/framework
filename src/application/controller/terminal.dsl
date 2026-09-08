@@ -19,19 +19,19 @@
     application_files() ->
         tuple_filter_tuple(
             dependencies,
-            prefix_match("relative_path", "application/")
+            prefix_match("relative_path", "src/application/")
         );
 
     framework_files() ->
         tuple_filter_tuple(
             dependencies,
-            prefix_match("relative_path", "framework/")
+            prefix_match("relative_path", "src/framework/")
         );
 
     infrastructure_files() ->
         tuple_filter_tuple(
             dependencies,
-            prefix_match("relative_path", "infrastructure/")
+            prefix_match("relative_path", "src/infrastructure/")
         );
 
     editor: {

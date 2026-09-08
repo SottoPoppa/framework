@@ -147,7 +147,6 @@ def _options(x: Dict[str, Any]) -> List[Tuple[str, str]]:
         options.append((text_val, str(val)))
     return options
 
-
 def _parse_data(raw) -> List[float]:
     """Converte l'attributo 'data' (CSV o lista) in lista di float per Sparkline."""
     if raw is None:
@@ -416,10 +415,46 @@ class AppDinamica(App):
     async def action_save(self):
         focused = self.focused
 
-        if isinstance(focused, TextArea):
-            print("Salvo editor:", focused.text)
-        else:
-            print("Nessun editor attivo")
+        if not isinstance(focused, TextArea):
+            return
+
+        selected = self.adapter.session.context.get("selected")
+        if not selected:
+            await self.adapter.messenger.send(
+                self.adapter.session,
+                domain="console:error",
+                message="Nessun file selezionato.",
+            )
+            return
+
+        storekeeper = self.adapter.loader.get_managers().get("storekeeper")
+        if storekeeper is None:
+            await self.adapter.messenger.send(
+                self.adapter.session,
+                domain="console:error",
+                message="Storekeeper non disponibile.",
+            )
+            return
+
+        result = await storekeeper.change(
+            self.adapter.session,
+            repository="file",
+            filter={"eq": {"filename": selected}},
+            payload={"content": focused.text},
+        )
+        if not flow.check(result):
+            await self.adapter.messenger.send(
+                self.adapter.session,
+                domain="console:error",
+                message=f"Salvataggio fallito: {flow.output(result)}",
+            )
+            return
+
+        await self.adapter.messenger.send(
+            self.adapter.session,
+            domain="console:info",
+            message=f"File salvato: {selected}",
+        )
 
     async def on_mount(self) -> None:
         self.run_worker(
@@ -633,7 +668,13 @@ class Adapter(presentation.Port):
         },
 
         presentation.Tag.INPUT.value: {
-            "select": widget(Select, lambda x: ((_options(x),), {"id": _attr(x, "id")})),
+            "select": widget(Select, lambda x: (
+                (_options(x),),
+                {
+                    "id": _attr(x, "id"),
+                    "value": _attr(x, "value", Select.BLANK),
+                },
+            )),
             "text": widget(Input, lambda x: ((), {
                 "id": _attr(x, "id"), 
                 "value": _attr(x, "value", ""),
