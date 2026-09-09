@@ -325,11 +325,12 @@ def _make_option(x):
     options = x.get("inner", [])
     content = _children(x)
     title = _attr(x, "title")
-    if title is None and len(options) != 1:
+    value = _attr(x, "value")
+    if title is None and len(options) > 1:
         raise ValueError("<Option> richiede title quando contiene più elementi")
     child = options[0] if options else None
-    label = str(title or _widget_text(child))
-    value = _attr(x, "value", getattr(child, "_dsl_value", label))
+    label = str(title or (_widget_text(child) if child is not None else value or ""))
+    value = value or getattr(child, "_dsl_value", label)
     return OptionValue(
         label,
         str(value),

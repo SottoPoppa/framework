@@ -11,9 +11,7 @@
         <Input id="select" height="3" value="{{ terminal.select }}" change="terminal:select" placeholder="Seleziona un file" type="select">
             {% if terminal.files | check %}
                 {% for item in terminal.files | value %}
-                    <Option value="{{ item['relative_path'] }}">
-                        <Text value="{{ item['relative_path'] }}">{{ item['relative_path'] }}</Text>
-                    </Option>
+                    <Option value="{{ item['relative_path'] }}"/>
                 {% endfor %}
             {% endif %}
         </Input>
@@ -52,9 +50,7 @@
                 <!-- Navigation Tabs -->
                 <Navigation type="tabs" height="5px" value="{{ selected_file }}">
                     {% for item in file_list %}
-                    <Option value="{{ item }}" click="terminal:select_{{ scope_id }}">
-                        <Text>{{ item }}</Text>
-                    </Option>
+                    <Option value="{{ item }}" click="terminal:select_{{ scope_id }}"/>
                     {% endfor %}
                 </Navigation>
             </Column>
