@@ -42,12 +42,19 @@ def _protect_editor_jinja_delimiters(root):
             value = value.replace(source, target)
         return value
 
+    def protect_editor_content(element, inside_storekeeper=False):
+        is_storekeeper = element.tag.split("}")[-1].lower() == "storekeeper"
+        skip_content = inside_storekeeper or is_storekeeper
+        if not skip_content:
+            element.text = protect(element.text)
+        for child in list(element):
+            protect_editor_content(child, skip_content)
+            if not skip_content:
+                child.tail = protect(child.tail)
+
     for editor in root.iter():
-        if editor.attrib.get("type") != "editor":
-            continue
-        for descendant in editor.iter():
-            descendant.text = protect(descendant.text)
-            descendant.tail = protect(descendant.tail)
+        if editor.attrib.get("type") == "editor":
+            protect_editor_content(editor)
 
     protected = ET.tostring(root, encoding="unicode")
     return (
@@ -98,6 +105,9 @@ def _widget_text(w) -> str:
     prova ogni attributo e si accetta solo il primo risultato non vuoto,
     invece di fermarsi al primo attributo semplicemente presente.
     """
+    dsl_text = getattr(w, "_storekeeper_text", None)
+    if dsl_text is not None:
+        return str(dsl_text)
     for attr in ("content", "label", "renderable"):
         value = getattr(w, attr, None)
         if value is None:

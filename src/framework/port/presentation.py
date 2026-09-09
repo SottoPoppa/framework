@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import xml.etree.ElementTree as ET
+import json
 from bs4 import BeautifulSoup
 from jinja2 import Environment, select_autoescape,FileSystemLoader,BaseLoader,ChoiceLoader,Template,DebugUndefined
 from html import escape
@@ -18,7 +19,91 @@ import pathlib
 import framework.core.flow as flow
 import framework.core.scheme as scheme
 from framework.service.route import compile_pattern, match, normalize_path, register, register_many
-from framework.service.template import render
+from framework.service.template import DeferredUndefined, render
+
+
+class StorekeeperView:
+    """Supporto isolato per i nodi Storekeeper dichiarati nelle viste."""
+
+    _OPERATIONS = {
+        "overview": "overview", "view": "overview",
+        "gather": "gather", "read": "gather",
+        "store": "store", "create": "store",
+        "change": "change", "update": "change",
+        "remove": "remove", "delete": "remove",
+    }
+    _JSON_ATTRIBUTES = {"filter", "payload", "sort", "page"}
+
+    def __init__(self, adapter):
+        self.adapter = adapter
+
+    @staticmethod
+    def render_deferred(value, context):
+        if not isinstance(value, str) or "{" not in value:
+            return value
+        if not any(
+            re.search(r"{{\s*" + re.escape(alias) + r"(?:\s*}}|\.|\[)", value)
+            for alias in context
+        ):
+            return value
+        return Environment(undefined=DeferredUndefined).from_string(value).render(context)
+
+    @classmethod
+    def request(cls, attributes):
+        operation = str(attributes.get("operation", "gather")).casefold()
+        method_name = cls._OPERATIONS.get(operation)
+        if method_name is None:
+            raise ValueError(f"Operazione Storekeeper non supportata: {operation}")
+        request = {
+            key: value for key, value in attributes.items()
+            if key not in {"id", "operation", "type"}
+        }
+        for key in cls._JSON_ATTRIBUTES:
+            value = request.get(key)
+            if isinstance(value, str):
+                try:
+                    request[key] = json.loads(value)
+                except json.JSONDecodeError as error:
+                    raise ValueError(
+                        f"Attributo Storekeeper '{key}' non è JSON valido"
+                    ) from error
+        return method_name, request
+
+    @staticmethod
+    def _child_text(child):
+        return str(
+            getattr(child, "_storekeeper_text", None)
+            or getattr(child, "_dsl_text", None)
+            or getattr(child, "content", None)
+            or getattr(child, "label", "")
+        )
+
+    async def render(self, parent, node, attributes, context, runtime_session):
+        storekeeper = self.adapter.loader.get_managers().get("storekeeper")
+        if storekeeper is None:
+            raise RuntimeError("Storekeeper non disponibile per il tag <Storekeeper>")
+        method_name, request = self.request(attributes)
+        result = await getattr(storekeeper, method_name)(runtime_session, **request)
+        value = flow.output(result)
+        alias = attributes.get("id")
+        if not alias:
+            raise ValueError("Il tag <Storekeeper> richiede l'attributo 'id'")
+
+        child_context = dict(context)
+        child_context["_jinja_context"] = {
+            **context.get("_jinja_context", {}), alias: value,
+        }
+        children = [
+            await self.adapter.render_node(
+                parent, child, child_context, runtime_session=runtime_session
+            )
+            for child in list(node)
+        ]
+        container = self.adapter.mount_tag("container", {"id": alias}, children)
+        container._storekeeper_text = "".join(
+            self._child_text(child) for child in children
+        )
+        return container
 
 class Tag(Enum):
     WINDOW = "window"
@@ -531,7 +616,27 @@ class Port(ABC):
         if tag.lower() == "svg":
             in_svg = True
 
-        ID = node.attrib.get('id')
+        # Il contenuto del nodo Storekeeper viene valutato dopo la chiamata
+        # asincrona, quando il suo alias è disponibile nel contesto Jinja.
+        jinja_context = {
+            **context.get("_jinja_context", {}),
+        }
+        attributes = {
+            key: StorekeeperView.render_deferred(value, jinja_context)
+            for key, value in node.attrib.items()
+        }
+        node_text = StorekeeperView.render_deferred(node.text, jinja_context)
+
+        if tag.lower() == "storekeeper":
+            return await StorekeeperView(self).render(
+                parent,
+                node,
+                attributes,
+                context,
+                runtime_session,
+            )
+
+        ID = attributes.get('id')
         if isinstance(ID, str):
             extracted = self.presenter.estrai_da_xml_string(parent, ID)
             if extracted:
@@ -589,17 +694,13 @@ class Port(ABC):
             )
 
         # Gestione ID e Stato
-        node_id = node.attrib.get('id')
-        attributes = {}
-        for k, v in node.attrib.items():
-            attr_name = k.split('}')[-1] if '}' in k else k
-            attributes[attr_name] = v
+        node_id = attributes.get('id')
             
         if node_id:
             attributes['id'] = node_id
         
-        if node.text and tag.lower() == "text":
-            children.append(node.text)
+        if node_text and tag.lower() == "text":
+            children.append(node_text)
 
         bind_var = attributes.pop("bind", None)
         if bind_var:

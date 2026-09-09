@@ -1,6 +1,6 @@
 import xml.etree.ElementTree as ET
 
-from jinja2 import DebugUndefined, Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment, FileSystemLoader, Undefined, select_autoescape
 import framework.core.flow as flow
 import framework.core.scheme as scheme
 
@@ -13,6 +13,38 @@ import framework.core.scheme as scheme
 jinja_env = Environment(
     autoescape=select_autoescape(['html', 'xml'])
 )
+
+
+class DeferredUndefined(Undefined):
+    """Mantiene le espressioni da valutare dopo un nodo dati asincrono."""
+
+    def __init__(self, hint=None, obj=None, name=None, exc=None, expression=None):
+        super().__init__(hint=hint, obj=obj, name=name, exc=exc)
+        self._expression = expression or name or ""
+
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return type(self)(expression=f"{self._expression}.{name}")
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            expression = f"{self._expression}[{key!r}]"
+        else:
+            expression = f"{self._expression}[{key}]"
+        return type(self)(expression=expression)
+
+    def __str__(self):
+        return "{{ " + self._expression + " }}"
+
+    def __html__(self):
+        return str(self)
+
+    def __bool__(self):
+        return False
+
+    def __iter__(self):
+        return iter(())
 
 
 def _result_output(value):
@@ -66,7 +98,7 @@ async def render(loader, runtime_session, render_node, text=None, file=None, con
     environment = Environment(
         loader=FileSystemLoader("src/application/view/layout/"),
         autoescape=select_autoescape(["html", "xml"]),
-        undefined=DebugUndefined,
+        undefined=DeferredUndefined,
     )
     environment.filters.update(jinja_env.filters)
     template = environment.from_string(text)
@@ -82,8 +114,12 @@ async def render(loader, runtime_session, render_node, text=None, file=None, con
 
     #raise Exception(data)
 
-    content = template.render(
-        constants | data | {"manager": loader.get_managers()}
-    )
+    render_context = constants | data | {"manager": loader.get_managers()}
+    content = template.render(render_context)
     xml = ET.fromstring(content)
-    return await render_node(content, xml, constants, runtime_session=runtime_session)
+    return await render_node(
+        content,
+        xml,
+        {"_jinja_context": render_context},
+        runtime_session=runtime_session,
+    )
