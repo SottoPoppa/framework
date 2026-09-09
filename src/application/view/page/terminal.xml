@@ -32,7 +32,7 @@
             </Group>
             <Navigation type="tabs" height="5">
                 {% for item in terminal.application_files %}
-                <Text click="terminal:select_application">{{ item }}</Text>
+                <Action click="terminal:select_application" ><Text >{{ item }}</Text></Action>
                 {% endfor %}    
             </Navigation>
         </Column>
