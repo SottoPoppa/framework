@@ -11,13 +11,12 @@
         <Input id="select" height="3" value="{{ terminal.select }}" change="terminal:select" placeholder="Seleziona un file" type="select">
             {% if terminal.files | check %}
                 {% for item in terminal.files | value %}
-                    <Text value="{{ item['relative_path'] }}">{{ item['relative_path'] }}</Text>
+                    <Option value="{{ item['relative_path'] }}">
+                        <Text value="{{ item['relative_path'] }}">{{ item['relative_path'] }}</Text>
+                    </Option>
                 {% endfor %}
             {% endif %}
         </Input>
-        <Action id="stampa" width="10" height="3" margin="0,0,0,1" type="button" click="terminal:stampa">
-            <Text>Path</Text>
-        </Action> 
     </Row>
 
     <!-- Main Workspace (Generato dinamicamente per le 3 sezioni) -->
@@ -29,26 +28,37 @@
         ] %}
 
         {% for scope_id, selected_file, file_list in scope_config %}
-        <Column id="{{ scope_id }}" width="1fr" padding="0,1">
-            <Group id="{{ scope_id }}-editors" type="tab" height="1fr">
-                {% for sub_type in ['file', 'test', 'contract'] %}
-                <Input type="editor" language="{{ editor_language(selected_file) }}" id="{{ scope_id }}-{{ sub_type }}-editor" height="1fr">
-                    <Storekeeper id="{{ scope_id }}_{{ sub_type }}_data" operation="gather" repository="file" filter='{{ {"eq": {"filename": selected_file}} | tojson }}'>
-                        <Text>{{ store[scope_id + '_' + sub_type + '_data'].content }}</Text>
-                    </Storekeeper>
-                </Input>
-                {% endfor %}
-            </Group>
+        <Option title="{{ scope_id }}" value="{{ scope_id }}">
+            <Column id="{{ scope_id }}" width="100%"  padding="0,1">
+                <Group id="{{ scope_id }}-editors" type="tab" height="1fr">
+                    {% for sub_type in ['file', 'test', 'contract'] %}
+                    {% if sub_type == 'test' %}
+                        {% set target_file = selected_file.rsplit('.', 1)[0] ~ '.test.dsl' if selected_file else '' %}
+                    {% elif sub_type == 'contract' %}
+                        {% set target_file = selected_file.rsplit('.', 1)[0] ~ '.contract.json' if selected_file else '' %}
+                    {% else %}
+                        {% set target_file = selected_file %}
+                    {% endif %}
+                    <Option title="{{ sub_type }}" value="{{ scope_id }}-{{ sub_type }}">
+                        <Input type="editor" language="{{ editor_language(target_file) }}" id="{{ scope_id }}-{{ sub_type }}-editor" height="1fr">
+                            <Storekeeper id="{{ scope_id }}_{{ sub_type }}_data" operation="gather" repository="file" filter='{{ {"eq": {"filename": target_file}} | tojson }}'>
+                                <Text>{{ store[scope_id + '_' + sub_type + '_data'].content }}</Text>
+                            </Storekeeper>
+                        </Input>
+                    </Option>
+                    {% endfor %}
+                </Group>
 
-            <!-- Navigation Tabs -->
-            <Navigation type="tabs" height="5" value="{{ selected_file }}">
-                {% for item in file_list %}
-                <Action click="terminal:select_{{ scope_id }}">
-                    <Text>{{ item }}</Text>
-                </Action>
-                {% endfor %}    
-            </Navigation>
-        </Column>
+                <!-- Navigation Tabs -->
+                <Navigation type="tabs" height="5px" value="{{ selected_file }}">
+                    {% for item in file_list %}
+                    <Option value="{{ item }}" click="terminal:select_{{ scope_id }}">
+                        <Text>{{ item }}</Text>
+                    </Option>
+                    {% endfor %}
+                </Navigation>
+            </Column>
+        </Option>
         {% endfor %}
     </Group>
 </Window>

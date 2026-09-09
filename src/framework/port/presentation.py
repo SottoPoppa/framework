@@ -110,6 +110,7 @@ class StorekeeperView:
 class Tag(Enum):
     WINDOW = "window"
     TEXT = "text"
+    OPTION = "option"
     INPUT = "input"
     ACTION = "action"
     MEDIA = "media"
@@ -308,7 +309,8 @@ _EVENTS = {
 _ATTRIBUTES_SCHEMA = {
     Tag.WINDOW.value: _IDENTITY | _LOCATION | _LAYOUT | _STYLE | {Attribute.TITLE.value:"title", Attribute.POINTER.value:"pointer"},
     Tag.NAVIGATION.value: _IDENTITY | _LOCATION | _LAYOUT | _STYLE | {"value": "value"},
-    Tag.TEXT.value: _TYPOGRAPHY | _STYLE, 
+    Tag.TEXT.value: _TYPOGRAPHY | _STYLE | {Attribute.VALUE.value: "value"},
+    Tag.OPTION.value: _IDENTITY | _EVENTS | {Attribute.VALUE.value: "value", Attribute.TITLE.value: "title"},
     Tag.INPUT.value: _EVENTS | _FIELD | _LAYOUT | _STYLE | {Attribute.LANGUAGE.value:"language"}, 
     Tag.ACTION.value: _EVENTS | {Attribute.ROUTE.value:"action", Attribute.ACT.value:"method", Attribute.HREF.value:"href"} | _LAYOUT | _STYLE | {Attribute.POINTER.value:"pointer"}, 
     Tag.CONTAINER.value: _LAYOUT_STATIC | _LOCATION | _STYLE, 
@@ -830,5 +832,8 @@ class Port(ABC):
                         
                         runner.attach_node(controller_file, bind_node)
 
-        # mount_view: Il driver crea l'istanza del widget/tag 
-        return self.mount_tag(tag, attributes, children, in_svg)
+        # mount_view: Il driver crea l'istanza del widget/tag
+        rendered = self.mount_tag(tag, attributes, children, in_svg)
+        if tag.lower() == Tag.TEXT.value and attributes.get(Attribute.VALUE.value):
+            rendered._dsl_value = attributes[Attribute.VALUE.value]
+        return rendered

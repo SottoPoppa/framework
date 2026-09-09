@@ -148,15 +148,34 @@ def _bool_attr(x: Dict[str, Any], key: str, default: bool = False) -> bool:
     return str(v).lower() in ("1", "true", "yes")
 
 
-def _options(x: Dict[str, Any]) -> List[Tuple[str, str]]:
-    """Coppie (etichetta, valore_stringa) per Select/SelectionList a partire dai figli."""
-    options = []
-    for f in x.get("inner", []):
-        text_val = f if isinstance(f, str) else _widget_text(f)
-        # Usiamo il testo stesso (o un attributo 'value' se presente nel tag figlio) come valore
-        val = getattr(f, "value", None) or text_val
-        options.append((text_val, str(val)))
+class OptionValue:
+    """Voce semantica usata esclusivamente da select e tabs."""
+
+    def __init__(self, label: str, value: str, click: str = None, content=None):
+        self.label = label
+        self.value = value
+        self._dsl_click = click
+        self._dsl_value = value
+        self.content = list(content or [])
+
+
+def _option_values(x: Dict[str, Any]) -> List[OptionValue]:
+    options = [
+        option for option in x.get("inner", [])
+        if option is not None and not (isinstance(option, str) and not option.strip())
+    ]
+    if not all(isinstance(option, OptionValue) for option in options):
+        received = ", ".join(type(option).__name__ for option in options) or "nessuno"
+        raise ValueError(
+            "Select e tabs richiedono esclusivamente figli <Option>; "
+            f"ricevuti: {received}"
+        )
     return options
+
+
+def _options(x: Dict[str, Any]) -> List[Tuple[str, str]]:
+    """Coppie (etichetta, valore) dalle sole voci semantiche Option."""
+    return [(option.label, option.value) for option in _option_values(x)]
 
 def _parse_data(raw) -> List[float]:
     """Converte l'attributo 'data' (CSV o lista) in lista di float per Sparkline."""
@@ -283,11 +302,10 @@ def _collapsible(default_title: str):
 def _make_tabs(x):
     tabs = []
     tab_events = {}
-    for child in x.get("inner", []):
-        label = child if isinstance(child, str) else _widget_text(child)
-        tab = Tab(label)
-        tab._dsl_click = getattr(child, "_dsl_click", None)
-        tab._dsl_value = getattr(child, "_dsl_value", label)
+    for option in _option_values(x):
+        tab = Tab(option.label)
+        tab._dsl_click = option._dsl_click
+        tab._dsl_value = option._dsl_value
         tabs.append(tab)
     active = _attr(x, "value")
     tabs_widget = attrs(Tabs(*tabs, id=_attr(x, "id")), x.get("attrs", {}))
@@ -301,6 +319,23 @@ def _make_tabs(x):
             tab_events[tab.id] = (tab._dsl_click, tab._dsl_value)
     tabs_widget._dsl_tab_events = tab_events
     return tabs_widget
+
+
+def _make_option(x):
+    options = x.get("inner", [])
+    content = _children(x)
+    title = _attr(x, "title")
+    if title is None and len(options) != 1:
+        raise ValueError("<Option> richiede title quando contiene più elementi")
+    child = options[0] if options else None
+    label = str(title or _widget_text(child))
+    value = _attr(x, "value", getattr(child, "_dsl_value", label))
+    return OptionValue(
+        label,
+        str(value),
+        _attr(x, "data-click", _attr(x, "click")),
+        content,
+    )
 
 
 def _make_action(x):
@@ -542,7 +577,10 @@ class AppDinamica(App):
             while parent is not None and not hasattr(parent, "_dsl_tab_events"):
                 parent = getattr(parent, "parent", None)
             tab_events = getattr(parent, "_dsl_tab_events", {})
-            event_data = tab_events.get(getattr(widget, "id", None))
+            active_tab = getattr(parent, "active_tab", None)
+            event_data = tab_events.get(getattr(active_tab, "id", None))
+            if event_data is None:
+                event_data = tab_events.get(getattr(widget, "id", None))
             if event_data:
                 click, value = event_data
                 await self.adapter.messenger.send(
@@ -630,10 +668,15 @@ def _make_tabbed_content(x: Dict[str, Any]):
     che Textual usa internamente per `with TabbedContent(): yield contenuto`.
     """
     children = _children(x)
-    titles = [(getattr(c, "id", None) or f"Tab {i + 1}") for i, c in enumerate(children)]
-    tabbed = TabbedContent(*titles, id=_attr(x, "id"))
-    for child in children:
-        tabbed.compose_add_child(child)
+    options = _option_values(x)
+    panes = []
+    for option in options:
+        if not option.content:
+            raise ValueError("<Option> di un Group type='tab' richiede contenuto")
+        panes.append(TabPane(option.label, *option.content, id=option.value or None))
+    tabbed = TabbedContent(id=_attr(x, "id"))
+    for pane in panes:
+        tabbed.compose_add_child(pane)
     return attrs(tabbed, x.get("attrs", {}))
 
 
@@ -709,6 +752,10 @@ class Adapter(presentation.Port):
         presentation.Tag.WINDOW.value: {
             "window": lambda x: XmlScreen(_children(x), _attr(x, "title", "App"), _attr(x, "subtitle", "")),
             "modal": lambda x: XmlModalScreen(_children(x), _attr(x, "title", ""), _attr(x, "subtitle", "")),
+        },
+
+        presentation.Tag.OPTION.value: {
+            "option": _make_option,
         },
 
         presentation.Tag.NAVIGATION.value: {
