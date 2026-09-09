@@ -600,7 +600,15 @@ class Port(ABC):
         register_many(self.routes, routes_cfg)
         return self.routes
 
-    async def render_template(self, runtime_session, text=None, file=None, controllers=None, **constants):
+    async def render_template(
+        self,
+        runtime_session,
+        text=None,
+        file=None,
+        controllers=None,
+        source_name=None,
+        **constants,
+    ):
         return await render(
             self.loader,
             runtime_session,
@@ -608,6 +616,7 @@ class Port(ABC):
             text=text,
             file=file,
             controllers=controllers,
+            source_name=source_name,
             **constants,
         )
 

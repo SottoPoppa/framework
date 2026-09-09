@@ -19,6 +19,16 @@ _dev_logger = get_logger("flow")
 _dev_logging_enabled = False
 
 
+class LocatedError(ValueError):
+    """Errore con posizione nel sorgente usabile dalla diagnostica Flow."""
+
+    def __init__(self, message: str, **location: Any):
+        super().__init__(message)
+        self.location = {
+            key: value for key, value in location.items() if value is not None
+        }
+
+
 def configure_dev_logging(
     enabled: bool = False,
     path: str = "/tmp/omniport-dev.log",
@@ -82,10 +92,13 @@ def _source_context(filename: str, lineno: int, radius: int = 2) -> str:
 
 def _exception_location(exception: BaseException) -> dict[str, Any]:
     """Restituisce la posizione concreta in cui l'eccezione è stata sollevata."""
+    declared_location = getattr(exception, "location", {})
+    if not isinstance(declared_location, dict):
+        declared_location = {}
     return {
         "exception_type": type(exception).__name__,
         "exception_message": str(exception),
-        **_traceback_location(exception.__traceback__),
+        **(_traceback_location(exception.__traceback__) | declared_location),
     }
 
 

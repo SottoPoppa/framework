@@ -89,12 +89,21 @@ async def format(target, **constants):
     except Exception as e:
         raise ValueError(f"Errore formattazione: {e}")
 
-async def render(loader, runtime_session, render_node, text=None, file=None, controllers=None, **constants):
+async def render(
+    loader,
+    runtime_session,
+    render_node,
+    text=None,
+    file=None,
+    controllers=None,
+    source_name=None,
+    **constants,
+):
     if text is None and file is None:
         raise ValueError("No text or file provided")
     if text is None:
         text = await loader.resource(file)
-    source_name = file or "template string"
+    source_name = source_name or file or "template string"
 
     environment = Environment(
         loader=FileSystemLoader("src/application/view/layout/"),
@@ -107,8 +116,11 @@ async def render(loader, runtime_session, render_node, text=None, file=None, con
     except TemplateError as error:
         line = getattr(error, "lineno", None)
         location = f" riga {line}" if line else ""
-        raise ValueError(
-            f"Errore sintassi Jinja in '{source_name}'{location}: {error}"
+        raise flow.LocatedError(
+            f"Errore sintassi Jinja in '{source_name}'{location}: {error}",
+            source_file=source_name,
+            source_line=line,
+            source_function="Jinja template",
         ) from error
     data = {}
     managers = {"manager": loader.get_managers()}
@@ -127,8 +139,20 @@ async def render(loader, runtime_session, render_node, text=None, file=None, con
     try:
         xml = ET.fromstring(content)
     except ET.ParseError as error:
-        raise ValueError(
-            f"Errore XML in '{source_name}': {error}"
+        line, column = getattr(error, "position", (None, None))
+        rendered_line = None
+        if line and 1 <= line <= len(content.splitlines()):
+            rendered_line = content.splitlines()[line - 1].strip()
+        raise flow.LocatedError(
+            f"Errore XML in '{source_name}': {error}",
+            source_file=source_name,
+            source_line=line,
+            source_column=column,
+            source_function="rendered XML",
+            source_code=rendered_line,
+            source_context=(
+                f"> {line}: {rendered_line}" if line and rendered_line else None
+            ),
         ) from error
     return await render_node(
         content,

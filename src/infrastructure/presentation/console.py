@@ -885,7 +885,12 @@ class Adapter(presentation.Port):
         xml_view = flow.output(await self.presenter.get_view(self.session, view_path))
         self._current_view_text = xml_view
         self._current_view_controllers = controllers
-        return await self.render_template(self.session, controllers=controllers, text=xml_view)
+        return await self.render_template(
+            self.session,
+            controllers=controllers,
+            text=xml_view,
+            source_name=view_path,
+        )
 
     async def render_view(self, url):
         self._ensure_active_app()
