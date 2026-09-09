@@ -1,88 +1,54 @@
 <?xml version='1.0' encoding='utf-8'?>
 <Window type="page" title="Omniport Code Terminal" background="#111827" font="mono" padding="1">
-    {% macro editor_language(filename) -%}{% set path = (filename or '') | lower %}{% if path.endswith('.py') or path.endswith('.dsl') %}python{% elif path.endswith('.xml') %}xml{% elif path.endswith('.json') %}json{% elif path.endswith('.toml') %}toml{% elif path.endswith('.md') %}markdown{% else %}markdown{% endif %}{%- endmacro %}
+    
+    {% macro editor_language(filename) -%}
+        {% set path = (filename or '') | lower -%}
+        {{ 'python' if path.endswith('.py') or path.endswith('.dsl') else 'xml' if path.endswith('.xml') else 'json' if path.endswith('.json') else 'toml' if path.endswith('.toml') else 'markdown' -}}
+    {%- endmacro %}
+
+    <!-- Toolbar -->
     <Row id="toolbar" align="center" justify="between" height="5">
-            <Input id="select" height="3" value="{{ terminal.select }}" change="terminal:select" placeholder="Seleziona un file" type="select">
+        <Input id="select" height="3" value="{{ terminal.select }}" change="terminal:select" placeholder="Seleziona un file" type="select">
             {% if terminal.files | check %}
-            {% for item in terminal.files | value %}
-                <Text>{{ item["relative_path"] }}</Text>
-            {% endfor %}
-            {% endif %}
-            </Input>
-            <Action id="stampa" width="10" height="3" margin="0,0,0,1" type="button" click="terminal:stampa"><Text>Path</Text></Action> 
-    </Row>
-    <Group id="workspace-editors" type="tab" height="1fr">
-        <Column id="application" width="1fr" padding="0,1">
-            <Group id="application-editors" type="tab" height="1fr">
-                <Input type="editor" language="{{ editor_language(terminal.select_application) }}" id="application-file-editor" height="1fr">
-                    <Storekeeper id="application_file_data" operation="gather" repository="file" filter='{{ {"eq": {"filename": terminal.select_application}} | tojson }}'>
-                        <Text>{{ store.application_file_data.content }}</Text>
-                    </Storekeeper>
-                </Input>
-                <Input type="editor" language="{{ editor_language(terminal.select_application) }}" id="application-test-editor" height="1fr">
-                    <Storekeeper id="application_test_data" operation="gather" repository="file" filter='{{ {"eq": {"filename": terminal.select_application}} | tojson }}'>
-                        <Text>{{ store.application_test_data.content }}</Text>
-                    </Storekeeper>
-                </Input>
-                <Input type="editor" language="{{ editor_language(terminal.select_application) }}" id="application-contract-editor" height="1fr">
-                    <Storekeeper id="application_contract_data" operation="gather" repository="file" filter='{{ {"eq": {"filename": terminal.select_application}} | tojson }}'>
-                        <Text>{{ store.application_contract_data.content }}</Text>
-                    </Storekeeper>
-                </Input>
-            </Group>
-            <Navigation type="tabs" height="5">
-                {% for item in terminal.application_files %}
-                <Action click="terminal:select_application" ><Text >{{ item }}</Text></Action>
-                {% endfor %}    
-            </Navigation>
-        </Column>
-        <Column id="framework" width="1fr" padding="0,1">
-            <Group id="framework-editors" type="tab" height="1fr">
-                <Input type="editor" language="{{ editor_language(terminal.select_framework) }}" id="framework-file-editor" height="1fr">
-                    <Storekeeper id="framework_file_data" operation="gather" repository="file" filter='{{ {"eq": {"filename": terminal.select_framework}} | tojson }}'>
-                        <Text>{{ store.framework_file_data.content }}</Text>
-                    </Storekeeper>
-                </Input>
-                <Input type="editor" language="{{ editor_language(terminal.select_framework) }}" id="framework-test-editor" height="1fr">
-                    <Storekeeper id="framework_test_data" operation="gather" repository="file" filter='{{ {"eq": {"filename": terminal.select_framework}} | tojson }}'>
-                        <Text>{{ store.framework_test_data.content }}</Text>
-                    </Storekeeper>
-                </Input>
-                <Input type="editor" language="{{ editor_language(terminal.select_framework) }}" id="framework-contract-editor" height="1fr">
-                    <Storekeeper id="framework_contract_data" operation="gather" repository="file" filter='{{ {"eq": {"filename": terminal.select_framework}} | tojson }}' >
-                        <Text>{{ store.framework_contract_data.content }}</Text>
-                    </Storekeeper>
-                </Input>
-            </Group>
-            <Navigation type="tabs" height="5" value="{{terminal.select_framework}}">
-                {% for item in terminal.framework_files %}
-                <Action click="terminal:select_framework" ><Text>{{ item }}</Text></Action>
-                {% endfor %}    
-            </Navigation>
-        </Column>
-        <Column id="infrastructure" width="1fr" padding="0,1">
-            <Group id="infrastructure-editors" type="tab" height="1fr">
-                <Input type="editor" language="{{ editor_language(terminal.select_infrastructure) }}" id="infrastructure-file-editor" height="1fr">
-                    <Storekeeper id="infrastructure_file_data" operation="gather" repository="file" filter='{{ {"eq": {"filename": terminal.select_infrastructure}} | tojson }}'>
-                        <Text>{{ store.infrastructure_file_data.content }}</Text>
-                    </Storekeeper>
-                </Input>
-                <Input type="editor" language="{{ editor_language(terminal.select_infrastructure) }}" id="infrastructure-test-editor" height="1fr">
-                    <Storekeeper id="infrastructure_test_data" operation="gather" repository="file" filter='{{ {"eq": {"filename": terminal.select_infrastructure}} | tojson }}'>
-                        <Text>{{ store.infrastructure_test_data.content }}</Text>
-                    </Storekeeper>
-                </Input>
-                <Input type="editor" language="{{ editor_language(terminal.select_infrastructure) }}" id="infrastructure-contract-editor" height="1fr">
-                    <Storekeeper id="infrastructure_contract_data" operation="gather" repository="file" filter='{{ {"eq": {"filename": terminal.select_infrastructure}} | tojson }}' >
-                        <Text>{{ store.infrastructure_contract_data.content }}</Text>
-                    </Storekeeper>
-                </Input>
-            </Group>
-            <Navigation type="tabs" height="5">
-                {% for item in terminal.infrastructure_files %}
-                <Action click="terminal:select_infrastructure" ><Text>{{ item }}</Text></Action>
+                {% for item in terminal.files | value %}
+                    <Text value="{{ item['relative_path'] }}">{{ item['relative_path'] }}</Text>
                 {% endfor %}
+            {% endif %}
+        </Input>
+        <Action id="stampa" width="10" height="3" margin="0,0,0,1" type="button" click="terminal:stampa">
+            <Text>Path</Text>
+        </Action> 
+    </Row>
+
+    <!-- Main Workspace (Generato dinamicamente per le 3 sezioni) -->
+    <Group id="workspace-editors" type="tab" height="1fr">
+        {% set scope_config = [
+            ('application', terminal.select_application, terminal.application_files),
+            ('framework', terminal.select_framework, terminal.framework_files),
+            ('infrastructure', terminal.select_infrastructure, terminal.infrastructure_files)
+        ] %}
+
+        {% for scope_id, selected_file, file_list in scope_config %}
+        <Column id="{{ scope_id }}" width="1fr" padding="0,1">
+            <Group id="{{ scope_id }}-editors" type="tab" height="1fr">
+                {% for sub_type in ['file', 'test', 'contract'] %}
+                <Input type="editor" language="{{ editor_language(selected_file) }}" id="{{ scope_id }}-{{ sub_type }}-editor" height="1fr">
+                    <Storekeeper id="{{ scope_id }}_{{ sub_type }}_data" operation="gather" repository="file" filter='{{ {"eq": {"filename": selected_file}} | tojson }}'>
+                        <Text>{{ store[scope_id + '_' + sub_type + '_data'].content }}</Text>
+                    </Storekeeper>
+                </Input>
+                {% endfor %}
+            </Group>
+
+            <!-- Navigation Tabs -->
+            <Navigation type="tabs" height="5" value="{{ selected_file }}">
+                {% for item in file_list %}
+                <Action click="terminal:select_{{ scope_id }}">
+                    <Text>{{ item }}</Text>
+                </Action>
+                {% endfor %}    
             </Navigation>
         </Column>
+        {% endfor %}
     </Group>
 </Window>

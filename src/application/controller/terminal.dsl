@@ -52,45 +52,10 @@
             prefix_match("relative_path", "src/infrastructure/")
         );
 
-    editor: {
-        application(entry: false) ->
-            storekeeper.gather(
-                session,
-                repository: "file",
-                filter: {
-                    "eq": {
-                        "filename": select_application
-                    }
-                }
-            );
-
-        framework(entry: false) ->
-            storekeeper.gather(
-                session,
-                repository: "file",
-                filter: {
-                    "eq": {
-                        "filename": select_framework
-                    }
-                }
-            );
-
-        infrastructure(entry: false) ->
-            storekeeper.gather(
-                session,
-                repository: "file",
-                filter: {
-                    "eq": {
-                        "filename": select_infrastructure
-                    }
-                }
-            )
-    };
-
     gg(entry: false,
         //deps: ["editor.application", "editor.framework", "editor.infrastructure"]
     ) ->
-        presenter.rebuild(session, "editors", {});
+        presenter.rebuild(session, "workspace-editors", {});
 
     update_app(entry: false) ->
         presenter.rebuild(session, "application", {});
