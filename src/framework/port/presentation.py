@@ -636,6 +636,70 @@ class Port(ABC):
                 runtime_session,
             )
 
+        if tag.lower() == "messenger":
+            messenger = self.messenger or self.loader.get_managers().get("messenger")
+            if messenger is None:
+                raise RuntimeError("Messenger non disponibile per il tag <Messenger>")
+            operation = attributes.get("operation", "receive").casefold()
+            payload = {
+                key: value for key, value in attributes.items()
+                if key not in {"id", "message", "operation", "type"}
+            }
+            if "type" in attributes:
+                payload["level"] = attributes["type"]
+
+            if operation in {"receive", "read"}:
+                received = flow.output(
+                    await messenger.receive(runtime_session, **payload)
+                )
+                message = received.get("message") if isinstance(received, dict) else received
+                alias = attributes.get("id")
+                if alias:
+                    context = {
+                        **context,
+                        "_jinja_context": {
+                            **context.get("_jinja_context", {}), alias: received,
+                        },
+                    }
+                if not list(node):
+                    return self.mount_tag("text", {}, [str(message or "")])
+            elif operation == "send":
+                message = attributes.get("message") or node_text
+                if not message:
+                    raise ValueError("Il tag <Messenger operation='send'> richiede un messaggio")
+                payload = {
+                    **payload,
+                    "message": message,
+                }
+                await messenger.send(runtime_session, **payload)
+            else:
+                raise ValueError(f"Operazione Messenger non supportata: {operation}")
+
+        if tag.lower() == "defender":
+            defender = self.defender or self.loader.get_managers().get("defender")
+            if defender is None:
+                raise RuntimeError("Defender non disponibile per il tag <Defender>")
+            authorized = await defender.authorized(
+                "presentation",
+                session=runtime_session,
+                action="VIEW",
+                resource=attributes.get("resource", ""),
+                location=attributes.get("location", ""),
+                request=attributes.get("request", {}),
+            )
+            if not authorized:
+                denied = attributes.get("denied")
+                if denied:
+                    messenger = self.messenger or self.loader.get_managers().get("messenger")
+                    if messenger is not None:
+                        await messenger.send(
+                            runtime_session,
+                            domain=denied,
+                            message=attributes.get("message", "Accesso negato"),
+                        )
+                denied_attrs = {"id": attributes["id"]} if attributes.get("id") else {}
+                return self.mount_tag("container", denied_attrs, [])
+
         ID = attributes.get('id')
         if isinstance(ID, str):
             extracted = self.presenter.estrai_da_xml_string(parent, ID)

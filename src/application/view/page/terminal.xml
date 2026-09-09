@@ -11,13 +11,19 @@
             </Input>
             <Action id="stampa" width="10" height="3" margin="0,0,0,1" type="button" click="terminal:stampa"><Text>Path</Text></Action> 
     </Row>
-
     <Group id="editors" type="tab" height="1fr">
         <Column id="application" width="1fr" padding="0,1">
             <Group id="editors" type="tab" height="1fr">
                 <Input type="editor" language="{{ editor_language(terminal.select_application) }}" id="file" height="1fr">
                     {% if terminal.editor.application | check %}
-                    <Text>{{ terminal.editor.application | value | get("content") | e }}</Text>
+                    <Storekeeper
+                        id="files"
+                        operation="gather"
+                        repository="file"
+                        filter='{{ {"eq": {"filename": terminal.select_application}} | tojson }}'
+                    >
+                        <Text>{{ files.content }}</Text>
+                    </Storekeeper>
                     {% endif %}
                 </Input>
                 <Input type="editor" language="{{ editor_language(terminal.select_application) }}" id="test" height="1fr">
@@ -39,19 +45,25 @@
         </Column>
         <Column id="framework" width="1fr" padding="0,1">
             <Group id="editors" type="tab" height="1fr">
-                <Text>{{ terminal.select_application}}</Text>
+                
                 <Input type="editor" language="{{ editor_language(terminal.select_framework) }}" id="editor-framework" height="1fr">
                     {% if terminal.editor.framework | check %}
-                    <Text>{{ terminal.editor.framework | value | get("content") | e }}</Text>
-                    {% endif %}
-                </Input>
-                <Input type="editor" language="{{ editor_language(terminal.select_application) }}" id="test" height="1fr">
-                    <Text>{{ {"eq": {"filename": terminal.select_application}} }}</Text>
                     <Storekeeper
                         id="files"
                         operation="gather"
                         repository="file"
-                        filter='{{ {"eq": {"filename": "src/application/view/page/terminal.xml"}} | tojson }}'
+                        filter='{{ {"eq": {"filename": terminal.select_framework}} | tojson }}'
+                    >
+                        <Text>{{ files.content }}</Text>
+                    </Storekeeper>
+                    {% endif %}
+                </Input>
+                <Input type="editor" language="{{ editor_language(terminal.select_application) }}" id="test" height="1fr">
+                    <Storekeeper
+                        id="files"
+                        operation="gather"
+                        repository="file"
+                        filter='{{ {"eq": {"filename": terminal.select_framework}} | tojson }}'
                     >
                         <Text>{{ files.content }}</Text>
                     </Storekeeper>
@@ -71,7 +83,14 @@
         <Column id="infrastructure" width="1fr" padding="0,1">
             <Input type="editor" language="{{ editor_language(terminal.select_infrastructure) }}" id="editor-infrastructure" height="1fr">
                 {% if terminal.editor.infrastructure | check %}
-                <Text>{{ terminal.editor.infrastructure | value | get("content") | e }}</Text>
+                <Storekeeper
+                        id="files"
+                        operation="gather"
+                        repository="file"
+                        filter='{{ {"eq": {"filename": terminal.select_infrastructure}} | tojson }}'
+                    >
+                        <Text>{{ files.content }}</Text>
+                    </Storekeeper>
                 {% endif %}
             </Input>
             <Navigation type="tabs" height="5">
