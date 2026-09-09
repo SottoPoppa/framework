@@ -285,6 +285,86 @@ La UI si definisce in XML, renderizzato in HTML/Tailwind dall'adapter di present
 
 **Attributi comuni (mappati su Tailwind):** `width`/`height`, `padding`/`margin` (valori separati da virgola), `justify`/`align`, `background` (hex o gradiente), `matter` (`glass`, `glass-max`), `font` (`bold`, `mono`, `black`, `extrabold`).
 
+### Tag dichiarativi per dati, messaggi e autorizzazioni
+
+I tag `Storekeeper`, `Messenger` e `Defender` sono implementati nella Port di
+presentazione e quindi sono disponibili a tutti gli adapter che ereditano da
+`framework.port.presentation.Port`. Un adapter concreto deve comunque
+supportare i tag base usati dai wrapper, in particolare `container` e `text`.
+
+#### Storekeeper
+
+`Storekeeper` esegue una lettura o un'altra operazione del manager omonimo e
+renderizza i figli dopo aver ricevuto il risultato. L'attributo `id` identifica
+il widget e contemporaneamente il risultato nel namespace Jinja `store`:
+
+```xml
+<Storekeeper id="files" operation="read" repository="file"
+             filter='{{ {"eq": {"filename": selected_file}} | tojson }}'>
+    <Text>{{ store.files.content }}</Text>
+</Storekeeper>
+```
+
+Non usare l'alias direttamente come variabile globale (`files.content`). Il
+namespace `store` evita collisioni con controller, manager e variabili Jinja
+come `terminal.files`. Non aggiungere un attributo `as`: `id` è l'unico nome
+necessario.
+
+Il risultato del manager resta isolato nel contesto del nodo e non viene
+trasferito automaticamente tra sessioni. I filtri e gli altri attributi JSON
+devono essere serializzati con `tojson` quando contengono espressioni Jinja.
+
+#### Messenger
+
+Senza `operation`, `Messenger` legge un messaggio dal manager e lo visualizza:
+
+```xml
+<Messenger id="notice" domain="console:info" />
+```
+
+Con figli, il messaggio ricevuto è disponibile attraverso l'alias del tag:
+
+```xml
+<Messenger id="notice" domain="console:info">
+    <Text>{{ notice.message }}</Text>
+</Messenger>
+```
+
+Per inviare un messaggio usare esplicitamente `operation="send"`:
+
+```xml
+<Messenger operation="send" domain="console:info">
+    File salvato
+</Messenger>
+```
+
+La ricezione avviene durante il rendering iniziale del tag. Un messaggio
+arrivato dopo il rendering non aggiorna automaticamente la vista: per questo
+serve un flusso reattivo separato, ad esempio un evento DSL e un `rebuild`.
+
+#### Defender
+
+`Defender` è un filtro dichiarativo della presentazione. La policy e l'azione
+sono fisse rispettivamente su `presentation` e `VIEW`; il tag riceve solo la
+risorsa e la posizione da verificare:
+
+```xml
+<Defender resource="admin.xml" location="/admin"
+          denied="console:error">
+    <Text>Area amministrativa</Text>
+</Defender>
+```
+
+Se `defender.authorized(...)` restituisce `true`, i figli vengono renderizzati.
+Se restituisce `false`, i figli non vengono renderizzati e, se è presente
+`denied`, viene inviato un messaggio tramite `Messenger`. Il messaggio
+predefinito è `Accesso negato`; può essere sostituito con l'attributo
+`message`.
+
+Questo tag protegge la presentazione, non sostituisce l'autorizzazione reale:
+i manager che accedono a risorse sensibili, come `Storekeeper`, devono
+continuare a verificare la policy prima dell'operazione.
+
 ### ⚡ Reattività Server-Driven (WebSocket)
 Qualunque elemento XML può reagire a cambi di stato del DSL senza JavaScript tramite l'attributo `bind="dsl_alias:node_path"` (es. `bind="counter:counter_logic.count"`).
 

@@ -22,7 +22,7 @@
                         repository="file"
                         filter='{{ {"eq": {"filename": terminal.select_application}} | tojson }}'
                     >
-                        <Text>{{ files.content }}</Text>
+                        <Text>{{ store.files.content }}</Text>
                     </Storekeeper>
                     {% endif %}
                 </Input>
@@ -45,8 +45,7 @@
         </Column>
         <Column id="framework" width="1fr" padding="0,1">
             <Group id="editors" type="tab" height="1fr">
-                
-                <Input type="editor" language="{{ editor_language(terminal.select_framework) }}" id="editor-framework" height="1fr">
+                <Input type="editor" language="{{ editor_language(terminal.select_framework) }}" id="file" height="1fr">
                     {% if terminal.editor.framework | check %}
                     <Storekeeper
                         id="files"
@@ -54,7 +53,7 @@
                         repository="file"
                         filter='{{ {"eq": {"filename": terminal.select_framework}} | tojson }}'
                     >
-                        <Text>{{ files.content }}</Text>
+                        <Text>{{ store.files.content }}</Text>
                     </Storekeeper>
                     {% endif %}
                 </Input>
@@ -65,13 +64,13 @@
                         repository="file"
                         filter='{{ {"eq": {"filename": terminal.select_framework}} | tojson }}'
                     >
-                        <Text>{{ files.content }}</Text>
+                        <Text>{{ store.files.content }}</Text>
                     </Storekeeper>
                 </Input>
                 <Input type="editor" language="{{ editor_language(terminal.select_application) }}" id="contract" height="1fr">
-                    {% if terminal.editor.application | check %}
-                    <Text>{{ terminal.editor.application | value | get("content") | e }}</Text>
-                    {% endif %}
+                    <Storekeeper id="files" operation="gather" repository="file" filter='{{ {"eq": {"filename": terminal.select_framework}} | tojson }}' >
+                        <Text>{{ store.files.content }}</Text>
+                    </Storekeeper>
                 </Input>
             </Group>
             <Navigation type="tabs" height="5" value="{{terminal.select_framework}}">
@@ -81,18 +80,23 @@
             </Navigation>
         </Column>
         <Column id="infrastructure" width="1fr" padding="0,1">
-            <Input type="editor" language="{{ editor_language(terminal.select_infrastructure) }}" id="editor-infrastructure" height="1fr">
-                {% if terminal.editor.infrastructure | check %}
-                <Storekeeper
-                        id="files"
-                        operation="gather"
-                        repository="file"
-                        filter='{{ {"eq": {"filename": terminal.select_infrastructure}} | tojson }}'
-                    >
-                        <Text>{{ files.content }}</Text>
+            <Group id="editors" type="tab" height="1fr">
+                <Input type="editor" language="{{ editor_language(terminal.select_infrastructure) }}" id="file" height="1fr">
+                    <Storekeeper id="files" operation="gather" repository="file" filter='{{ {"eq": {"filename": terminal.select_infrastructure}} | tojson }}'>
+                        <Text>{{ store.files.content }}</Text>
                     </Storekeeper>
-                {% endif %}
-            </Input>
+                </Input>
+                <Input type="editor" language="{{ editor_language(terminal.select_infrastructure) }}" id="test" height="1fr">
+                    <Storekeeper id="files" operation="gather" repository="file" filter='{{ {"eq": {"filename": terminal.select_infrastructure}} | tojson }}'>
+                        <Text>{{ store.files.content }}</Text>
+                    </Storekeeper>
+                </Input>
+                <Input type="editor" language="{{ editor_language(terminal.select_infrastructure) }}" id="contract" height="1fr">
+                    <Storekeeper id="files" operation="gather" repository="file" filter='{{ {"eq": {"filename": terminal.select_infrastructure}} | tojson }}' >
+                        <Text>{{ store.files.content }}</Text>
+                    </Storekeeper>
+                </Input>
+            </Group>
             <Navigation type="tabs" height="5">
                 {% for item in terminal.infrastructure_files %}
                 <Action click="terminal:select_infrastructure" ><Text>{{ item }}</Text></Action>

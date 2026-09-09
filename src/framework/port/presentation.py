@@ -90,8 +90,10 @@ class StorekeeperView:
             raise ValueError("Il tag <Storekeeper> richiede l'attributo 'id'")
 
         child_context = dict(context)
+        store = context.get("_jinja_context", {}).get("store", {})
         child_context["_jinja_context"] = {
-            **context.get("_jinja_context", {}), alias: value,
+            **context.get("_jinja_context", {}),
+            "store": {**store, alias: value},
         }
         children = [
             await self.adapter.render_node(
