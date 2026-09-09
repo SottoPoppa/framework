@@ -1,6 +1,6 @@
 import xml.etree.ElementTree as ET
 
-from jinja2 import Environment, FileSystemLoader, Undefined, select_autoescape
+from jinja2 import Environment, FileSystemLoader, TemplateError, Undefined, select_autoescape
 import framework.core.flow as flow
 import framework.core.scheme as scheme
 
@@ -94,6 +94,7 @@ async def render(loader, runtime_session, render_node, text=None, file=None, con
         raise ValueError("No text or file provided")
     if text is None:
         text = await loader.resource(file)
+    source_name = file or "template string"
 
     environment = Environment(
         loader=FileSystemLoader("src/application/view/layout/"),
@@ -101,7 +102,14 @@ async def render(loader, runtime_session, render_node, text=None, file=None, con
         undefined=DeferredUndefined,
     )
     environment.filters.update(jinja_env.filters)
-    template = environment.from_string(text)
+    try:
+        template = environment.from_string(text)
+    except TemplateError as error:
+        line = getattr(error, "lineno", None)
+        location = f" riga {line}" if line else ""
+        raise ValueError(
+            f"Errore sintassi Jinja in '{source_name}'{location}: {error}"
+        ) from error
     data = {}
     managers = {"manager": loader.get_managers()}
     for controller in controllers or []:
@@ -116,7 +124,12 @@ async def render(loader, runtime_session, render_node, text=None, file=None, con
 
     render_context = constants | data | {"manager": loader.get_managers()}
     content = template.render(render_context)
-    xml = ET.fromstring(content)
+    try:
+        xml = ET.fromstring(content)
+    except ET.ParseError as error:
+        raise ValueError(
+            f"Errore XML in '{source_name}': {error}"
+        ) from error
     return await render_node(
         content,
         xml,

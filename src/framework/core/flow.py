@@ -13,6 +13,7 @@ from framework.service.diagnostic import configure_log_file, get_logger
 T = TypeVar("T")
 F = TypeVar("F")
 Step = Callable[[Any], Any]
+_NO_INITIAL = object()
 
 _dev_logger = get_logger("flow")
 _dev_logging_enabled = False
@@ -217,7 +218,7 @@ class Immutable(dict):
         cached = self.__dict__.get("_hash_cache")
         if cached is None:
             try:
-                cached = hash(tuple(sorted(self.items(), key=lambda kv: kv[0])))
+                cached = hash(frozenset(self.items()))
             except TypeError as exc:
                 raise TypeError(
                     f"{self.__class__.__name__} non è hashable: contiene un valore "
@@ -663,13 +664,10 @@ def tuple_filter_tuple(predicate: Callable[[Any], bool]) -> Callable:
     """Filtra gli elementi di una tupla in base al predicato."""
     return _named(lambda data: tuple(x for x in data if predicate(x)), f"tuple_filter_tuple({_fn_label(predicate)})")
 
-def tuple_reduce_value(fn: Callable[[Any, Any], Any], initial: Any = "__no_initial__") -> Callable:
+def tuple_reduce_value(fn: Callable[[Any, Any], Any], initial: Any = _NO_INITIAL) -> Callable:
     """Aggrega gli elementi di una tupla in un singolo valore."""
-    # FIX(3): sentinel dedicato invece di None, cosi' None e' un initial legittimo.
-    _NO_INITIAL = object()
-    _initial = _NO_INITIAL if initial == "__no_initial__" else initial
     return _named(
-        lambda data: _reduce(fn, data) if _initial is _NO_INITIAL else _reduce(fn, data, _initial),
+        lambda data: _reduce(fn, data) if initial is _NO_INITIAL else _reduce(fn, data, initial),
         f"tuple_reduce_value({_fn_label(fn)})"
     )
 

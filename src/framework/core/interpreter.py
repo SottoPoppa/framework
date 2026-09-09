@@ -2,6 +2,7 @@ import inspect
 from typing import Any, Dict
 import uuid
 from collections.abc import Mapping
+from lark.exceptions import UnexpectedInput
 
 import framework.core.flow as flow
 
@@ -13,6 +14,22 @@ from .compiler import Compiler
 from .parser import Parser
 from .data import Registry
 from framework.service.introspection import Reflection
+
+
+class DSLSourceError(ValueError):
+    """Errore DSL con posizione e fase utili ai client di tooling."""
+
+    def __init__(self, source: str, phase: str, message: str, error=None):
+        self.source = source
+        self.phase = phase
+        self.line = getattr(error, "line", None)
+        self.column = getattr(error, "column", None)
+        location = ""
+        if self.line is not None:
+            location = f":{self.line}"
+            if self.column is not None:
+                location += f":{self.column}"
+        super().__init__(f"Errore {phase} in '{source}'{location}: {message}")
 
 def map_records(records: Any, builder: Any, *args, **kwargs) -> list:
     if not isinstance(records, (list, tuple)) or not callable(builder):
@@ -236,9 +253,26 @@ class Interpreter:
 
         return flow.success(fn)
 
+    def parse_only(self, source: str, name: str = "<string>"):
+        """Parsa il DSL senza registrare o eseguire il programma."""
+        try:
+            return self.parser.parse(source)
+        except UnexpectedInput as error:
+            raise DSLSourceError(
+                name,
+                "parsing DSL",
+                str(error).splitlines()[0],
+                error,
+            ) from error
+
     async def load_file(self, name: str, code: str):
-        ast_prog = self.parser.parse(code)
-        dag_def = self.compiler.compile(ast_prog, name=name)
+        ast_prog = self.parse_only(code, name)
+        try:
+            dag_def = self.compiler.compile(ast_prog, name=name)
+        except Exception as error:
+            if isinstance(error, DSLSourceError):
+                raise
+            raise DSLSourceError(name, "compilazione DSL", str(error)) from error
         self.runner.register(dag_def)
         return flow.success(dag_def)
 

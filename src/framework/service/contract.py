@@ -54,10 +54,16 @@ class Contract:
             return {}
         try:
             content = Path(path).read_text(encoding="utf-8").strip()
-            return json.loads(content) if content else {}
-        except Exception as e:
-            print(f"[!] Errore lettura contratto '{path}': {e}")
-            return {}
+            data = json.loads(content) if content else {}
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise ValueError(
+                f"Contratto JSON non leggibile '{path}': {error}"
+            ) from error
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"Contratto JSON non valido '{path}': la radice deve essere un oggetto"
+            )
+        return data
 
     @staticmethod
     def write(path: str, data: dict) -> None:
