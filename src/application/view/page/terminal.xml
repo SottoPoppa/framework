@@ -45,9 +45,8 @@
             </Input>
             <Navigation type="tabs" height="5">
                 {% for item in terminal.infrastructure_files %}
-                <Text click="terminal:select_infrastructure">{{ item }}</Text>
-                {% endfor %}    
-                <Text>{{terminal.select_framework}}</Text>
+                <Action click="terminal:select_infrastructure" ><Text>{{ item }}</Text></Action>
+                {% endfor %}
             </Navigation>
         </Column>
     </Group>

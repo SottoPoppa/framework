@@ -12,14 +12,20 @@
     select_application(
         default: application_files.0,
         deps: ["application_files"],
-        on_end: "gg"
+        on_end: "update_app"
     ) -> select_application;
 
     select_infrastructure(
         default: infrastructure_files.0,
         deps: ["infrastructure_files"],
-        on_end: "gg"
+        on_end: "update_infra"
     ) -> select_infrastructure;
+
+    select_framework(
+        default: framework_files.0,
+        deps: ["framework_files"],
+        on_end: "update_frame"
+    ) -> select_framework;
 
     files() ->
         storekeeper.overview(
@@ -45,13 +51,6 @@
             dependencies,
             prefix_match("relative_path", "src/infrastructure/")
         );
-
-    select_framework(
-        default: framework_files.0,
-        deps: ["framework_files"],
-        on_end: "gg"
-    ) -> select_framework;
-
 
     editor: {
         application(entry: false) ->
@@ -92,6 +91,15 @@
         //deps: ["editor.application", "editor.framework", "editor.infrastructure"]
     ) ->
         presenter.rebuild(session, "editors", {});
+
+    update_app(entry: false) ->
+        presenter.rebuild(session, "application", {});
+
+    update_frame(entry: false) ->
+        presenter.rebuild(session, "framework", {});
+
+    update_infra(entry: false) ->
+        presenter.rebuild(session, "infrastructure", {});
 
     cmd: {
         close(entry: false) ->
