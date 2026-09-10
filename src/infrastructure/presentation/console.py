@@ -988,6 +988,11 @@ class Adapter(presentation.Port):
         # Se lo prendi dopo, dom_get() ti restituisce rendered_node stesso.
         old_widget = self.dom_get(node_id)
         if old_widget is None:
+            self.widgets.forget(node_id)
+            if getattr(self, "url", None) and not self._render_lock.locked():
+                flow._dev_log("tui.rebuild.recover node=%s", node_id)
+                await self.render_view(self.url)
+                return self.dom_get(node_id)
             self._pending_rebuilds[node_id] = (session, context)
             flow._dev_log("tui.rebuild.pending node=%s", node_id)
             return None
@@ -1104,7 +1109,11 @@ class Adapter(presentation.Port):
         try:
             return self.app.query_one(f"#{widget_id}")
         except Exception:
-            return self.widgets.get(widget_id)
+            widget = self.widgets.get(widget_id)
+            if widget is not None and getattr(widget, "parent", None) is not None:
+                return widget
+            self.widgets.forget(widget_id)
+            return None
 
     async def dom_update(self, widget_id: str, context: Dict[str, Any]):
         """Applica node_update() al widget live con quell'id."""

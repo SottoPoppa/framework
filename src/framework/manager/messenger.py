@@ -77,8 +77,7 @@ class Manager(manager.Port):
             request = dict(constants)
             request.update({"adapter": "dsl", "provider": "dsl", "receiver": destination})
             if await self.defender.authorized("message", action="publish", request=request):
-                
-                await session.emit(destination, domain, value=constants.get("message"))
+                await session.emit(domain, constants.get("message"))
             return
 
         matched = self._matching_providers(destination, adapter)
