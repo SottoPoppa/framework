@@ -48,6 +48,24 @@ class Manager(manager.Port):
             )
         ]
 
+    async def _authorized_provider(
+        self,
+        action: str,
+        provider,
+        destination: str | None,
+        constants: dict,
+    ) -> bool:
+        if self.defender is None:
+            return True
+        provider_name = provider.config.get("name") or provider.adapter
+        request = dict(constants)
+        request.update({"provider": provider_name, "destination": destination})
+        return await self.defender.authorized(
+            "message",
+            action=action,
+            request=request,
+        )
+
     async def _dispatch(
         self,
         session,
@@ -58,18 +76,20 @@ class Manager(manager.Port):
         """
         Instrada il messaggio verso i provider/controller appropriati.
         """
-        matched = self._matching_providers(controller)
+        destination = constants.get("receiver") or controller
+        matched = self._matching_providers(destination)
 
         message_text = constants.get('message')
 
         if controller and not matched:
-            if controller in self.defender.controllers:
+            if self.defender and controller in self.defender.controllers:
                 await session.emit(controller, domain, message_text)
 
             return
 
         for provider in matched:
-            await provider.post(**constants | {'domain': domain})
+            if await self._authorized_provider("publish", provider, destination, constants):
+                await provider.post(**constants | {'domain': domain})
 
     @flow.result(inputs='messenger')
     async def send(self, session, **constants):
@@ -94,18 +114,24 @@ class Manager(manager.Port):
         """
         controller, domain = self._split_domain(constants.get('domain'))
 
-        matched = self._matching_providers(controller)
+        destination = constants.get("receiver") or controller
+        matched = self._matching_providers(destination)
 
         if controller and not matched:
-            if controller in self.defender.controllers:
+            if self.defender and controller in self.defender.controllers:
                 # TODO: definire come ricevere dal defender
                 return None
 
             return None
 
+        authorized = [
+            provider
+            for provider in matched
+            if await self._authorized_provider("subscribe", provider, destination, constants)
+        ]
         tasks = [
             asyncio.create_task(provider.read(session, **constants | {'domain': domain}))
-            for provider in matched
+            for provider in authorized
         ]
 
         if not tasks:

@@ -1,0 +1,26 @@
+{
+  "contract_version": 2,
+  "exports": {
+    "can": [
+      "Adapter.can"
+    ],
+    "read": [
+      "Adapter.read"
+    ]
+  },
+  "hashes": {
+    "Adapter": {
+      "can": {
+        "production": "7e404e2ae551567d4cda07c29f14d2255072c3a757fd2bf445321d63dcb73960",
+        "test": "7e404e2ae551567d4cda07c29f14d2255072c3a757fd2bf445321d63dcb73960"
+      },
+      "read": {
+        "production": "e6972bca57226a2adf510cf9472b4e6a363bf8cce87869cceb7431cd6ec1a1d1",
+        "test": "e6972bca57226a2adf510cf9472b4e6a363bf8cce87869cceb7431cd6ec1a1d1"
+      }
+    }
+  },
+  "requires": [
+    "github-copilot-sdk>=0.1.0"
+  ]
+}

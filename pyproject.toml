@@ -36,6 +36,13 @@ name = "stub"
 [[message.bus]]
 name = "broker"
 
+#[[message.copilot]]
+#name = "copilot"
+#model = "auto"
+#working_directory = "."
+#enable_terminal = false
+#token = "{{env.COPILOT_GITHUB_TOKEN}}"
+
 #[[presentation.starlette]]
 #name = "web"
 #host = "127.0.0.1"

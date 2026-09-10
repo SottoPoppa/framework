@@ -16,13 +16,20 @@ security: {
 };
 
 policies: {
-    policy:PUBLISH := { effect: "allow"; target: { action: "publish" }; condition: @action == "publish" };
-    policy:SUBSCRIBE := { effect: "allow"; target: { action: "subscribe" }; condition: @action == "subscribe" };
-    policy:READ := { effect: "allow"; target: { action: "read" }; condition: @action == "read" }
+    policy:DENY_COPILOT_BROADCAST := {
+        effect: "deny";
+        target: { action: "publish" };
+        condition: @action == "publish" & @request.provider == "copilot" & @request.destination != "copilot"
+    };
+    policy:PUBLISH := {
+        effect: "allow";
+        target: { action: "publish" };
+        condition: @action == "publish"
+    };
+    policy:SUBSCRIBE := { effect: "allow"; target: { action: "subscribe" }; condition: @action == "subscribe" }
 };
 
 rules: {
-    "publish": [policies.PUBLISH];
-    "subscribe": [policies.SUBSCRIBE];
-    "read": [policies.READ]
+    "publish": [policies.DENY_COPILOT_BROADCAST, policies.PUBLISH];
+    "subscribe": [policies.SUBSCRIBE]
 };

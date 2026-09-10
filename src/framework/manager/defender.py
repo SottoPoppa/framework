@@ -228,7 +228,6 @@ class Manager(manager.Port):
             'request': constants.get('request', {}),
         }
         filted_rules = []
-        all_resutl = []
         if location in rules:
             filted_rules = rules.get(location)
         elif resource in rules:
@@ -238,11 +237,10 @@ class Manager(manager.Port):
         else:
             pass
 
-        #print("--------------->2",constants)  
+        denied = False
+        allowed = False
         for rule in filted_rules:
-            #print("--------------->3",rule)
             for_target = rule.get('target', {}) | target
-            #print("--------------->4",for_target)
             condition = rule.get('condition')
             if callable(condition):
                 tes = condition(**for_target)
@@ -250,14 +248,14 @@ class Manager(manager.Port):
                     tes = await tes
                 effect = rule.get('effect')
                 if effect == 'allow':
-                    all_resutl.append(tes)
+                    allowed = allowed or bool(tes)
                 elif effect == 'deny':
-                    all_resutl.append(not tes)
+                    denied = denied or bool(tes)
             elif isinstance(condition, bool):
                 if rule.get('effect') == 'allow':
-                    all_resutl.append(condition)
+                    allowed = allowed or condition
                 elif rule.get('effect') == 'deny':
-                    all_resutl.append(not condition)
+                    denied = denied or condition
             else:
-                all_resutl.append(False)
-        return any(all_resutl) if len(all_resutl) > 0 else False
+                continue
+        return allowed and not denied
