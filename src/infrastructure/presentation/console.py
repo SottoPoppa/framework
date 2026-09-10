@@ -478,6 +478,20 @@ class AppDinamica(App):
         super().__init__(**kwargs)
         self.adapter = adapter
 
+    async def _send_dsl_event(self, event_name, message):
+        if not isinstance(event_name, str) or ":" not in event_name:
+            return
+        receiver, domain = event_name.split(":", 1)
+        if not receiver or not domain:
+            return
+        await self.adapter.messenger.send(
+            self.adapter.session,
+            adapter="dsl",
+            receiver=receiver,
+            domain=domain,
+            message=message,
+        )
+
     def check_action(self, action, parameters):
         widget = self.focused
 
@@ -499,7 +513,8 @@ class AppDinamica(App):
         if not selected:
             await self.adapter.messenger.send(
                 self.adapter.session,
-                domain="console:error",
+                receiver="console",
+                domain="error",
                 message="Nessun file selezionato.",
             )
             return
@@ -508,7 +523,8 @@ class AppDinamica(App):
         if storekeeper is None:
             await self.adapter.messenger.send(
                 self.adapter.session,
-                domain="console:error",
+                receiver="console",
+                domain="error",
                 message="Storekeeper non disponibile.",
             )
             return
@@ -522,14 +538,16 @@ class AppDinamica(App):
         if not flow.check(result):
             await self.adapter.messenger.send(
                 self.adapter.session,
-                domain="console:error",
+                receiver="console",
+                domain="error",
                 message=f"Salvataggio fallito: {flow.output(result)}",
             )
             return
 
         await self.adapter.messenger.send(
             self.adapter.session,
-            domain="console:info",
+            receiver="console",
+            domain="info",
             message=f"File salvato: {selected}",
         )
 
@@ -557,7 +575,7 @@ class AppDinamica(App):
 
         if w is not None:
             attrs_tag = self.adapter.presenter.estrai_attributi_tag(w)
-            await self.adapter.messenger.send(self.adapter.session, domain=attrs_tag['click'], message=str(event.button.id))
+            await self._send_dsl_event(attrs_tag.get("click"), str(event.button.id))
         
         """if click == "modal:close":
             self.adapter.close_modal()
@@ -584,17 +602,12 @@ class AppDinamica(App):
                 event_data = tab_events.get(getattr(widget, "id", None))
             if event_data:
                 click, value = event_data
-                await self.adapter.messenger.send(
-                    self.adapter.session,
-                    domain=click,
-                    message=str(value),
-                )
+                await self._send_dsl_event(click, str(value))
             return
 
-        await self.adapter.messenger.send(
-            self.adapter.session,
-            domain=source._dsl_click,
-            message=str(getattr(source, "_dsl_value", "")),
+        await self._send_dsl_event(
+            source._dsl_click,
+            str(getattr(source, "_dsl_value", "")),
         )
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -603,11 +616,7 @@ class AppDinamica(App):
             return
         attributes = self.adapter.presenter.estrai_attributi_tag(node)
         if 'submit' in attributes:
-            await self.adapter.messenger.send(
-                self.adapter.session,
-                domain=attributes['submit'],
-                message=str(event.value),
-            )
+            await self._send_dsl_event(attributes['submit'], str(event.value))
     
     async def on_input_changed(self, event: Input.Changed) -> None:
         node = self.adapter.node_get(event.input.id)
@@ -615,11 +624,7 @@ class AppDinamica(App):
             return
         attributes = self.adapter.presenter.estrai_attributi_tag(node)
         if 'change' in attributes:
-            await self.adapter.messenger.send(
-                self.adapter.session,
-                domain=attributes['change'],
-                message=str(event.value),
-            )
+            await self._send_dsl_event(attributes['change'], str(event.value))
 
     async def on_select_changed(self, event: Select.Changed) -> None:
         w = self.adapter.node_get(event.select.id)
@@ -633,11 +638,7 @@ class AppDinamica(App):
 
         if w is not None:
             attrs_tag = self.adapter.presenter.estrai_attributi_tag(w)
-            await self.adapter.messenger.send(
-                self.adapter.session,
-                domain=attrs_tag['change'],
-                message=str(event.value),
-            )
+            await self._send_dsl_event(attrs_tag.get("change"), str(event.value))
         
         #a = self._dsl_attrs(event.select.id)
         #raise Exception(f"[on_select_changed] Nessun attributo 'change' per Select {event.select.id} (DSL: {a})")

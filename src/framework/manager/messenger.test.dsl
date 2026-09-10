@@ -12,47 +12,14 @@ exports: {
 
 tuple:test_suite := (
     {
-        "action": exports.messenger._split_domain;
-        "inputs": "notifications.created";
-        "outputs": (none, "notifications.created");
-        "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "_split_domain conserva un dominio senza controller";
-    },
-    {
-        "action": exports.messenger._split_domain;
-        "inputs": "email:notifications.created";
-        "outputs": ("email", "notifications.created");
-        "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "_split_domain separa controller e dominio usando il primo separatore";
-    },
-    {
-        "action": exports.messenger._split_domain;
-        "inputs": "email:notifications:created";
-        "outputs": ("email", "notifications:created");
-        "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "_split_domain conserva i separatori successivi nel dominio";
-    },
-    {
-        "action": exports.messenger._split_domain;
-        "inputs": "console:info";
-        "outputs": ("console", "info");
-        "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "_split_domain prepara correttamente il routing usato dallo shutdown";
-    },
-    {
-        "action": exports.messenger._split_domain;
-        "inputs": none;
-        "outputs": (none, none);
-        "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "_split_domain gestisce un dominio nullo senza crashare";
-    },
-    {
         "action": exports.messenger.send;
         "inputs": {
             "args": (none);
             "kwargs": {
                 "message": "pong";
-                "domain": "console:info"
+                "adapter": "mock";
+                "receiver": "console";
+                "domain": "info"
             }
         };
         "outputs": none;
@@ -64,7 +31,9 @@ tuple:test_suite := (
         "inputs": {
             "args": (none);
             "kwargs": {
-                "domain": "console:info"
+                "receiver": "console";
+                "adapter": "mock";
+                "domain": "info"
             }
         };
         "outputs": {

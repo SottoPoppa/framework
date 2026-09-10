@@ -19,7 +19,7 @@ policies: {
     policy:DENY_COPILOT_BROADCAST := {
         effect: "deny";
         target: { action: "publish" };
-        condition: @action == "publish" & @request.provider == "copilot" & @request.destination != "copilot"
+        condition: @action == "publish" & @request.provider == "copilot" & @request.receiver != "copilot"
     };
     policy:PUBLISH := {
         effect: "allow";

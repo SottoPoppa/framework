@@ -17,34 +17,23 @@ class Manager(manager.Port):
         self.defender = defender
         self.providers = messages
 
-    @staticmethod
-    def _split_domain(domain: str | None) -> tuple[str | None, str | None]:
+    def _matching_providers(self, receiver: str | None, adapter: str | None = None) -> list:
         """
-        Spezza 'controller:domain' in (controller, domain).
+        Ritorna i provider che corrispondono al destinatario.
 
-        Se non c'è ':' ritorna (None, domain).
+        Se receiver è None, ritorna tutti i provider.
         """
-        if domain and ':' in domain:
-            controller, domain = domain.split(':', 1)
-            return controller, domain
-
-        return None, domain
-
-    def _matching_providers(self, controller: str | None) -> list:
-        """
-        Ritorna i provider che corrispondono al controller.
-
-        Se controller è None, ritorna tutti i provider.
-        """
-        if controller is None:
+        if receiver is None:
             return list(self.providers)
 
         return [
             provider
             for provider in self.providers
             if (
-                provider.config.get('name') == controller
-                or provider.adapter == controller
+                (receiver is None
+                    or provider.config.get('name') == receiver
+                    or provider.adapter == receiver)
+                and (adapter is None or provider.adapter == adapter)
             )
         ]
 
@@ -59,7 +48,11 @@ class Manager(manager.Port):
             return True
         provider_name = provider.config.get("name") or provider.adapter
         request = dict(constants)
-        request.update({"provider": provider_name, "destination": destination})
+        request.update({
+            "adapter": provider.adapter,
+            "provider": provider_name,
+            "receiver": destination,
+        })
         return await self.defender.authorized(
             "message",
             action=action,
@@ -69,22 +62,30 @@ class Manager(manager.Port):
     async def _dispatch(
         self,
         session,
-        controller: str | None,
         domain: str | None,
         **constants,
     ):
         """
         Instrada il messaggio verso i provider/controller appropriati.
         """
-        destination = constants.get("receiver") or controller
-        matched = self._matching_providers(destination)
+        destination = constants.get("receiver")
+        adapter = constants.get("adapter")
+
+        if adapter == "dsl":
+            if not destination or not self.defender or destination not in self.defender.controllers:
+                return
+            request = dict(constants)
+            request.update({"adapter": "dsl", "provider": "dsl", "receiver": destination})
+            if await self.defender.authorized("message", action="publish", request=request):
+                
+                await session.emit(destination, domain, value=constants.get("message"))
+            return
+
+        matched = self._matching_providers(destination, adapter)
 
         message_text = constants.get('message')
 
-        if controller and not matched:
-            if self.defender and controller in self.defender.controllers:
-                await session.emit(controller, domain, message_text)
-
+        if destination and not matched:
             return
 
         for provider in matched:
@@ -98,30 +99,23 @@ class Manager(manager.Port):
 
         Il routing effettivo viene delegato a _dispatch().
         """
-        controller, domain = self._split_domain(constants.get('domain'))
         dispatch_constants = {
             key: value
             for key, value in constants.items()
-            if key != 'domain'
+            if key != "domain"
         }
-
-        await self._dispatch(session, controller, domain, **dispatch_constants)
+        await self._dispatch(session, constants.get('domain'), **dispatch_constants)
 
     @flow.result()
     async def receive(self, session, **constants):
         """
         Riceve il primo risultato disponibile dai provider.
         """
-        controller, domain = self._split_domain(constants.get('domain'))
-
-        destination = constants.get("receiver") or controller
+        domain = constants.get("domain")
+        destination = constants.get("receiver")
         matched = self._matching_providers(destination)
 
-        if controller and not matched:
-            if self.defender and controller in self.defender.controllers:
-                # TODO: definire come ricevere dal defender
-                return None
-
+        if destination and not matched:
             return None
 
         authorized = [

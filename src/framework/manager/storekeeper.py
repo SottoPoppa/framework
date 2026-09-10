@@ -29,7 +29,7 @@ class Manager(manager.Port):
 
     @flow.result()
     async def startup(self, session):
-        await self.messenger.send(session, message="Storekeeper avviato.", domain="console:info")
+        await self.messenger.send(session, message="Storekeeper avviato.", receiver="console", domain="info")
         for provider in self.persistences:
             start = getattr(provider, 'start', None)
             if callable(start):
@@ -38,7 +38,7 @@ class Manager(manager.Port):
 
     @flow.result()
     async def shutdown(self, session):
-        await self.messenger.send(session, message="Storekeeper arrestato.", domain="console:info")
+        await self.messenger.send(session, message="Storekeeper arrestato.", receiver="console", domain="info")
         return flow.success(None)
 
     @flow.result()

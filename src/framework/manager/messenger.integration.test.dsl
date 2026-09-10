@@ -14,7 +14,8 @@ session:session := test.session;
             "args": [session];
             "kwargs": {
                 "message": "integration-ping";
-                "domain": "console:info"
+                "receiver": "console";
+                "domain": "info"
             }
         };
         "outputs": none;
@@ -26,7 +27,8 @@ session:session := test.session;
         "inputs": {
             "args": [session];
             "kwargs": {
-                "domain": "console:info"
+                "receiver": "console";
+                "domain": "info"
             }
         };
         "outputs": {

@@ -49,11 +49,11 @@
         "test": "0db22083eb52704f1bba9be8b7ba42cee975ce0ab3ec79f3cca303928b4d7411"
       },
       "shutdown": {
-        "production": "8452373de93bbd87f0b8573ed20faf27a116f20846bc4d6341198448b710744d",
+        "production": "1b729459b2e2d93651a08de800ca14a7a5595a5dd8dcf1e10fd49117ce9e6dea",
         "test": "8452373de93bbd87f0b8573ed20faf27a116f20846bc4d6341198448b710744d"
       },
       "startup": {
-        "production": "a97fdd10454da4b3c895908b0ec13db534a6143bf149033e238b93f52b35d8f0",
+        "production": "b30620e5a4d149bf0227908f61804e1afdc7ef07ace296ace2118a2002580f92",
         "test": "a97fdd10454da4b3c895908b0ec13db534a6143bf149033e238b93f52b35d8f0"
       },
       "store": {

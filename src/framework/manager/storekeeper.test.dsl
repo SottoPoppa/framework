@@ -153,7 +153,7 @@ tuple:test_suite := (
         "action": exports.receive_message;
         "inputs": {
             "args": [session];
-            "kwargs": {"domain": "console:info"}
+            "kwargs": {"receiver": "console"; "domain": "info"}
         };
         "outputs": {
             "message": "Storekeeper avviato.";
@@ -173,7 +173,7 @@ tuple:test_suite := (
         "action": exports.receive_message;
         "inputs": {
             "args": [session];
-            "kwargs": {"domain": "console:info"}
+            "kwargs": {"receiver": "console"; "domain": "info"}
         };
         "outputs": {
             "message": "Storekeeper arrestato.";

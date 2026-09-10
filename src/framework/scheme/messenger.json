@@ -10,6 +10,11 @@
     "empty": false,
     "comment": "Topic o canale di destinazione (es. info.server.login)."
   },
+  "adapter": {
+    "type": "string",
+    "required": false,
+    "comment": "Canale tecnico di consegna, per esempio copilot, broker o dsl."
+  },
   "routing": {
     "type": "string",
     "default": "broadcast",
