@@ -52,10 +52,16 @@ class DagRunner:
         self.sessions[sid] = session
 
         if resolve_context:
-            # Compatibilita per gli utilizzatori diretti del runner.
+            # Struttura il contesto in namespace separati per evitare ambiguità
+            # - shared: variabili da altri controller DSL (esplicite tramite shared.*)
+            # - session: l'oggetto sessione per accesso metadati
+            # - local: spazio locale (vuoto all'inizio, riempito dal DSL)
+            shared_context = {}
             for key, expr in raw_ctx.items():
                 resolved_val = await self.executor.execute(expr, execution_context)
-                execution_context.set(key, resolved_val)
+                shared_context[key] = resolved_val
+            
+            execution_context.set('shared', shared_context)
 
         for node_name in dag.nodes:
             session.mark(node_name, NodeState.PENDING)

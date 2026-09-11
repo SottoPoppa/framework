@@ -1,7 +1,8 @@
 {
     message(default: "",entry:false) -> message;
 
-    dependencies(entry: false) -> file_dependencies(terminal.selected);
+    % Accedi esplicitamente al namespace 'shared' per evitare ambiguità %
+    dependencies(entry: false) -> file_dependencies(shared.terminal.selected);
 
     send(entry:false, deps:false) -> messenger.send(
             session,

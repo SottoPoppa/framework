@@ -148,6 +148,68 @@ Questi pattern sono stati trovati nel codice esistente durante una review e sono
 
 ---
 
+## 📦 DSL Cross-Controller Access Pattern
+
+Quando un controller DSL accede a variabili definite da un altro controller, il framework struttura il contesto in **tre namespace separati** per evitare ambiguità:
+
+### Namespace Disponibili
+
+- **`shared.X`** — Variabili da altri controller DSL (risultati di esecuzioni precedenti)
+- **`session.context.X`** — Metadati della sessione (accesso all'oggetto UserSession)
+- **`local_X`** — Variabili locali (dichiarate in questo controller, naming convention)
+- **`X`** — Solo se dichiarate localmente senza prefisso
+
+### Esempi
+
+```dsl
+% terminal.dsl %
+{
+    selected: "src/authenticator.py";
+    select(...) -> selected;
+}
+
+% chat.dsl %
+{
+    % ✅ Accedi a variabili da terminal.dsl (esplicito!)
+    file_selected -> shared.terminal.selected;
+    
+    % ✅ Accedi alla sessione (esplicito!)
+    user_id -> session.context.user.id;
+    
+    % ✅ Variabile locale (naming convention)
+    local_file_deps -> file_dependencies(file_selected);
+    
+    % ✅ Usa la locale
+    send(...) -> messenger.send(session, message: str(local_file_deps));
+}
+```
+
+### ❌ PROIBITO
+
+```dsl
+% Accesso ambiguo — NON FUNZIONA!
+dependencies -> file_dependencies(terminal.selected);
+% NameError: Ambiguous variable 'terminal.selected'
+% Use: shared.terminal.selected (for cross-controller)
+```
+
+### Perché
+
+Il framework **appiattisce il contesto in namespace separati** nel runner (`runner.py`, linea 54):
+
+```python
+# Tutte le variabili condivise vanno in shared.
+execution_context.set('shared', shared_context)
+```
+
+**Benefici**:
+- ✅ Impossibile confondere variabili locali e globali
+- ✅ Dipendenze cross-DSL esplicite e tracciabili
+- ✅ Debugging facile (vedi subito da dove viene una variabile)
+- ✅ No shadowing accidentale di variabili
+
+---
+
 ## 📁 Struttura Directory (`src/application/`)
 
 - `action/`: logica di dominio in `.dsl` (o `.py` per casi non esprimibili nel DSL).
