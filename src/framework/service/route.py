@@ -44,7 +44,7 @@ def register(routes, route):
     if method not in ROUTE_METHODS:
         raise ValueError(f"Metodo HTTP non supportato: {method}")
     entry = {
-        **{key: route.get(key) for key in ("method", "type", "layout", "controller", "path")},
+        **{key: route.get(key) for key in ("method", "type", "layout", "controllers", "path")},
         "view": view,
         "pattern": compile_pattern(path),
     }

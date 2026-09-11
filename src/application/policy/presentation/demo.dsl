@@ -19,7 +19,7 @@ type:route := {
     "method": { "type": "string"; "default": "GET" };
     "type": { "type": "string" "allowed": ["view","authenticate","terminate","activate","reinstate"] };
     "view": { "type": "string"; "default": "" };
-    "controller": { "type": "string"; "default": "" };
+    "controllers": { "type": "list"; "schema": { "type": "string" }; "default": [] };
 };
 
 type:policy := {
@@ -68,9 +68,9 @@ roles:{
 }
 
 routes: {
-    route:GET_INDEX := { path:"/"; method:"GET"; "type":"view"; view:"terminal.xml"; controller:"terminal" };
-    route:GET_CHAT := { path:"/chat"; method:"GET"; "type":"view"; view:"chat.xml"; controller:"chat" };
-    route:GET_ECOMMERCE := { path:"/shop"; method:"GET"; "type":"view"; view:"ecommerce.xml"; controller:"catalog" };
+    route:GET_INDEX := { path:"/"; method:"GET"; "type":"view"; view:"terminal.xml"; controllers:["terminal", "chat"] };
+    route:GET_CHAT := { path:"/chat"; method:"GET"; "type":"view"; view:"chat.xml"; controllers:["chat"] };
+    route:GET_ECOMMERCE := { path:"/shop"; method:"GET"; "type":"view"; view:"ecommerce.xml"; controllers:["catalog"] };
     route:GET_PROFILE := { path:"/profile"; method:"GET"; "type":"view"; view:"profile.xml" };
     // Auth
     route:GET_LOGIN := { path:"/login"; method:"GET"; "type":"view"; view:"login.xml" };
@@ -89,7 +89,7 @@ routes: {
     route:GET_BROWSER := { path:"/browse"; method:"GET"; "type":"view"; view:"twitch_browse.xml" };
     route:GET_HOME := { path:"/home"; method:"GET"; "type":"view"; view:"twitch_home.xml" };
     route:GET_USER_PROFILE := { path:"/user/{id}"; method:"GET"; "type":"view"; view:"twitch_channel.xml" };
-    route:GET_TRIS := { path:"/tris"; method:"GET"; "type":"view"; view:"tris.xml"; controller:"tris" };
+    route:GET_TRIS := { path:"/tris"; method:"GET"; "type":"view"; view:"tris.xml"; controllers:["tris"] };
 }
 
 policies: {

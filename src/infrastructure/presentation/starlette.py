@@ -987,11 +987,10 @@ class Adapter(presentation.Port):
 
     async def mount_view(self, url, metadata, session):
         view = metadata.get('view')
-        controller = metadata.get('controller')
+        controllers = metadata.get("controllers") or []
         xml_view = await self.presenter.get_view(session, view)
         if flow.is_result(xml_view):
             xml_view = flow.output(xml_view)
-        controllers = [controller] if controller else []
 
         session_result = await self.defender.session_create(**session)
         runtime_session = flow.output(session_result)

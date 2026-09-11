@@ -405,60 +405,6 @@ class XmlModalScreen(ModalScreen):
         """Chiude questa modale (Screen.dismiss() la rimuove dallo screen stack)."""
         await self.dismiss()
 
-    async def open_modal(self, view_path: str, **context):
-        """
-        Costruisce la vista XML in `view_path` (che deve contenere un
-        <Window type="modal">, altrimenti mount_tag produce una XmlScreen
-        normale) e la mostra sopra la schermata corrente.
-
-        `context` viene passato al template Jinja della vista, come già
-        fa render_template() per le viste normali.
-
-        Usare per modali definite in un FILE XML SEPARATO. Se la modale è
-        invece annidata nello stesso file della pagina corrente (come
-        <Window type="modal"> figlio di <Window type="page">), è già stata
-        costruita e registrata durante il rendering della pagina: usare
-        open_registered_modal() invece, che non ricarica nulla da disco.
-        """
-        xml_view = flow.output(await self.presenter.get_view(self.session, view_path))
-        modal = await self.render_template(text=xml_view, controllers=[self.routes[view_path]['GET']['controller']], **context)
-        await self.app.push_screen(modal)
-        return modal
-
-    async def open_registered_modal(self, modal_id: str):
-        """
-        Ricostruisce e mostra come modale il <Window type="modal"> con
-        quell'id, definito inline nella stessa vista.
-
-        IMPORTANTE: ricostruisce SEMPRE un'istanza nuova a partire dal suo
-        XML grezzo (già disponibile in self.DOM, popolato durante il primo
-        rendering della pagina) invece di riusare il widget costruito in
-        precedenza. In Textual una Screen non è pensata per essere spinta
-        sullo screen stack più di una volta: dopo pop_screen() i suoi
-        widget interni restano "già montati" internamente, e ripresentare
-        la stessa istanza causa un blocco invece di un errore pulito.
-        Ricostruire da zero ad ogni apertura è il pattern corretto — è
-        esattamente lo stesso approccio già usato da open_modal() per le
-        modali caricate da file esterno, solo che qui il testo XML non
-        viene letto da disco ma da self.DOM.
-        """
-        xml_fragment = self.DOM.get(modal_id)
-        if xml_fragment is None:
-            print(f"[open_registered_modal] Nessun nodo con id '{modal_id}' in DOM")
-            return None
-        modal = await self.render_template(text=xml_fragment)
-        await self.app.push_screen(modal)
-        return modal
-
-    def close_modal(self) -> None:
-        """
-        Chiude la modale corrente, se ce n'è una in cima allo stack.
-        Non fa nulla se la schermata attiva non è una modale (evita di
-        chiudere per errore la schermata principale).
-        """
-        if isinstance(self.app.screen, ModalScreen):
-            self.app.pop_screen()
-
 class AppDinamica(App):
 
     DEFAULT_CSS = """
@@ -579,10 +525,18 @@ class AppDinamica(App):
             # Se il pulsante ha un attributo route, naviga a quella URL
             route = getattr(event.button, "_dsl_route", None) or attrs_tag.get("route")
             if route:
+                if isinstance(route, str) and route.startswith("#"):
+                    await self.adapter.open_registered_modal(route[1:])
+                    return
                 await self.adapter.navigate_to(route)
                 return
 
-            await self._send_dsl_event(attrs_tag.get("click"), str(event.button.id))
+            click = attrs_tag.get("click")
+            if click == "modal:close":
+                self.adapter.close_modal()
+                return
+
+            await self._send_dsl_event(click, str(event.button.id))
 
     async def on_click(self, event: Click) -> None:
         widget = event.widget
@@ -895,6 +849,37 @@ class Adapter(presentation.Port):
         self.app = AppDinamica(self)
         self.validate_adapter()
 
+    async def open_modal(self, view_path: str, **context):
+        """Apre una vista XML separata come modale."""
+        xml_view = flow.output(await self.presenter.get_view(self.session, view_path))
+        modal = await self.render_template(
+            self.session,
+            text=xml_view,
+            controllers=self.routes[view_path]["GET"].get("controllers", []),
+            **context,
+        )
+        await self.app.push_screen(modal)
+        return modal
+
+    async def open_registered_modal(self, modal_id: str):
+        """Ricostruisce e apre il Window modal registrato nella vista corrente."""
+        xml_fragment = self.DOM.get(modal_id)
+        if xml_fragment is None:
+            print(f"[open_registered_modal] Nessun nodo con id '{modal_id}' in DOM")
+            return None
+        modal = await self.render_template(
+            self.session,
+            text=xml_fragment,
+            controllers=getattr(self, "_current_view_controllers", []),
+        )
+        await self.app.push_screen(modal)
+        return modal
+
+    def close_modal(self) -> None:
+        """Chiude la modale corrente, se presente nello screen stack."""
+        if isinstance(self.app.screen, ModalScreen):
+            self.app.pop_screen()
+
     def _ensure_active_app(self):
         if hasattr(self, 'app') and self.app:
             from textual._context import active_app
@@ -929,8 +914,7 @@ class Adapter(presentation.Port):
             raise KeyError(f"Nessuna rotta GET trovata per l'URL '{url}'")
 
         view_path = route_info.get('view')
-        controller = route_info.get('controller')
-        controllers = [controller] if controller else []
+        controllers = route_info.get("controllers") or []
 
         xml_view = flow.output(await self.presenter.get_view(self.session, view_path))
         self._current_view_text = xml_view

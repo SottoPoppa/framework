@@ -15,7 +15,9 @@
                 {% endfor %}
             {% endif %}
         </Input>
-        <Action id="save" route="/chat" />
+        <Action id="open-chat" route="#chat-modal">
+            <Text>Chat</Text>
+        </Action>
     </Row>
 
     <!-- Main Workspace (Generato dinamicamente per le 3 sezioni) -->
@@ -31,12 +33,13 @@
             <Column id="{{ scope_id }}" width="100%"  padding="0,1">
                 <Group id="{{ scope_id }}-editors" type="tab" height="1fr">
                     {% for sub_type in ['file', 'test', 'contract'] %}
+                    {% set current_file = selected_file | default('', true) %}
                     {% if sub_type == 'test' %}
-                        {% set target_file = selected_file.rsplit('.', 1)[0] ~ '.test.dsl' if selected_file else '' %}
+                        {% set target_file = current_file.rsplit('.', 1)[0] ~ '.test.dsl' if current_file else '' %}
                     {% elif sub_type == 'contract' %}
-                        {% set target_file = selected_file.rsplit('.', 1)[0] ~ '.contract.json' if selected_file else '' %}
+                        {% set target_file = current_file.rsplit('.', 1)[0] ~ '.contract.json' if current_file else '' %}
                     {% else %}
-                        {% set target_file = selected_file %}
+                        {% set target_file = current_file %}
                     {% endif %}
                     <Option title="{{ sub_type }}" value="{{ scope_id }}-{{ sub_type }}">
                         <Input type="editor" language="{{ editor_language(target_file) }}" id="{{ scope_id }}-{{ sub_type }}-editor" height="1fr">
@@ -58,4 +61,37 @@
         </Option>
         {% endfor %}
     </Group>
+
+    <Window id="chat-modal" type="modal" title="Copilot Chat">
+        <Column width="full" height="full">
+            <Container id="chat-response" width="full" overflow="auto">
+                <Text type="markdown" color="#17202a">{{ chat.copilot_source.message }}</Text>
+            </Container>
+
+            <Row width="full" align="end">
+                <Input
+                    id="chat-message"
+                    width="90%"
+                    type="textarea"
+                    value="{{ chat.message }}"
+                    change="chat:message"
+                    placeholder="Scrivi un messaggio"
+                    required="true"
+                />
+                <Action
+                    id="chat-send"
+                    type="button"
+                    click="chat:send"
+                    background="#17202a"
+                    color="#ffffff"
+                >
+                    <Text>Invia</Text>
+                </Action>
+            </Row>
+
+            <Action id="chat-close" type="button" click="modal:close">
+                <Text>Chiudi</Text>
+            </Action>
+        </Column>
+    </Window>
 </Window>
