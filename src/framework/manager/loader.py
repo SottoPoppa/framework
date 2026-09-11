@@ -141,12 +141,12 @@ class Infrastructure:
             return target
         if "{{" not in target and "{%" not in target and "{#" not in target:
             return target
+
+        def env(name: str, default: str = "") -> str:
+            return os.environ.get(name, default)
+
         payload = {
-            "env": {
-                key: value
-                for key, value in os.environ.items()
-                if key.startswith("GLPI_")
-            },
+            "env": env,
             **(context or {}),
         }
         return self.jinja_env.from_string(target).render(**payload)

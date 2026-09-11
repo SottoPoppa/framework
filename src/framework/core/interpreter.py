@@ -191,7 +191,10 @@ class SessionHandle:
         else:
             node = node_or_controller
             event_payload = payload_or_node
-        return await self.runner.emit(self.sid, node, event_payload)
+        session = self.runner.sessions.get(self.sid)
+        if session is None:
+            raise RuntimeError("La sessione non è disponibile")
+        return await self.runner.emit(session, node, event_payload)
 
     async def __aenter__(self):
         return self
@@ -202,7 +205,9 @@ class SessionHandle:
     async def close(self):
         if self._closed:
             return
-        self.runner.close_session(self.sid)
+        session = self.runner.sessions.get(self.sid)
+        if session is not None:
+            self.runner.close_session(session)
         self._closed = True
 
 
@@ -348,8 +353,8 @@ class Interpreter:
         return self
 
     async def stop(self):
-        for sid in tuple(self.runner.sessions):
-            self.runner.close_session(sid)
+        for session in tuple(self.runner.sessions.values()):
+            self.runner.close_session(session)
         self.session_envs.clear()
         self._started = False
 

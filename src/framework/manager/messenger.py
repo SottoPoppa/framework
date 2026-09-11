@@ -89,7 +89,7 @@ class Manager(manager.Port):
 
         for provider in matched:
             if await self._authorized_provider("publish", provider, destination, constants):
-                await provider.post(**constants | {'domain': domain})
+                await provider.post(session, **constants | {'domain': domain})
 
     @flow.result(inputs='messenger')
     async def send(self, session, **constants):

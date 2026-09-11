@@ -1036,7 +1036,12 @@ class Adapter(presentation.Port):
                     #print(f"Emitting {event_name} for {file_path} (SID: {sid})")
                     try:
                         #print(f"Emitting {event_name} for {file_path} (SID: {sid})")
-                        self.executor.interpreter.runner.emit(sid, file_path, event_name)
+                        session = self.executor.interpreter.runner.sessions.get(sid)
+                        if session is None:
+                            raise RuntimeError("La sessione WebSocket non è disponibile")
+                        await self.executor.interpreter.runner.emit(
+                            session, file_path, event_name
+                        )
                     except Exception as e:
                          print(f"Errore durante l'emissione dell'evento: {e}")
                              

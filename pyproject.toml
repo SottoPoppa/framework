@@ -6,6 +6,7 @@ readme = "README.md"
 dependencies = [
     "jinja2",
     "tomli; python_version < '3.11'",
+    "github-copilot-sdk",
 ]
 
 [manager.defender]
@@ -36,12 +37,12 @@ name = "stub"
 [[message.bus]]
 name = "broker"
 
-#[[message.copilot]]
-#name = "copilot"
-#model = "auto"
-#working_directory = "."
-#enable_terminal = false
-#token = "{{env.COPILOT_GITHUB_TOKEN}}"
+[[message.copilot]]
+name = "copilot"
+model = "gpt-5.6-luna"
+working_directory = "."
+enable_terminal = false
+token = "{{ env('COPILOT_GITHUB_TOKEN') }}"
 
 #[[presentation.starlette]]
 #name = "web"

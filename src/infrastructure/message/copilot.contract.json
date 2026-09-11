@@ -4,19 +4,26 @@
     "can": [
       "Adapter.can"
     ],
+    "queue_domain": [
+      "Adapter._queue_domain"
+    ],
     "read": [
       "Adapter.read"
     ]
   },
   "hashes": {
     "Adapter": {
+      "_queue_domain": {
+        "production": "7853b8a657747a8d7eadce7ecaeec7103d501485445d79213b236548a1b7c6cb",
+        "test": "7853b8a657747a8d7eadce7ecaeec7103d501485445d79213b236548a1b7c6cb"
+      },
       "can": {
         "production": "7e404e2ae551567d4cda07c29f14d2255072c3a757fd2bf445321d63dcb73960",
         "test": "7e404e2ae551567d4cda07c29f14d2255072c3a757fd2bf445321d63dcb73960"
       },
       "read": {
-        "production": "e6972bca57226a2adf510cf9472b4e6a363bf8cce87869cceb7431cd6ec1a1d1",
-        "test": "e6972bca57226a2adf510cf9472b4e6a363bf8cce87869cceb7431cd6ec1a1d1"
+        "production": "fc5cafa5d931488d8132d813366269dd011ca4428ba9287f223ac39099e12d7f",
+        "test": "fc5cafa5d931488d8132d813366269dd011ca4428ba9287f223ac39099e12d7f"
       }
     }
   },

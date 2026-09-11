@@ -5,6 +5,7 @@ imports: {
 
 any:provider := imports.mock.Adapter(name: "console");
 any:messenger := imports.module.Manager(messages: (provider), defender: none);
+session:session := test.session;
 
 exports: {
     'messenger': messenger
@@ -14,7 +15,7 @@ tuple:test_suite := (
     {
         "action": exports.messenger.send;
         "inputs": {
-            "args": (none);
+            "args": (session);
             "kwargs": {
                 "message": "pong";
                 "adapter": "mock";
@@ -29,7 +30,7 @@ tuple:test_suite := (
     {
         "action": exports.messenger.receive;
         "inputs": {
-            "args": (none);
+            "args": (session);
             "kwargs": {
                 "receiver": "console";
                 "adapter": "mock";

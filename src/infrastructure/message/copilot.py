@@ -4,6 +4,7 @@ import os
 from collections import defaultdict
 from typing import Any
 
+import framework.core.flow as flow
 import framework.port.message as message
 
 
@@ -25,8 +26,12 @@ class Adapter(message.Port):
         self.processable = {"post", "read", "event"}
         self._client = constants.get("client")
         self._sessions: dict[str, Any] = {}
-        self._queues: defaultdict[str, asyncio.Queue[Any]] = defaultdict(asyncio.Queue)
+        self._queues: defaultdict[tuple[str, str], asyncio.Queue[Any]] = defaultdict(
+            asyncio.Queue
+        )
         self._locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._response_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._response_tasks: set[asyncio.Task[Any]] = set()
 
     def loader(self, config: dict[str, Any]) -> None:
         self.config.update(config)
@@ -43,34 +48,60 @@ class Adapter(message.Port):
             )
         return True
 
-    async def post(self, *services: Any, **constants: Any) -> None:
+    async def post(self, session: Any, *services: Any, **constants: Any) -> None:
         client = await self._get_client()
         if client is None:
             raise RuntimeError("Copilot adapter requires an injected client or github-copilot-sdk")
 
-        session_id = str(constants.get("session_id", "default"))
-        session = await self._get_session(session_id, client)
+        session_id = self._session_id(session, constants.get("session_id"))
+        copilot_session = await self._get_session(session_id, client)
         prompt = constants.get("message", constants.get("prompt"))
         if not isinstance(prompt, str) or not prompt.strip():
             raise ValueError("Copilot message must be a non-empty string")
 
-        response = await session.send_and_wait(prompt, timeout=self.config.get("timeout", 120.0))
-        content = self._response_content(response)
+        task = asyncio.create_task(
+            self._receive_response(
+                copilot_session,
+                session_id,
+                prompt,
+                self._queue_domain(constants.get("domain")),
+            )
+        )
+        self._response_tasks.add(task)
+        task.add_done_callback(self._response_tasks.discard)
+
+    async def _receive_response(
+        self,
+        session: Any,
+        session_id: str,
+        prompt: str,
+        domain: str,
+    ) -> None:
+        async with self._response_locks[session_id]:
+            try:
+                response = await session.send_and_wait(
+                    {"prompt": prompt},
+                    timeout=self.config.get("timeout", 120.0),
+                )
+                content = self._response_content(response)
+            except Exception as exc:
+                flow._dev_log("copilot.response.error type=%s error=%r", type(exc).__name__, exc)
+                content = f"Copilot error: {exc}"
         if content is not None:
-            await self._queues[session_id].put({
-                "domain": constants.get("domain", "general"),
+            item = {
+                "domain": domain,
                 "message": content,
                 "session_id": session_id,
-            })
+            }
+            await self._queues[(session_id, self._queue_domain(domain))].put(item)
+            if domain != "*":
+                await self._queues[(session_id, "*")].put(item)
 
     async def read(self, session: Any, *services: Any, **constants: Any) -> Any:
-        session_id = str(
-            constants.get("session_id")
-            or getattr(session, "id", None)
-            or "default"
-        )
-        pattern = constants.get("domain", "*")
-        queue = self._queues[session_id]
+        pattern = constants.get("domain") or "general"
+        session_id = self._session_id(session)
+        normalized_pattern = self._queue_domain(pattern)
+        queue = self._queues[(session_id, normalized_pattern)]
         if self.config.get("test_mode") and queue.empty():
             return None
         while True:
@@ -79,6 +110,12 @@ class Adapter(message.Port):
                 return item
 
     async def close(self) -> None:
+        for task in self._response_tasks:
+            task.cancel()
+        if self._response_tasks:
+            await asyncio.gather(*self._response_tasks, return_exceptions=True)
+        self._response_tasks.clear()
+        self._queues.clear()
         for session in list(self._sessions.values()):
             disconnect = getattr(session, "disconnect", None)
             if disconnect is not None:
@@ -102,14 +139,20 @@ class Adapter(message.Port):
             if inspect.isawaitable(self._client):
                 self._client = await self._client
             return self._client
+        token = self._github_token()
+        if token is None:
+            raise RuntimeError(
+                "Copilot SDK requires COPILOT_GITHUB_TOKEN or an injected client"
+            )
         try:
             from copilot import CopilotClient
         except ImportError:
             return None
-        self._client = CopilotClient(
-            github_token=self._github_token(),
-            working_directory=self.config.get("working_directory"),
-        )
+        options = {
+            "github_token": token,
+            "cwd": self.config.get("working_directory"),
+        }
+        self._client = CopilotClient(options)
         return self._client
 
     def _github_token(self) -> str | None:
@@ -148,7 +191,7 @@ class Adapter(message.Port):
                 kwargs["tools"] = tools
             if self.config.get("available_tools") is not None:
                 kwargs["available_tools"] = self.config["available_tools"]
-            session = create_session(**kwargs)
+            session = create_session(config=kwargs)
             if inspect.isawaitable(session):
                 session = await session
             self._sessions[session_id] = session
@@ -199,11 +242,37 @@ class Adapter(message.Port):
         return pattern == domain
 
     @staticmethod
+    def _queue_domain(domain: Any) -> str:
+        return domain.strip() if isinstance(domain, str) and domain.strip() else "general"
+
+    @staticmethod
+    def _session_id(session: Any, fallback: Any = None) -> str:
+        return str(getattr(session, "id", None) or fallback or "default")
+
+    @staticmethod
     def _response_content(response: Any) -> str | None:
         if response is None:
             return None
-        data = getattr(response, "data", response)
-        content = getattr(data, "content", None)
-        if content is None and isinstance(data, dict):
-            content = data.get("content")
+
+        def find_content(value: Any, depth: int = 0) -> Any:
+            if value is None or depth > 3:
+                return None
+            if isinstance(value, str):
+                return value
+            if isinstance(value, dict):
+                for key in ("content", "message", "reply", "text"):
+                    if key in value and value[key] is not None:
+                        found = find_content(value[key], depth + 1)
+                        if found is not None:
+                            return found
+                return None
+            for key in ("content", "message", "reply", "text", "data"):
+                nested = getattr(value, key, None)
+                if nested is not None:
+                    found = find_content(nested, depth + 1)
+                    if found is not None:
+                        return found
+            return None
+
+        content = find_content(response)
         return str(content) if content is not None else None

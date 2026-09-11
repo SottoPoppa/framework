@@ -253,10 +253,10 @@ Per i segreti e i parametri di connessione usare la variabile `env` e non
 inserire i valori direttamente nel repository:
 
 ```toml
-client_id = '{{ env["GLPI_CLIENT_ID"] }}'
-client_secret = '{{ env["GLPI_CLIENT_SECRET"] }}'
-password = '{{ env["GLPI_PASSWORD"] }}'
-app_token = '{{ env["GLPI_APP_TOKEN"] }}'
+client_id = '{{ env("GLPI_CLIENT_ID") }}'
+client_secret = '{{ env("GLPI_CLIENT_SECRET") }}'
+password = '{{ env("GLPI_PASSWORD") }}'
+app_token = '{{ env("GLPI_APP_TOKEN") }}'
 ```
 
 Prima di avviare l'applicazione, esportare le variabili nell'ambiente del

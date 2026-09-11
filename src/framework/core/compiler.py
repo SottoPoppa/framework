@@ -169,9 +169,13 @@ class Compiler:
 
     def _task_metadata(self, trigger):
         options = getattr(trigger, "kwargs", {})
-        if "default" not in options:
-            return {}
-        return {"default": self._expr(options["default"])}
+        metadata = {}
+        if "default" in options:
+            metadata["default"] = self._expr(options["default"])
+        for key in ("source", "on_event"):
+            if key in options:
+                metadata[key] = self._literal(options[key])
+        return metadata
 
     def _output_names(self, expression) -> tuple[str, ...]:
         if isinstance(expression, (SequenceNode, TupleNode)):

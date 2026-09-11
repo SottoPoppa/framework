@@ -3,6 +3,8 @@ import inspect
 import uuid
 from typing import Any
 
+import framework.core.flow as flow
+
 from .context import ExecutionContext
 from .execution import Executor
 from .graph import Dag, NodeNotFound
@@ -22,6 +24,7 @@ class DagRunner:
         self.executor = executor or Executor(self.registry)
         self.dags: dict[str, Dag] = {}
         self.sessions: dict[str, Session] = {}
+        self._source_tasks: dict[str, dict[str, asyncio.Task]] = {}
         self._sem = asyncio.Semaphore(concurrency)
 
     def register(self, dag: Dag | DagDefinition) -> Dag:
@@ -64,10 +67,92 @@ class DagRunner:
         dag = self.dags[dag_name]
         session = session or await self.create_session(dag_name)
 
-        await asyncio.gather(
-            *(self._run_node(dag, session, n) for n in dag.entries())
-        )
+        regular_entries = []
+        for node_name in dag.entries():
+            if getattr(dag.get(node_name), "metadata", {}).get("source") is True:
+                self._start_source(dag, session, node_name)
+            else:
+                regular_entries.append(self._run_node(dag, session, node_name))
+
+        if regular_entries:
+            await asyncio.gather(*regular_entries)
         return session
+
+    def _start_source(self, dag: Dag, session: Session, node_name: str) -> None:
+        tasks = self._source_tasks.setdefault(session.id, {})
+        current = tasks.get(node_name)
+        if current and not current.done():
+            return
+        task = asyncio.create_task(self._run_source(dag, session, node_name))
+        tasks[node_name] = task
+
+        def clear_completed(completed: asyncio.Task) -> None:
+            if tasks.get(node_name) is completed:
+                tasks.pop(node_name, None)
+
+        task.add_done_callback(clear_completed)
+
+    async def _run_source(self, dag: Dag, session: Session, node_name: str) -> None:
+        node = dag.get(node_name)
+        session.mark(node_name, NodeState.RUNNING)
+        event_node = getattr(node, "metadata", {}).get("on_event")
+        flow._dev_log(
+            "dag.source.start node=%s event=%s session=%s",
+            node_name,
+            event_node,
+            session.id,
+        )
+
+        try:
+            if not event_node or event_node not in dag.nodes:
+                raise NodeNotFound(
+                    f"Source node {node_name!r} references missing event node {event_node!r}"
+                )
+
+            while True:
+                value = await self.executor.execute(node.action, session.context)
+                if flow.is_result(value):
+                    if not flow.check(value):
+                        session.errors[node_name] = value
+                        session.mark(node_name, NodeState.FAILED)
+                        flow._dev_log("dag.source.failed node=%s", node_name)
+                        return
+                    value = flow.output(value)
+                session.results[node_name] = value
+                session.context.set(node_name, value)
+                flow._dev_log(
+                    "dag.source.received node=%s payload_type=%s",
+                    node_name,
+                    type(value).__name__,
+                )
+                await self._run_source_event(dag, session, event_node, value)
+        except asyncio.CancelledError:
+            session.mark(node_name, NodeState.PENDING)
+            flow._dev_log("dag.source.cancelled node=%s", node_name)
+            raise
+        except Exception as exc:
+            session.errors[node_name] = exc
+            session.mark(node_name, NodeState.FAILED)
+            flow._dev_log(
+                "dag.source.error node=%s error=%r",
+                node_name,
+                exc,
+            )
+
+    async def _run_source_event(
+        self, dag: Dag, session: Session, node_name: str, payload: Any
+    ) -> None:
+        node = dag.get(node_name)
+        session.context.set(f"events.{node_name}", payload)
+        for output in node.outputs:
+            session.context.set(output, payload)
+        self._reset_subgraph(dag, session, node_name)
+        flow._dev_log(
+            "dag.source.event source=%s target=%s",
+            node_name,
+            node_name,
+        )
+        await self._run_node(dag, session, node_name)
 
     async def _run_node(self, dag: Dag, s: Session, n: str) -> None:
         node = dag.get(n)
@@ -151,30 +236,29 @@ class DagRunner:
                     if retry_delay:
                         await asyncio.sleep(retry_delay)
 
-    async def wait(self, session_id: str, node: str) -> Any:
+    async def wait(self, session: Session, node: str) -> Any:
         """Attendi il completamento di un determinato nodo in una sessione."""
-        return await self.sessions[session_id].wait(node)
+        return await session.wait(node)
 
     async def emit(
-        self, session_id: str, node: str, payload: Any = None
+        self, session: Session, node: str, payload: Any = None
     ) -> None:
         """Invia un evento/payload e attiva direttamente un nodo."""
-        s = self.sessions[session_id]
-        dag = self.dags[s.dag_name]
+        dag = self.dags[session.dag_name]
 
         if node not in dag.nodes:
             raise NodeNotFound(node)
 
-        s.context.set(f"events.{node}", payload)
+        session.context.set(f"events.{node}", payload)
         for output in dag.get(node).outputs:
-            s.context.set(output, payload)
-        self._reset_subgraph(dag, s, node)
-        await self._run_node(dag, s, node)
+            session.context.set(output, payload)
+        self._reset_subgraph(dag, session, node)
+        await self._run_node(dag, session, node)
         on_end = dag.get(node).on_end
         if on_end and on_end in dag.nodes:
-            self._reset_subgraph(dag, s, on_end)
-            await self._run_node(dag, s, on_end)
-        return s.results.get(node)
+            self._reset_subgraph(dag, session, on_end)
+            await self._run_node(dag, session, on_end)
+        return session.results.get(node)
 
     def _reset_subgraph(self, dag: Dag, session: Session, node: str) -> None:
         pending = [node]
@@ -189,6 +273,8 @@ class DagRunner:
             session.mark(current, NodeState.PENDING)
             pending.extend(dag.successors.get(current, ()))
 
-    def close_session(self, session_id: str) -> None:
+    def close_session(self, session: Session) -> None:
         """Rimuove e chiude una sessione attiva."""
-        self.sessions.pop(session_id, None)
+        for task in self._source_tasks.pop(session.id, {}).values():
+            task.cancel()
+        self.sessions.pop(session.id, None)

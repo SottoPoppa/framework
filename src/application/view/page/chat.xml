@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Window type="page" title="Copilot Chat" background="#f4f1ea">
+    <Column width="full" height="full" >
+        <Text type="h1" color="#17202a" font="black">Copilot Chat</Text>
+        <Text color="#5c6670">Invia un messaggio all'adapter GitHub Copilot.</Text>
+
+        <Container id="chat-response" width="full" background="#ffffff" radius="small" overflow="auto">
+            <Text color="#17202a">{{ chat.copilot_source}}</Text>
+            <Text>{{ chat.send }}</Text>
+            <Text>{{ chat.message }}</Text>
+        </Container>
+
+        <Row width="full" align="end" >
+            <Input id="chat-message" width="80%" type="textarea" value="{{ chat.message }}" change="chat:message"  placeholder="Scrivi un messaggio" required="true" />
+            <Action id="chat-send" type="button" click="chat:send" background="#17202a" color="#ffffff">
+                <Text>Invia</Text>
+
+            </Action>
+        </Row>
+    </Column>
+</Window>
