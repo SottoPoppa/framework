@@ -68,8 +68,8 @@ roles:{
 }
 
 routes: {
-    //route:GET_INDEX := { path:"/"; method:"GET"; "type":"view"; view:"terminal.xml"; controller:"terminal" };
-    route:GET_CHAT := { path:"/"; method:"GET"; "type":"view"; view:"chat.xml"; controller:"chat" };
+    route:GET_INDEX := { path:"/"; method:"GET"; "type":"view"; view:"terminal.xml"; controller:"terminal" };
+    route:GET_CHAT := { path:"/chat"; method:"GET"; "type":"view"; view:"chat.xml"; controller:"chat" };
     route:GET_ECOMMERCE := { path:"/shop"; method:"GET"; "type":"view"; view:"ecommerce.xml"; controller:"catalog" };
     route:GET_PROFILE := { path:"/profile"; method:"GET"; "type":"view"; view:"profile.xml" };
     // Auth

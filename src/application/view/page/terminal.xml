@@ -15,6 +15,7 @@
                 {% endfor %}
             {% endif %}
         </Input>
+        <Action id="save" route="/chat" />
     </Row>
 
     <!-- Main Workspace (Generato dinamicamente per le 3 sezioni) -->

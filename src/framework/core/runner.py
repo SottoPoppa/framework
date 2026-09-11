@@ -38,6 +38,7 @@ class DagRunner:
         dag_name: str,
         *,
         initial_context: dict[str, Any] | None = None,
+        context: ExecutionContext | None = None,
         resolve_context: bool = True,
     ) -> Session:
         dag = self.dags[dag_name]
@@ -46,15 +47,15 @@ class DagRunner:
         raw_ctx = dict(getattr(dag.definition, "context", {}))
         raw_ctx.update(initial_context or {})
 
-        context = ExecutionContext()
-        session = Session(dag.name, sid, context)
+        execution_context = context or ExecutionContext()
+        session = Session(dag.name, sid, execution_context)
         self.sessions[sid] = session
 
         if resolve_context:
             # Compatibilita per gli utilizzatori diretti del runner.
             for key, expr in raw_ctx.items():
-                resolved_val = await self.executor.execute(expr, context)
-                context.set(key, resolved_val)
+                resolved_val = await self.executor.execute(expr, execution_context)
+                execution_context.set(key, resolved_val)
 
         for node_name in dag.nodes:
             session.mark(node_name, NodeState.PENDING)

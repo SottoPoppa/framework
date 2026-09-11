@@ -13,6 +13,7 @@ from .runner import DagRunner
 from .compiler import Compiler
 from .parser import Parser
 from .data import Registry
+from .session import UserSession
 from framework.service.introspection import Reflection
 
 
@@ -119,18 +120,22 @@ class SessionHandle:
         sid: str = None,
         env: dict = None,
         context_preparer=None,
+        user_session: UserSession | None = None,
     ):
         self.runner = runner
         self.sid = sid or uuid.uuid4().hex
         self.env = dict(env or {})
         self._context_preparer = context_preparer
         self._closed = False
-        self._pending_context = ExecutionContext(self.env)
+        self.user_session = user_session or UserSession(
+            self.sid,
+            ExecutionContext(self.env),
+        )
+        self.sid = self.user_session.id
 
     @property
     def context(self):
-        session = self.runner.sessions.get(self.sid)
-        return session.context if session else self._pending_context
+        return self.user_session.context
 
     def _register_functions(self, env: dict):
         """Registra automaticamente tutte le callable nel FunctionRegistry."""
@@ -148,24 +153,20 @@ class SessionHandle:
         self.env.update(env or {})
         self._register_functions(merged_env)
 
-        session = self.runner.sessions.get(self.sid)
+        session = self.user_session.executions.get(dag_name)
 
-        if not session:
+        if session is None:
             # Crea la sessione ed esegue la risoluzione asincrona del contesto
             session = await self.runner.create_session(
                 dag_name,
                 initial_context=merged_env,
+                context=self.user_session.context,
                 resolve_context=False,
             )
-            self.sid = session.id
+            self.user_session.executions[dag_name] = session
             if self._context_preparer:
                 await self._context_preparer(dag_name, session, merged_env)
         else:
-            if session.dag_name != dag_name:
-                raise ValueError(
-                    f"La sessione {self.sid!r} appartiene al DAG "
-                    f"{session.dag_name!r}, non a {dag_name!r}"
-                )
             # Aggiorna il contesto esistente con i nuovi valori dell'env
             for k, v in merged_env.items():
                 session.context.set(k, v)
@@ -191,9 +192,19 @@ class SessionHandle:
         else:
             node = node_or_controller
             event_payload = payload_or_node
-        session = self.runner.sessions.get(self.sid)
+        if payload is not None:
+            session = self.user_session.executions.get(node_or_controller)
+        else:
+            session = next(
+                (
+                    execution
+                    for execution in self.user_session.executions.values()
+                    if node in execution.states
+                ),
+                None,
+            )
         if session is None:
-            raise RuntimeError("La sessione non è disponibile")
+            raise RuntimeError("L'esecuzione DAG non è disponibile")
         return await self.runner.emit(session, node, event_payload)
 
     async def __aenter__(self):
@@ -205,9 +216,9 @@ class SessionHandle:
     async def close(self):
         if self._closed:
             return
-        session = self.runner.sessions.get(self.sid)
-        if session is not None:
+        for session in tuple(self.user_session.executions.values()):
             self.runner.close_session(session)
+        self.user_session.executions.clear()
         self._closed = True
 
 
@@ -224,6 +235,7 @@ class Interpreter:
         )
         self.runner = self._runner
         self.session_envs = {}
+        self.user_sessions: dict[str, UserSession] = {}
         self._started = False
 
     async def call(self, fn, args=(), kwargs=None):
@@ -319,7 +331,12 @@ class Interpreter:
 
         self._validate_context(dag_name, session)
 
-    def session_create(self, sid: str = None, env: dict = None):
+    def session_create(
+        self,
+        sid: str = None,
+        env: dict = None,
+        authentication: dict | None = None,
+    ):
         sid = sid or uuid.uuid4().hex
         if env is not None:
             self.session_envs[sid] = dict(env)
@@ -327,9 +344,18 @@ class Interpreter:
                 for k, v in self.session_envs[sid].items():
                     if callable(v):
                         self.runner.registry.register(k, v)
-        return self.open_session(env=env, sid=sid)
+        return self.open_session(
+            env=env,
+            sid=sid,
+            authentication=authentication,
+        )
 
-    def open_session(self, env: dict = None, sid: str = None):
+    def open_session(
+        self,
+        env: dict = None,
+        sid: str = None,
+        authentication: dict | None = None,
+    ):
         sid = sid or uuid.uuid4().hex
         merged_env = dict(self.session_envs.get(sid, {}))
         if env is not None:
@@ -341,11 +367,26 @@ class Interpreter:
                 if callable(v):
                     self.runner.registry.register(k, v)
 
+        user_session = self.user_sessions.get(sid)
+        if user_session is None:
+            user_session = UserSession(
+                sid,
+                ExecutionContext(merged_env),
+                authentication=authentication,
+            )
+            self.user_sessions[sid] = user_session
+        else:
+            for key, value in merged_env.items():
+                user_session.context.set(key, value)
+            if authentication:
+                user_session.authentication.update(authentication)
+
         return SessionHandle(
             self.runner,
             sid=sid,
             env=merged_env,
             context_preparer=self._prepare_context,
+            user_session=user_session,
         )
 
     async def start(self):
@@ -353,6 +394,11 @@ class Interpreter:
         return self
 
     async def stop(self):
+        for user_session in tuple(self.user_sessions.values()):
+            for session in tuple(user_session.executions.values()):
+                self.runner.close_session(session)
+            user_session.executions.clear()
+        self.user_sessions.clear()
         for session in tuple(self.runner.sessions.values()):
             self.runner.close_session(session)
         self.session_envs.clear()

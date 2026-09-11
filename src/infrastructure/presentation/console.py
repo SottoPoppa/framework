@@ -342,6 +342,7 @@ def _make_option(x):
 def _make_action(x):
     action = widget(Button, lambda node: ((_text(node),), {"id": _attr(node, "id")}))(x)
     action._dsl_click = _attr(x, "data-click", _attr(x, "click"))
+    action._dsl_route = _attr(x, "route")
     action._dsl_value = _text(x)
     return action
 
@@ -570,20 +571,18 @@ class AppDinamica(App):
             )
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
-        
         w = self.adapter.node_get(event.button.id)
 
         if w is not None:
             attrs_tag = self.adapter.presenter.estrai_attributi_tag(w)
+
+            # Se il pulsante ha un attributo route, naviga a quella URL
+            route = getattr(event.button, "_dsl_route", None) or attrs_tag.get("route")
+            if route:
+                await self.adapter.navigate_to(route)
+                return
+
             await self._send_dsl_event(attrs_tag.get("click"), str(event.button.id))
-        
-        """if click == "modal:close":
-            self.adapter.close_modal()
-            return
-        if click and click.startswith("modal:open:"):
-            modal_id = click.split(":", 2)[2]
-            await self.adapter.open_registered_modal(modal_id)
-            return"""
 
     async def on_click(self, event: Click) -> None:
         widget = event.widget
@@ -912,6 +911,8 @@ class Adapter(presentation.Port):
         return self.app.run_async()
 
     async def shutdown(self):
+        if getattr(self, "session", None) is not None:
+            await self.session.close()
         if self.app:
             self.app.exit()
 
@@ -956,11 +957,45 @@ class Adapter(presentation.Port):
                 await self.app.switch_screen(screen)
             await self._flush_pending_rebuilds()
 
+    async def navigate_to(self, url: str, modal: bool = False):
+        """
+        Naviga a una nuova schermata/pagina.
+
+        Args:
+            url: L'URL della nuova pagina (deve corrispondere a una rotta GET)
+            modal: Se True, apre come modal screen (push); se False, sostituisce lo schermo corrente (switch)
+
+        Returns:
+            Result object con lo stato dell'operazione
+        """
+        self._ensure_active_app()
+        self.url = url
+        async with self._render_lock:
+            result = await self.mount_view(url)
+            if not flow.check(result):
+                return result
+            screen = flow.output(result)
+
+            if modal:
+                await self.app.push_screen(screen)
+            else:
+                await self.app.switch_screen(screen)
+            await self._flush_pending_rebuilds()
+        return result
+
     async def _flush_pending_rebuilds(self):
         pending = self._pending_rebuilds
         self._pending_rebuilds = {}
         for node_id, (session, context) in pending.items():
             await self.rebuild(session, node_id, context)
+
+    async def go_back(self):
+        """Torna alla schermata precedente (pop_screen). Usato per chiudere modal o tornare indietro."""
+        self._ensure_active_app()
+        if isinstance(self.app.screen, ModalScreen):
+            self.app.pop_screen()
+        else:
+            self.app.pop_screen()
 
     async def mount_route(self, routes):
         for path, methods_dict in self.routes.items():

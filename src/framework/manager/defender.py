@@ -192,12 +192,19 @@ class Manager(manager.Port):
         env = env | {**self.managers}
         if not session.get("id"):
             session["id"] = token_urlsafe(16)
-        return self.interpreter.open_session(env=env, sid=session["id"])
+        authentication = {
+            key: value for key, value in session.items() if key != "id"
+        }
+        return self.interpreter.open_session(
+            env=env,
+            sid=session["id"],
+            authentication=authentication,
+        )
 
     def session_get(self, sid):
         """Restituisce l'handle della sessione DSL esistente, se disponibile."""
         # ricostruisce l'handle senza duplicare stato
-        if sid not in self.interpreter._runner.sessions:
+        if sid not in self.interpreter.user_sessions:
             return None
         return self.interpreter.open_session(sid=sid)
     

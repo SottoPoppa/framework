@@ -15,3 +15,13 @@ class Session:
         if state == NodeState.PENDING:
             self._events[node] = asyncio.Event()
         if state in (NodeState.SUCCESS,NodeState.FAILED,NodeState.SKIPPED): self.event_for(node).set()
+
+
+class UserSession:
+    """Stato condiviso dell'utente e sue esecuzioni DAG."""
+
+    def __init__(self, session_id, context, authentication=None):
+        self.id = session_id
+        self.context = context
+        self.authentication = dict(authentication or {})
+        self.executions: dict[str, Session] = {}
