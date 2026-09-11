@@ -1,10 +1,15 @@
 {
     message(default: "",entry:false) -> message;
 
+    dependencies(entry: false) -> file_dependencies(terminal.selected);
+
     send(entry:false, deps:false) -> messenger.send(
             session,
             receiver: "copilot",
-            message: message,
+            message: "File da considerare per primi:\n"
+                + str(dependencies)
+                + "\n\nRichiesta dell'utente:\n"
+                + message,
             domain: "general"
         );
 
