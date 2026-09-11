@@ -10,19 +10,20 @@ import asyncio
 
 class Manager(manager.Port):
     _session_exempt_methods = {
-        "sono_stessa_risorsa",
-        "split_text_and_children",
-        "apply_text_and_children",
-        "estrai_da_nodo",
-        "estrai_attributi_tag",
-        "estrai_da_xml_string",
+        "get_view",
+        "get_attribute",
+        "selector",
+        "render",
+        "navigate",
+        "rebuild",
+        "reload",
     }
     def __init__(self, presentations: list[presentation.Port], loader:Loader, **constants):
         self.presentations = presentations
         self.loader = loader
         #self.executor = constants.get('executor')
 
-    @flow.result()
+    @flow.result(inputs=(), outputs=())
     async def startup(self, session):
         loops = []
         for presentation in self.presentations:
@@ -36,17 +37,17 @@ class Manager(manager.Port):
                     loops.append(res)
         return loops
 
-    @flow.result()
+    @flow.result(inputs=(), outputs=())
     async def shutdown(self , session):
         for presentation in self.presentations:
             if hasattr(presentation, 'stop'):
                 await presentation.stop(session)
 
-    @flow.result()
+    @flow.result(inputs=(), outputs=())
     async def get_view(self, session, path):
         return await self.loader.resource(path)
 
-    @flow.result()
+    @flow.result(inputs=(), outputs=())
     async def get_attribute(self, session, **constants):
         driver = self._get_driver()
         return await driver.get_attribute(constants.get('widget'),constants.get('field')) if driver else None
@@ -54,24 +55,24 @@ class Manager(manager.Port):
     def _get_driver(self):
         return self.presentations[-1] if self.presentations else None
 
-    @flow.result()
+    @flow.result(inputs=(), outputs=())
     async def selector(self, session, **constants):
         driver = self._get_driver()
         return await driver.selector(**constants) if driver else None
 
-    @flow.result()
+    @flow.result(inputs=(), outputs=())
     async def render(self, session, node_id, context=None):
         driver = self._get_driver()
         if driver and hasattr(driver, 'rebuild'):
             return await driver.rebuild(session, node_id, context)
         return None
     
-    @flow.result()
+    @flow.result(inputs=(), outputs=())
     async def navigate(self, session, **constants):
         driver = self._get_driver()
         return await driver.apply_route(**constants) if driver else None
         
-    @flow.result()
+    @flow.result(inputs=(), outputs=())
     async def rebuild(self, session, node_id, context=None):
         driver = self._get_driver()
         if driver and hasattr(driver, 'rebuild'):
@@ -99,7 +100,7 @@ class Manager(manager.Port):
         #    corrisponda esattamente a tutti i segmenti del percorso più corto
         return long[-len(short):] == short
 
-    @flow.result()
+    @flow.result(inputs=(), outputs=())
     async def reload(self, session, path):
         driver = self._get_driver()
         if driver and hasattr(driver, 'render_view') and hasattr(driver, 'routes') and hasattr(driver, 'url'):

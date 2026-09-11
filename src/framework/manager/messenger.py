@@ -91,7 +91,7 @@ class Manager(manager.Port):
             if await self._authorized_provider("publish", provider, destination, constants):
                 await provider.post(session, **constants | {'domain': domain})
 
-    @flow.result(inputs='messenger')
+    @flow.result(inputs=('messenger',), outputs=())
     async def send(self, session, **constants):
         """
         Invia un messaggio.
@@ -105,7 +105,7 @@ class Manager(manager.Port):
         }
         await self._dispatch(session, constants.get('domain'), **dispatch_constants)
 
-    @flow.result()
+    @flow.result(inputs=(), outputs=())
     async def receive(self, session, **constants):
         """
         Riceve il primo risultato disponibile dai provider.

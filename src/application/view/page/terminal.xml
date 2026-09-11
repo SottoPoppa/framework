@@ -88,10 +88,6 @@
                     <Text>Invia</Text>
                 </Action>
             </Row>
-
-            <Action id="chat-close" type="button" click="modal:close">
-                <Text>Chiudi</Text>
-            </Action>
         </Column>
     </Window>
 </Window>

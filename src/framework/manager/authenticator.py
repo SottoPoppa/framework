@@ -20,7 +20,7 @@ class Manager(manager.Port):
             loader: loader.Loader,
             defender: defender.Manager,
             authentications: list[authentication.Port], 
-            **configuration
+            **constants
         ):
         """
         Inizializza il manager con i servizi necessari alla gestione delle richieste.
@@ -28,7 +28,7 @@ class Manager(manager.Port):
         :param loader: Carica risorse, manager e file DSL dell'applicazione.
         :param authentications: Provider usati per autenticare, registrare e
             disconnettere gli utenti.
-        :param configuration: Configurazioni del manager, incluse le policy da
+        :param constants: Configurazioni del manager, incluse le policy da
             caricare durante l'avvio.
         """
 
@@ -37,7 +37,7 @@ class Manager(manager.Port):
         self.defender = defender
 
         # Configurazione ricevuta dal container, conservata per il bootstrap.
-        self.config = configuration
+        self.config = constants
 
         # Provider di autenticazione utilizzati dai metodi del ciclo di vita
         # dell'utente: authenticate, activate, reinstate e terminate.
@@ -49,11 +49,11 @@ class Manager(manager.Port):
         # Policy caricate e valutate dall'interprete, indicizzate per nome.
         self.policies = {}
 
-    @flow.result()
+    @flow.result(inputs=(), outputs=())
     async def shutdown(self, session):
         pass
     
-    @flow.result()
+    @flow.result(inputs=(), outputs=())
     async def startup(self, session=None):
         return None
 
@@ -81,7 +81,7 @@ class Manager(manager.Port):
         session['user'] |= user
         return None
     
-    @flow.result(outputs=('session',))
+    @flow.result(inputs=('session',), outputs=())
     async def invalidate(self, session, **constants) -> bool:
         """
         Invalida la sessione di un utente specificato.
@@ -102,7 +102,7 @@ class Manager(manager.Port):
 
         return flow.success(session)
 
-    @flow.result(outputs=('session',))
+    @flow.result(inputs=('session',), outputs=('session',))
     async def regenerate(self, session, **constants):
         """
         Autentica un utente utilizzando i provider configurati.
@@ -119,7 +119,7 @@ class Manager(manager.Port):
                 return merge_error
         return flow.success(session)
 
-    @flow.result(inputs=('session',))
+    @flow.result(inputs=('session',), outputs=('session',))
     async def authenticate(self, session, **constants):
         """
         Autentica un utente utilizzando i provider configurati.
@@ -137,7 +137,7 @@ class Manager(manager.Port):
         return flow.success(session)
 
 
-    @flow.result(outputs=('session',))
+    @flow.result(inputs=('session',), outputs=('session',))
     async def activate(self, session, **constants) -> Any:
         """
         Registra un utente utilizzando i provider configurati.

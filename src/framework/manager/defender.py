@@ -113,12 +113,12 @@ class Manager(manager.Port):
         required_authentication = requirements.get("required_authentication")
         return not required_authentication or required_authentication in profile.get("authentication", [])
 
-    @flow.result()
+    @flow.result(inputs=(), outputs=())
     async def shutdown(self, session):
         """Arresta l'interprete DSL e chiude il ciclo di vita del Defender."""
         await self.interpreter.stop()
     
-    @flow.result()
+    @flow.result(inputs=(), outputs=())
     async def startup(self, session=None):
         """Avvia l'interprete e carica policy e controller applicativi."""
         if session is not None:
@@ -185,7 +185,7 @@ class Manager(manager.Port):
             return flow.error(f"Adapter della Port '{port}' non soddisfa i requisiti di sicurezza")
         return flow.success(policy)
 
-    @flow.result()
+    @flow.result(inputs=(), outputs=())
     async def session_create(self, env=None, **session):
         """Crea una sessione DSL con un identificatore univoco e l'ambiente runtime."""
         env = env or {}
