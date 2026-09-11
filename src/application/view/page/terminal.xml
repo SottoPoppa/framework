@@ -73,7 +73,6 @@
                     id="chat-message"
                     width="90%"
                     type="textarea"
-                    value="{{ chat.message }}"
                     change="chat:message"
                     placeholder="Scrivi un messaggio"
                     required="true"

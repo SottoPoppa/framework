@@ -6,7 +6,7 @@
     send(entry:false, deps:false) -> messenger.send(
             session,
             receiver: "copilot",
-            message: "File da considerare per primi:\n"
+            message: "File da considerare per primi, ma prima leggi SKILL.md se ancora non lo hai letto! :\n"
                 + str(dependencies)
                 + "\n\nRichiesta dell'utente:\n"
                 + message,

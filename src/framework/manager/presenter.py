@@ -10,13 +10,12 @@ import asyncio
 
 class Manager(manager.Port):
     _session_exempt_methods = {
-        "get_view",
-        "get_attribute",
-        "selector",
-        "render",
-        "navigate",
-        "rebuild",
-        "reload",
+        "sono_stessa_risorsa",
+        "split_text_and_children",
+        "apply_text_and_children",
+        "estrai_da_nodo",
+        "estrai_attributi_tag",
+        "estrai_da_xml_string",
     }
     def __init__(self, presentations: list[presentation.Port], loader:Loader, **constants):
         self.presentations = presentations
