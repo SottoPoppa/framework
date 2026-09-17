@@ -11,6 +11,7 @@ exports: {
     'unwrap': imports.flow.unwrap;
     'output': imports.flow.output;
     'configure_dev_logging': imports.flow.configure_dev_logging;
+    'set_dev_sink': imports.flow.set_dev_sink;
     'map_put_map': imports.flow.map_put_map("user.name", "Ada");
     'map_freeze_map': imports.flow.map_freeze_map();
     'map_construct_value': imports.flow.map_construct_value(str, "user.name");
@@ -84,6 +85,13 @@ tuple:test_suite := (
         "outputs": none;
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "configure_dev_logging disattiva il tracing senza produrre un payload";
+    },
+    {
+        "action": exports.set_dev_sink;
+        "inputs": none;
+        "outputs": none;
+        "assert": @received.is_success == true & @received.output.value == @expected;
+        "note": "set_dev_sink rimuove il destinatario del tracing senza produrre un payload";
     },
     {
         "action": exports.map_put_map;

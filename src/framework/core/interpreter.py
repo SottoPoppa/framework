@@ -1,6 +1,7 @@
 import inspect
 from typing import Any, Dict
 import uuid
+import random as _random
 from collections.abc import Mapping
 from lark.exceptions import UnexpectedInput
 
@@ -94,6 +95,8 @@ DSL_FUNCTIONS: Dict[str, Any] = {
     "int": int,
     "str": str,
     "bool": bool,
+    "random": lambda minimum, maximum: _random.randint(int(minimum), int(maximum)),
+    "format": lambda template, *values: str(template).format(*values),
     "result": lambda value=None: value,
     "file_dependencies": Reflection.file_dependencies,
     "prefix_match": prefix_match,

@@ -201,21 +201,3 @@ class Reflection:
                         break
 
         return sorted(deps)
-
-    @staticmethod
-    def dependencies(cls):
-        return {
-            name: p.annotation
-            for name, p in inspect.signature(cls.__init__).parameters.items()
-            if (
-                name != "self"
-                and p.annotation is not inspect.Parameter.empty
-            )
-        }
-
-    @staticmethod
-    def is_port_list(annotation):
-        return (
-            getattr(annotation, "__origin__", None)
-            is list
-        )

@@ -61,6 +61,7 @@
                     {% for task in store['done-tasks'] or [] %}
                     <Container id="done-task-{{ task.id }}" background="#f8fafc" padding="1px" radius="small">
                         <Text type="h4">{{ task.title }}</Text><Text>{{ task.description or '' }}</Text>
+                        <Action type="button" click="kanban:reopen_task" value="{{ task.id }}"><Text>Reopen</Text></Action>
                     </Container>
                     {% else %}<Text color="#64748b">No tasks</Text>{% endfor %}
                 </Storekeeper>

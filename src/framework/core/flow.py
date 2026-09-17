@@ -3,12 +3,18 @@ import copy
 import re
 from functools import reduce as _reduce, wraps
 import inspect
-import linecache
 import time
 import traceback
+import contextvars
+import uuid
 from typing import Any, Callable, Dict, Generic, Iterable, List, Tuple, TypeVar
 
-from framework.service.diagnostic import configure_log_file, get_logger
+from framework.service.diagnostic import get_logger
+from framework.service.trace import (
+    exception_location as _exception_location,
+    failure_location as _failure_location,
+    safe_value as _safe_log_value,
+)
 
 T = TypeVar("T")
 F = TypeVar("F")
@@ -17,6 +23,11 @@ _NO_INITIAL = object()
 
 _dev_logger = get_logger("flow")
 _dev_logging_enabled = False
+_dev_sinks: list[Callable[..., Any]] = []
+_trace_state: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
+    "flow_trace_state",
+    default=None,
+)
 
 
 class LocatedError(ValueError):
@@ -31,16 +42,63 @@ class LocatedError(ValueError):
 
 def configure_dev_logging(
     enabled: bool = False,
-    path: str = "/tmp/omniport-dev.log",
 ) -> None:
-    """Abilita o disabilita il tracing Flow tramite il logger diagnostico."""
+    """Abilita o disabilita il tracing Flow senza persistenza su file."""
     global _dev_logging_enabled
     _dev_logging_enabled = bool(enabled)
-    configure_log_file(
-        path if _dev_logging_enabled else None,
-        component="flow",
-        console=False,
-    )
+
+
+def set_dev_sink(sink: Callable[..., Any] | None = None) -> None:
+    """Imposta il destinatario runtime degli eventi di tracing Flow.
+
+    Il core non conosce l'interfaccia che visualizza gli eventi: un adapter può
+    registrare una callback e decidere se stamparli, mostrarli nella UI o
+    inoltrarli a un altro canale. Il tracing Flow non viene mai persistito su file.
+    """
+    _dev_sinks.clear()
+    if sink is not None:
+        _dev_sinks.append(sink)
+
+
+def _request_metadata(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
+    for value in (*args, *kwargs.values()):
+        if not hasattr(value, "id") or not hasattr(value, "context"):
+            continue
+        details = {"session_id": str(value.id)}
+        authentication = getattr(value, "authentication", {})
+        if isinstance(authentication, dict):
+            actor = (
+                authentication.get("user_id")
+                or authentication.get("username")
+                or authentication.get("email")
+            )
+            if actor is not None:
+                details["actor"] = str(actor)
+        return details
+    return {}
+
+
+def _enter_trace(operation: str, args: tuple[Any, ...], kwargs: dict[str, Any]):
+    parent = _trace_state.get()
+    request = _request_metadata(args, kwargs)
+    trace_id = parent["trace_id"] if parent else uuid.uuid4().hex[:10]
+    path = f"{parent['path']} > {operation}" if parent else operation
+    state = dict(parent or {})
+    state.setdefault("failure_state", (parent or {}).get("failure_state", {}))
+    state.update(request)
+    state.update(trace_id=trace_id, path=path)
+    return _trace_state.set(state)
+
+
+def _trace_metadata() -> dict[str, Any]:
+    state = _trace_state.get()
+    if state is None:
+        return {}
+    return {
+        key: state[key]
+        for key in ("trace_id", "path", "session_id", "actor")
+        if key in state
+    }
 
 
 def _dev_log(
@@ -51,82 +109,45 @@ def _dev_log(
     **metadata: Any,
 ) -> None:
     if _dev_logging_enabled:
+        metadata = {**_trace_metadata(), **metadata}
+        state = _trace_state.get()
+        if metadata.get("success") is False and message in {"result.end", "pipe.result", "pipe_sync.result"}:
+            signature = (
+                metadata.get("error_type"),
+                metadata.get("error_message"),
+            )
+            failure_state = state.get("failure_state") if state is not None else None
+            if failure_state is not None and failure_state.get("signature") == signature:
+                metadata = {**metadata, "propagated": True}
+            elif failure_state is not None:
+                failure_state["signature"] = signature
+        if exception is not None:
+            metadata = {
+                **_exception_location(exception),
+                **metadata,
+            }
         rendered = message % args if args else message
-        if exc_info:
-            _dev_logger.error(rendered, exception=exception, **metadata)
-        else:
-            _dev_logger.debug(rendered, **metadata)
+        for sink in tuple(_dev_sinks):
+            try:
+                sink(
+                    rendered,
+                    exception=exception,
+                    level="ERROR" if exc_info else "DEBUG",
+                    metadata=metadata,
+                )
+            except Exception as sink_error:
+                _dev_logger.warning(
+                    f"flow.sink.error sink={sink!r} error={sink_error!r}"
+                )
+        if not _dev_sinks:
+            logger_metadata = dict(metadata)
+            if "component" in logger_metadata:
+                logger_metadata["flow_component"] = logger_metadata.pop("component")
+            if exc_info:
+                _dev_logger.error(rendered, exception=exception, **logger_metadata)
+            else:
+                _dev_logger.debug(rendered, **logger_metadata)
 
-
-def _traceback_location(tb: Any) -> dict[str, Any]:
-    """Estrae file, riga, funzione e sorgente dall'ultimo frame noto."""
-    if tb is None:
-        return {}
-
-    frames = traceback.extract_tb(tb)
-    if not frames:
-        return {}
-    frame = frames[-1]
-    location = {
-        "source_file": frame.filename,
-        "source_line": frame.lineno,
-        "source_function": frame.name,
-        "source_code": frame.line,
-    }
-    location["source_context"] = _source_context(frame.filename, frame.lineno)
-    return location
-
-
-def _source_context(filename: str, lineno: int, radius: int = 2) -> str:
-    """Legge dal file sorgente la riga dell'errore e quelle immediatamente vicine."""
-    first = max(1, lineno - radius)
-    last = lineno + radius
-    context = []
-    for number in range(first, last + 1):
-        source_line = linecache.getline(filename, number)
-        if source_line:
-            marker = ">" if number == lineno else " "
-            context.append(f"{marker} {number}: {source_line.rstrip()}")
-    return "\n".join(context)
-
-
-def _exception_location(exception: BaseException) -> dict[str, Any]:
-    """Restituisce la posizione concreta in cui l'eccezione è stata sollevata."""
-    declared_location = getattr(exception, "location", {})
-    if not isinstance(declared_location, dict):
-        declared_location = {}
-    return {
-        "exception_type": type(exception).__name__,
-        "exception_message": str(exception),
-        **(_traceback_location(exception.__traceback__) | declared_location),
-    }
-
-
-def _failure_location(failure: Any) -> dict[str, Any]:
-    """Estrae la posizione dal traceback testuale conservato in una Failure."""
-    if not failure.traceback:
-        return {}
-    matches = re.findall(r'File "([^"]+)", line (\d+), in (.+)', failure.traceback)
-    if not matches:
-        return {}
-    filename, lineno, function = matches[-1]
-    lines = failure.traceback.splitlines()
-    source_code = next(
-        (lines[index + 1].strip() for index, line in enumerate(lines[:-1])
-         if f'File "{filename}", line {lineno}, in {function}' in line
-         and index + 1 < len(lines)
-         and lines[index + 1][:1].isspace()),
-        None,
-    )
-    return {
-        "exception_type": type(failure.error).__name__,
-        "exception_message": str(failure.error),
-        "source_file": filename,
-        "source_line": int(lineno),
-        "source_function": function,
-        "source_code": source_code,
-        "source_context": _source_context(filename, int(lineno)),
-    }
 
 # ==============================================================================
 # CHANGELOG rispetto all'originale
@@ -318,9 +339,9 @@ async def _invoke(step: Step, value: Any, transactions: list["Result"]) -> Valor
         return _normalize(out, transactions)
     except Exception as exc:
         _dev_log(
-            "step.error step=%s error=%r",
-            getattr(step, "__name__", repr(step)),
-            exc,
+            "step.error",
+            operation=getattr(step, "__name__", repr(step)),
+            error_message=str(exc),
             exc_info=True,
             exception=exc,
             **_exception_location(exc),
@@ -364,14 +385,16 @@ async def pipe(value: Any, *steps: Step, action: str = "flow.pipe", component: s
         component=component,
         transactions=tuple(transactions)
     )
+    failure_details = _failure_location(current) if isinstance(current, Failure) else {}
     _dev_log(
-        "pipe.result action=%s component=%s success=%s output_type=%s transactions=%d elapsed_ms=%.2f",
-        action,
-        component,
-        result.is_success,
-        type(current).__name__,
-        len(transactions),
-        result.execution_time_ms,
+        "pipe.result",
+        operation=action,
+        component=component,
+        success=result.is_success,
+        output_type=type(current).__name__,
+        transactions=len(transactions),
+        elapsed_ms=round(result.execution_time_ms, 2),
+        **failure_details,
     )
     return result
 
@@ -391,9 +414,9 @@ def pipe_sync(value: Any, *steps: Step, action: str = "flow.pipe_sync", componen
                     current = _normalize(step(step_input), transactions)
                 except Exception as exc:
                     _dev_log(
-                        "step.error step=%s error=%r",
-                        step_name,
-                        exc,
+                        "step.error",
+                        operation=step_name,
+                        error_message=str(exc),
                         exc_info=True,
                         exception=exc,
                         **_exception_location(exc),
@@ -417,14 +440,16 @@ def pipe_sync(value: Any, *steps: Step, action: str = "flow.pipe_sync", componen
         component=component,
         transactions=tuple(transactions)
     )
+    failure_details = _failure_location(current) if isinstance(current, Failure) else {}
     _dev_log(
-        "pipe_sync.result action=%s component=%s success=%s output_type=%s transactions=%d elapsed_ms=%.2f",
-        action,
-        component,
-        result.is_success,
-        type(current).__name__,
-        len(transactions),
-        result.execution_time_ms,
+        "pipe_sync.result",
+        operation=action,
+        component=component,
+        success=result.is_success,
+        output_type=type(current).__name__,
+        transactions=len(transactions),
+        elapsed_ms=round(result.execution_time_ms, 2),
+        **failure_details,
     )
     return result
 
@@ -435,6 +460,7 @@ def result(inputs=[], outputs=[], action: str | None = None, component: str | No
             start = time.perf_counter()
             txs: list[Result] = []
             operation = action or getattr(func, "__qualname__", repr(func))
+            trace_token = _enter_trace(operation, args, kwargs)
             try:
                 out = func(*args, **kwargs)
                 if inspect.isawaitable(out):
@@ -442,9 +468,9 @@ def result(inputs=[], outputs=[], action: str | None = None, component: str | No
                 valor = _normalize(out, txs)
             except Exception as exc:
                 _dev_log(
-                    "result.error operation=%s error=%r",
-                    operation,
-                    exc,
+                    "result.error",
+                    operation=operation,
+                    error_message=str(exc),
                     exc_info=True,
                     exception=exc,
                     **_exception_location(exc),
@@ -460,16 +486,17 @@ def result(inputs=[], outputs=[], action: str | None = None, component: str | No
                 transactions=tuple(txs),
             )
             _dev_log(
-                "result.end operation=%s component=%s success=%s output_type=%s error_type=%s transactions=%d elapsed_ms=%.2f",
-                operation,
-                component or getattr(func, "__module__", None),
-                result.is_success,
-                type(valor).__name__,
-                type(valor.error).__name__ if isinstance(valor, Failure) else None,
-                len(txs),
-                result.execution_time_ms,
+                "result.end",
+                operation=operation,
+                component=component or getattr(func, "__module__", None),
+                success=result.is_success,
+                output_type=type(valor).__name__,
+                transactions=len(txs),
+                elapsed_ms=round(result.execution_time_ms, 2),
+                request_data=_safe_log_value(kwargs if kwargs else args),
                 **(_failure_location(valor) if isinstance(valor, Failure) else {}),
             )
+            _trace_state.reset(trace_token)
             return result
         return wrapper
     return decorator

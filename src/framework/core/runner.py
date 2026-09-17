@@ -257,12 +257,17 @@ class DagRunner:
             raise NodeNotFound(node)
 
         session.context.set(f"events.{node}", payload)
+        session.context.set("payload", payload)
         for output in dag.get(node).outputs:
             session.context.set(output, payload)
         self._reset_subgraph(dag, session, node)
         await self._run_node(dag, session, node)
         on_end = dag.get(node).on_end
-        if on_end and on_end in dag.nodes:
+        if (
+            session.states.get(node) == NodeState.SUCCESS
+            and on_end
+            and on_end in dag.nodes
+        ):
             self._reset_subgraph(dag, session, on_end)
             await self._run_node(dag, session, on_end)
         return session.results.get(node)

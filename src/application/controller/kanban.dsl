@@ -23,41 +23,48 @@ refresh_board(entry: false, deps: false) -> presenter.rebuild(
 );
 
 /* Transizioni di stato della board. */
-move_to_todo(entry: false) -> storekeeper.change(
+move_to_todo(entry: false, on_end: "refresh_board") -> storekeeper.change(
     session,
     repository: "task",
-    filter: {id: @payload.task_id},
+    filter: {eq: {id: @payload.value}},
     payload: {status: "todo"}
 );
 
-move_to_inprogress(entry: false) -> storekeeper.change(
+move_to_inprogress(entry: false, on_end: "refresh_board") -> storekeeper.change(
     session,
     repository: "task",
-    filter: {id: @payload.task_id},
+    filter: {eq: {id: @payload.value}},
     payload: union(
         {status: "in_progress"},
-        {assigned_to: @session.user_id}
+        {assigned_to: @session.sid}
     )
 );
 
-move_to_review(entry: false) -> storekeeper.change(
+move_to_review(entry: false, on_end: "refresh_board") -> storekeeper.change(
     session,
     repository: "task",
-    filter: {id: @payload.task_id},
+    filter: {eq: {id: @payload.value}},
     payload: {status: "review"}
 );
 
-approve_task(entry: false) -> storekeeper.change(
+approve_task(entry: false, on_end: "refresh_board") -> storekeeper.change(
     session,
     repository: "task",
-    filter: {id: @payload.task_id},
+    filter: {eq: {id: @payload.value}},
     payload: {status: "done"}
 );
 
-reject_task(entry: false) -> storekeeper.change(
+reject_task(entry: false, on_end: "refresh_board") -> storekeeper.change(
     session,
     repository: "task",
-    filter: {"id": @payload.task_id},
+    filter: {eq: {id: @payload.value}},
+    payload: {status: "todo"}
+);
+
+reopen_task(entry: false, on_end: "refresh_board") -> storekeeper.change(
+    session,
+    repository: "task",
+    filter: {eq: {id: @payload.value}},
     payload: {status: "todo"}
 );
 

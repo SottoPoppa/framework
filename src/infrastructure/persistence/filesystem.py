@@ -176,8 +176,6 @@ class Adapter(persistence.Port):
 
         matches = [record for record in records if self._matches(record, filters)]
         if method == 'GET':
-            if filters and not matches:
-                return flow.error('Record non trovato')
             return flow.success(matches if filters else records)
 
         if method == 'PUT':
@@ -254,8 +252,16 @@ class Adapter(persistence.Port):
     @staticmethod
     def _write_json(path, document):
         os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
-        with open(path, 'w', encoding='utf-8') as file:
-            json.dump(document, file, ensure_ascii=False, indent=2)
+        temporary_path = f"{path}.tmp"
+        try:
+            with open(temporary_path, 'w', encoding='utf-8') as file:
+                json.dump(document, file, ensure_ascii=False, indent=2)
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(temporary_path, path)
+        finally:
+            if os.path.exists(temporary_path):
+                os.remove(temporary_path)
 
     @staticmethod
     def _resolve_path(**constants):

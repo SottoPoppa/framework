@@ -342,7 +342,7 @@ _ATTRIBUTES_SCHEMA = {
     Tag.TEXT.value: _TYPOGRAPHY | _STYLE | {Attribute.VALUE.value: "value"},
     Tag.OPTION.value: _IDENTITY | _EVENTS | {Attribute.VALUE.value: "value", Attribute.TITLE.value: "title"},
     Tag.INPUT.value: _EVENTS | _FIELD | _LAYOUT | _STYLE | {Attribute.LANGUAGE.value:"language"}, 
-    Tag.ACTION.value: _EVENTS | {Attribute.ROUTE.value:"action", Attribute.ACT.value:"method", Attribute.HREF.value:"href"} | _LAYOUT | _STYLE | {Attribute.POINTER.value:"pointer"}, 
+    Tag.ACTION.value: _EVENTS | {Attribute.ROUTE.value:"action", Attribute.ACT.value:"method", Attribute.HREF.value:"href"} | _LAYOUT | _STYLE | {Attribute.POINTER.value:"pointer", Attribute.VALUE.value:"value"},
     Tag.CONTAINER.value: _LAYOUT_STATIC | _LOCATION | _STYLE, 
     Tag.ROW.value: _LAYOUT | _LOCATION | _STYLE, 
     Tag.COLUMN.value: _LAYOUT | _LOCATION | _STYLE, 

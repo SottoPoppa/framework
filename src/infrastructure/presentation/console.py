@@ -3,6 +3,7 @@ import framework.core.flow as flow
 import uuid
 import json
 import os
+import re
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple, Callable
@@ -19,6 +20,7 @@ from textual.widgets import (
     Collapsible, ContentSwitcher, LoadingIndicator,
     Log, RichLog, Digits, Placeholder, MarkdownViewer,
 )
+from rich.markup import escape
 from rich.text import Text
 from textual.screen import Screen, ModalScreen
 from textual.binding import Binding
@@ -146,6 +148,111 @@ def _bool_attr(x: Dict[str, Any], key: str, default: bool = False) -> bool:
     if v is None:
         return default
     return str(v).lower() in ("1", "true", "yes")
+
+
+def _format_flow_event(
+    message: str,
+    *,
+    exception: BaseException | None = None,
+    level: str = "DEBUG",
+    metadata: Dict[str, Any] | None = None,
+) -> str:
+    values = metadata or {}
+    operation = values.get("operation", "unknown")
+    component = values.get("component", "unknown")
+    elapsed = values.get("elapsed_ms")
+    duration = f" {elapsed}ms" if elapsed is not None else ""
+    trace_id = values.get("trace_id")
+    path = values.get("path")
+    succeeded = values.get("success") is True
+    message_lower = message.lower()
+    failed = values.get("success") is False or any(
+        marker in message_lower for marker in (".error", ".failed", ".failure")
+    )
+
+    if succeeded and exception is None and level != "ERROR":
+        return (
+            f"[green]OK[/green] [bold]{escape(str(operation))}[/bold]"
+            f" [dim]{escape(str(component))}{escape(duration)}[/dim]"
+        )
+
+    if not failed and level != "ERROR" and exception is None:
+        details = " ".join(
+            f"{escape(str(key))}={escape(str(value))}"
+            for key, value in values.items()
+        )
+        return f"[dim]TRACE[/dim] {escape(message)} {details}".rstrip()
+
+    lines = [
+        f"[bold red]ERROR[/bold red] [bold]{escape(str(operation))}[/bold]"
+        f" [dim]{escape(str(component))}{escape(duration)}[/dim]"
+    ]
+    if trace_id:
+        lines.append(f"  [cyan]trace[/cyan]: {escape(str(trace_id))}")
+    if path:
+        lines.append(f"  [cyan]path[/cyan]: {escape(str(path))}")
+    request = values.get("session_id")
+    if values.get("actor"):
+        request = f"{request or 'unknown'} actor={values['actor']}"
+    if request:
+        lines.append(f"  [cyan]request[/cyan]: {escape(str(request))}")
+    request_data = values.get("request_data")
+    if request_data:
+        lines.append("  [cyan]input[/cyan]:")
+        if isinstance(request_data, dict):
+            lines.extend(
+                f"    {escape(str(key))}: {escape(repr(value))}"
+                for key, value in request_data.items()
+            )
+        else:
+            lines.append(f"    {escape(repr(request_data))}")
+    cause = (
+        values.get("error_message")
+        or values.get("exception_message")
+        or str(exception or message)
+    )
+    error_type = values.get("error_type") or values.get("exception_type")
+    lines.append(f"  [red]cause[/red]: {escape(str(cause))}")
+    if error_type:
+        lines.append(f"  [red]type[/red]: {escape(str(error_type))}")
+
+    source_file = values.get("source_file")
+    source_line = values.get("source_line")
+    source_function = values.get("source_function")
+    if source_file:
+        location = f"{source_file}:{source_line or '?'}"
+        if source_function:
+            location += f" in {source_function}"
+        lines.append(f"  [yellow]location[/yellow]: {escape(location)}")
+    source_code = values.get("source_code")
+    if source_code:
+        lines.append(f"  [yellow]code[/yellow]: {escape(str(source_code))}")
+    source_context = values.get("source_context")
+    if source_context:
+        lines.append("  [yellow]context[/yellow]:")
+        lines.extend(f"    {escape(line)}" for line in str(source_context).splitlines())
+
+    if exception is not None:
+        lines.append(f"  [red]exception[/red]: {escape(repr(exception))}")
+
+    ignored = {
+        "operation", "component", "elapsed_ms", "success", "error_type",
+        "error_message", "exception_type", "exception_message",
+        "output_type", "transactions",
+        "trace_id", "path", "session_id", "actor",
+        "request_data",
+        "source_file", "source_line",
+        "source_function", "source_code", "source_context",
+    }
+    details = [
+        f"  [yellow]{escape(str(key))}[/yellow]: {escape(repr(value))}"
+        for key, value in values.items()
+        if key not in ignored
+    ]
+    if details:
+        lines.append("  [dim]details[/dim]")
+        lines.extend(details)
+    return "\n".join(lines)
 
 
 class OptionValue:
@@ -344,6 +451,7 @@ def _make_action(x):
     action._dsl_click = _attr(x, "data-click", _attr(x, "click"))
     action._dsl_route = _attr(x, "route")
     value = _attr(x, "value")
+    action._dsl_has_value = value is not None
     action._dsl_value = _text(x) if value is None else value
     return action
 
@@ -406,6 +514,148 @@ class XmlModalScreen(ModalScreen):
         """Chiude questa modale (Screen.dismiss() la rimuove dallo screen stack)."""
         await self.dismiss()
 
+
+class FlowLogScreen(Screen):
+    """Schermata Textual per consultare il tracing Flow della sessione."""
+
+    BINDINGS = [Binding("escape", "close", "Chiudi", show=False)]
+
+    DEFAULT_CSS = """
+    FlowLogScreen {
+        background: $surface;
+    }
+    FlowLogScreen > HorizontalGroup {
+        height: auto;
+        margin: 1 2 0 2;
+    }
+    FlowLogScreen Input {
+        width: 1fr;
+    }
+    FlowLogScreen Select {
+        width: 18;
+        margin-left: 1;
+    }
+    FlowLogScreen Checkbox {
+        width: 20;
+        margin-left: 1;
+    }
+    FlowLogScreen Button {
+        width: 12;
+        margin-left: 1;
+    }
+    FlowLogScreen RichLog {
+        height: 1fr;
+        border: round $primary;
+        margin: 1 2;
+        padding: 0 1;
+    }
+    """
+
+    def __init__(self, entries: List[str], **kwargs):
+        super().__init__(**kwargs)
+        self.entries = tuple(entries)
+        self.filter_text = ""
+        self.level_filter = "ALL"
+        self.aggregate = False
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield HorizontalGroup(
+            Input(placeholder="Filtra i log...", id="flow-log-filter"),
+            Select(
+                [("Tutti", "ALL"), ("Errori", "ERROR"), ("OK", "OK"), ("Trace", "TRACE")],
+                value="ALL",
+                id="flow-log-level",
+            ),
+            Checkbox("Raggruppa", id="flow-log-aggregate"),
+            Button("Copia", id="flow-log-copy", variant="primary"),
+        )
+        yield RichLog(id="flow-log", highlight=True, markup=True, wrap=True)
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self.refresh_log()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "flow-log-filter":
+            event.stop()
+            self.filter_text = event.value.casefold()
+            self.refresh_log()
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id == "flow-log-level":
+            event.stop()
+            self.level_filter = str(event.value or "ALL")
+            self.refresh_log()
+
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        if event.checkbox.id == "flow-log-aggregate":
+            event.stop()
+            self.aggregate = event.value
+            self.refresh_log()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id != "flow-log-copy":
+            return
+        event.stop()
+        content = "\n".join(
+            Text.from_markup(entry).plain for entry in self._visible_entries()
+        )
+        self.app.copy_to_clipboard(content)
+        self.app.notify("Log copiati negli appunti", severity="information")
+
+    def add_entry(self, entry: str) -> None:
+        self.entries = (*self.entries, entry)
+        self.refresh_log()
+
+    def refresh_log(self) -> None:
+        log = self.query_one("#flow-log", RichLog)
+        log.clear()
+        for entry in self._visible_entries():
+            log.write(entry)
+
+    def _visible_entries(self) -> List[str]:
+        entries = [
+            entry for entry in self.entries
+            if self._matches(entry)
+        ]
+        if self.aggregate:
+            entries = self._aggregate(entries)
+        return entries
+
+    def _matches(self, entry: str) -> bool:
+        plain = Text.from_markup(entry).plain
+        if self.filter_text and self.filter_text not in plain.casefold():
+            return False
+        if self.level_filter == "ERROR":
+            return "ERROR" in plain
+        if self.level_filter == "OK":
+            return plain.startswith("OK ")
+        if self.level_filter == "TRACE":
+            return plain.startswith("TRACE ")
+        return True
+
+    @staticmethod
+    def _aggregate(entries: List[str]) -> List[str]:
+        grouped: Dict[str, tuple[str, int]] = {}
+        order: List[str] = []
+        for entry in entries:
+            key = re.sub(r"\b\d+(?:\.\d+)?ms\b", "", entry)
+            key = re.sub(r"trace[^\n]*", "trace", key, flags=re.IGNORECASE)
+            if key not in grouped:
+                grouped[key] = (entry, 0)
+                order.append(key)
+            original, count = grouped[key]
+            grouped[key] = (original, count + 1)
+        return [
+            entry if count == 1 else f"{entry}\n[bold cyan]  x{count} eventi[/bold cyan]"
+            for key in order
+            for entry, count in [grouped[key]]
+        ]
+
+    def action_close(self) -> None:
+        self.app.pop_screen()
+
 class AppDinamica(App):
 
     DEFAULT_CSS = """
@@ -420,6 +670,7 @@ class AppDinamica(App):
         ("d", "toggle_dark", "Cambia Tema"),
         ("q", "quit", "Esci"),
         ("ctrl+s", "save", "Salva"),
+        ("ctrl+l", "show_flow_logs", "Log Flow"),
     ]
 
     def __init__(self, adapter, **kwargs):
@@ -518,6 +769,9 @@ class AppDinamica(App):
             message=f"File salvato: {selected}",
         )
 
+    async def action_show_flow_logs(self) -> None:
+        await self.adapter.open_flow_log()
+
     async def on_mount(self) -> None:
         self.run_worker(
             self._render_initial_view(),
@@ -538,30 +792,35 @@ class AppDinamica(App):
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         w = self.adapter.node_get(event.button.id)
+        click = getattr(event.button, "_dsl_click", None)
 
-        if w is not None:
-            attrs_tag = self.adapter.presenter.estrai_attributi_tag(w)
+        if w is None and not click:
+            return
 
-            # Se il pulsante ha un attributo route, naviga a quella URL
-            route = getattr(event.button, "_dsl_route", None) or attrs_tag.get("route")
-            if route:
-                if isinstance(route, str) and route.startswith("#"):
-                    await self.adapter.open_registered_modal(route[1:])
-                    return
-                await self.adapter.navigate_to(route)
+        attrs_tag = self.adapter.presenter.estrai_attributi_tag(w) if w is not None else {}
+
+        # Se il pulsante ha un attributo route, naviga a quella URL
+        route = getattr(event.button, "_dsl_route", None) or attrs_tag.get("route")
+        if route:
+            if isinstance(route, str) and route.startswith("#"):
+                await self.adapter.open_registered_modal(route[1:])
                 return
+            await self.adapter.navigate_to(route)
+            return
 
-            click = attrs_tag.get("click")
-            if click == "modal:close":
-                self.adapter.close_modal()
-                return
+        click = attrs_tag.get("click") or click
+        if click == "modal:close":
+            self.adapter.close_modal()
+            return
 
-            message = (
-                self._form_payload()
-                if attrs_tag.get("form")
-                else str(event.button.id)
-            )
-            await self._send_dsl_event(click, message)
+        message = (
+            self._form_payload()
+            if attrs_tag.get("form")
+            else getattr(event.button, "_dsl_value", None) or str(event.button.id)
+        )
+        if getattr(event.button, "_dsl_has_value", False):
+            message = {"value": message}
+        await self._send_dsl_event(click, message)
 
     async def on_click(self, event: Click) -> None:
         widget = event.widget
@@ -871,8 +1130,35 @@ class Adapter(presentation.Port):
         self.active_screens: Dict[str, Screen] = {}
         self.widgets = DomRegistry()  # registro dei widget live, per id
         self._pending_rebuilds: Dict[str, tuple[Any, Dict[str, Any] | None]] = {}
+        self._flow_log_entries: List[str] = []
+        self._flow_log_screen: FlowLogScreen | None = None
         self.app = AppDinamica(self)
+        flow.set_dev_sink(self._print_flow_event)
         self.validate_adapter()
+
+    def _print_flow_event(
+        self,
+        message: str,
+        *,
+        exception: BaseException | None = None,
+        level: str = "DEBUG",
+        metadata: Dict[str, Any] | None = None,
+    ) -> None:
+        """Memorizza e visualizza il tracing Flow nella schermata dedicata."""
+        if metadata and metadata.get("propagated"):
+            return
+        entry = _format_flow_event(
+            message,
+            exception=exception,
+            level=level,
+            metadata=metadata,
+        )
+        self._flow_log_entries.append(entry)
+        max_entries = int(self.config.get("flow_log_max_entries", 1000))
+        del self._flow_log_entries[:-max_entries]
+        screen = self._flow_log_screen
+        if screen is not None and screen.is_attached:
+            screen.add_entry(entry)
 
     async def open_modal(self, view_path: str, **context):
         """Apre una vista XML separata come modale."""
@@ -900,6 +1186,20 @@ class Adapter(presentation.Port):
         await self.app.push_screen(modal)
         return modal
 
+    async def open_flow_log(self) -> FlowLogScreen | None:
+        """Apre o chiude la schermata con gli eventi Flow della console."""
+        if (
+            self._flow_log_screen is not None
+            and self._flow_log_screen.is_attached
+            and self.app.screen is self._flow_log_screen
+        ):
+            self.app.pop_screen()
+            self._flow_log_screen = None
+            return None
+        self._flow_log_screen = FlowLogScreen(self._flow_log_entries)
+        await self.app.push_screen(self._flow_log_screen)
+        return self._flow_log_screen
+
     def close_modal(self) -> None:
         """Chiude la modale corrente, se presente nello screen stack."""
         if isinstance(self.app.screen, ModalScreen):
@@ -921,6 +1221,7 @@ class Adapter(presentation.Port):
         return self.app.run_async()
 
     async def shutdown(self):
+        flow.set_dev_sink(None)
         if getattr(self, "session", None) is not None:
             await self.session.close()
         if self.app:
