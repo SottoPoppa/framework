@@ -66,6 +66,17 @@ Attivabile **solo** quando l'umano indica esplicitamente quale file di `src/fram
 - Segui obbligatoriamente la **Disciplina Test-First e Contract** descritta sotto.
 - Non hai comunque il permesso di introdurre nuovi pattern architetturali (nuove classi base, nuovi meccanismi di DI, ecc.) senza che sia l'umano a richiederlo esplicitamente.
 
+### 🚫 Regola Git — No Push Autonomo (VINCOLANTE PER TUTTI GLI AGENTI)
+
+**Nessun agente, nessuna modalità, nessun LLM deve mai eseguire `git push` autonomamente.**
+
+1. L'agente **deve completare il lavoro** (codifica, test, validazione) e presentare i risultati all'umano.
+2. L'umano **valuta, verifica, eventualmente modifica** il codice e decide se è pronto.
+3. **Solo l'umano** esegue `git push` con una conferma esplicita.
+4. Se l'agente ritiene che il push sia necessario per continuare, deve **chiedere all'umano** prima di procedere — mai assumere il permesso.
+
+**Eccezione:** L'umano può autorizzare explicitamente un agente a eseguire specifici comandi git (commit, tag, ecc.) in istruzioni scritte. Anche in quel caso, il push resta vietato senza conferma diretta.
+
 ---
 
 ## 🧪 Disciplina Test-First e Contract (obbligatoria in Modalità 2, consigliata sempre)

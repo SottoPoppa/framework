@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Window type="page" title="SCRUM Task Board" background="#f4f1ea" padding="1px">
+    <Column width="full" height="full" spacing="1px">
+        <Row width="full" align="center" justify="between">
+            <Text type="h1" color="#17202a">Kanban Board</Text>
+            <Action id="new-task" type="button" route="#new-task-dialog" background="#17202a" color="#ffffff">
+                <Text>New task</Text>
+            </Action>
+        </Row>
+        <Row id="kanban-board" width="full" height="1fr" spacing="1px" overflow="auto">
+            <Column id="backlog-column" width="1fr" background="#ffffff" padding="1px" radius="small">
+                <Text type="h3" color="#17202a">Backlog</Text>
+                <Storekeeper id="backlog-tasks" operation="gather" repository="task" filter='{"eq":{"status":"backlog"}}'>
+                    {% for task in store['backlog-tasks'] or [] %}
+                    <Container id="backlog-task-{{ task.id }}" background="#f8fafc" padding="1px" radius="small">
+                        <Text type="h4">{{ task.title }}</Text>
+                        <Text>{{ task.description or '' }}</Text>
+                        <Text color="#64748b">{{ task.priority or 'medium' }}</Text>
+                        <Action type="button" click="kanban:move_to_todo" value="{{ task.id }}"><Text>Move to To Do</Text></Action>
+                    </Container>
+                    {% else %}<Text color="#64748b">No tasks</Text>{% endfor %}
+                </Storekeeper>
+            </Column>
+            <Column id="todo-column" width="1fr" background="#ffffff" padding="1px" radius="small">
+                <Text type="h3" color="#17202a">To Do</Text>
+                <Storekeeper id="todo-tasks" operation="gather" repository="task" filter='{"eq":{"status":"todo"}}'>
+                    {% for task in store['todo-tasks'] or [] %}
+                    <Container id="todo-task-{{ task.id }}" background="#f8fafc" padding="1px" radius="small">
+                        <Text type="h4">{{ task.title }}</Text><Text>{{ task.description or '' }}</Text>
+                        <Action type="button" click="kanban:move_to_inprogress" value="{{ task.id }}"><Text>Start</Text></Action>
+                    </Container>
+                    {% else %}<Text color="#64748b">No tasks</Text>{% endfor %}
+                </Storekeeper>
+            </Column>
+            <Column id="inprogress-column" width="1fr" background="#ffffff" padding="1px" radius="small">
+                <Text type="h3" color="#17202a">In Progress</Text>
+                <Storekeeper id="inprogress-tasks" operation="gather" repository="task" filter='{"eq":{"status":"in_progress"}}'>
+                    {% for task in store['inprogress-tasks'] or [] %}
+                    <Container id="inprogress-task-{{ task.id }}" background="#f8fafc" padding="1px" radius="small">
+                        <Text type="h4">{{ task.title }}</Text><Text>{{ task.description or '' }}</Text>
+                        <Action type="button" click="kanban:move_to_review" value="{{ task.id }}"><Text>Send to Review</Text></Action>
+                    </Container>
+                    {% else %}<Text color="#64748b">No tasks</Text>{% endfor %}
+                </Storekeeper>
+            </Column>
+            <Column id="review-column" width="1fr" background="#ffffff" padding="1px" radius="small">
+                <Text type="h3" color="#17202a">Review</Text>
+                <Storekeeper id="review-tasks" operation="gather" repository="task" filter='{"eq":{"status":"review"}}'>
+                    {% for task in store['review-tasks'] or [] %}
+                    <Container id="review-task-{{ task.id }}" background="#f8fafc" padding="1px" radius="small">
+                        <Text type="h4">{{ task.title }}</Text><Text>{{ task.description or '' }}</Text>
+                        <Action type="button" click="kanban:approve_task" value="{{ task.id }}"><Text>Approve</Text></Action>
+                        <Action type="button" click="kanban:reject_task" value="{{ task.id }}"><Text>Reject</Text></Action>
+                    </Container>
+                    {% else %}<Text color="#64748b">No tasks</Text>{% endfor %}
+                </Storekeeper>
+            </Column>
+            <Column id="done-column" width="1fr" background="#ffffff" padding="1px" radius="small">
+                <Text type="h3" color="#17202a">Done</Text>
+                <Storekeeper id="done-tasks" operation="gather" repository="task" filter='{"eq":{"status":"done"}}'>
+                    {% for task in store['done-tasks'] or [] %}
+                    <Container id="done-task-{{ task.id }}" background="#f8fafc" padding="1px" radius="small">
+                        <Text type="h4">{{ task.title }}</Text><Text>{{ task.description or '' }}</Text>
+                    </Container>
+                    {% else %}<Text color="#64748b">No tasks</Text>{% endfor %}
+                </Storekeeper>
+            </Column>
+        </Row>
+        <Window id="new-task-dialog" type="modal" title="New Task">
+            <Column padding="1px" spacing="1px">
+                <Input id="task-title" type="text" name="title" placeholder="Task title" required="true" />
+                <Input id="task-description" type="textarea" name="description" placeholder="Description" />
+                <Input id="task-priority" type="select" name="priority" value="medium">
+                    <Option value="low" /><Option value="medium" /><Option value="high" /><Option value="critical" />
+                </Input>
+                <Action id="create-task" type="button" click="kanban:create_task" form="new-task-dialog" background="#17202a" color="#ffffff"><Text>Create task</Text></Action>
+            </Column>
+        </Window>
+    </Column>
+</Window>

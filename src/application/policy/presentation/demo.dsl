@@ -90,6 +90,8 @@ routes: {
     route:GET_HOME := { path:"/home"; method:"GET"; "type":"view"; view:"twitch_home.xml" };
     route:GET_USER_PROFILE := { path:"/user/{id}"; method:"GET"; "type":"view"; view:"twitch_channel.xml" };
     route:GET_TRIS := { path:"/tris"; method:"GET"; "type":"view"; view:"tris.xml"; controllers:["tris"] };
+    // SCRUM Kanban Board
+    route:GET_KANBAN := { path:"/"; method:"GET"; "type":"view"; view:"kanban.xml"; controllers:["kanban"] };
 }
 
 policies: {
@@ -133,6 +135,7 @@ rules : {
     "/home": [policies.GET_ALLOW_ALL];
     "/user/{id}": [policies.GET_ALLOW_ALL];
     "/tris": [policies.GET_ALLOW_ALL];
+    "/kanban": [policies.GET_ALLOW_ALL];
     "/static/js/dsl.js": [policies.GET_ALLOW_ALL];
     //"/404": [policies.GET_ALLOW_ALL];
 }

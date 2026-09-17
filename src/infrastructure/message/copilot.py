@@ -8,6 +8,25 @@ import framework.core.flow as flow
 import framework.port.message as message
 
 
+# Alias comodi per i nomi "corti" -> id modello Copilot reale.
+# Gli id esatti dei modelli su GitHub Copilot cambiano nel tempo (nuovi
+# rilasci, ritiri, rinominazioni), quindi questa mappa è solo una comodità
+# per errori di battitura / nomi colloquiali, NON una fonte di verità.
+# Se un modello continua a non caricarsi, verifica l'id esatto restituito
+# da GET https://api.githubcopilot.com/models oppure dal model picker
+# dell'editor (VS Code / Copilot CLI / ecc.).
+MODEL_ALIASES: dict[str, str] = {
+    "luna": "gpt-5.6-luna",
+    "gpt-luna": "gpt-5.6-luna",
+    "gpt luna": "gpt-5.6-luna",
+    "terra": "gpt-5.6-terra",
+    "gpt-terra": "gpt-5.6-terra",
+    "sol": "gpt-5.6-sol",
+    "gpt-sol": "gpt-5.6-sol",
+    "gpt-5.6": "gpt-5.6-sol",
+}
+
+
 class Adapter(message.Port):
     """Message adapter backed by the official GitHub Copilot SDK."""
 
@@ -25,11 +44,15 @@ class Adapter(message.Port):
         self.name = constants.get("name", "copilot")
         self.processable = {"post", "read", "event"}
         self._client = constants.get("client")
-        self._sessions: dict[str, Any] = {}
+        # Le sessioni ora sono cache-ate per (session_id, model): così
+        # cambiare modello per la stessa conversazione apre una sessione
+        # Copilot nuova, invece di restare bloccati sul modello con cui la
+        # sessione era stata aperta la prima volta.
+        self._sessions: dict[tuple[str, str], Any] = {}
         self._queues: defaultdict[tuple[str, str], asyncio.Queue[Any]] = defaultdict(
             asyncio.Queue
         )
-        self._locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._locks: defaultdict[tuple[str, str], asyncio.Lock] = defaultdict(asyncio.Lock)
         self._response_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._response_tasks: set[asyncio.Task[Any]] = set()
 
@@ -54,7 +77,10 @@ class Adapter(message.Port):
             raise RuntimeError("Copilot adapter requires an injected client or github-copilot-sdk")
 
         session_id = self._session_id(session, constants.get("session_id"))
-        copilot_session = await self._get_session(session_id, client)
+        # Il modello si può passare per-chiamata (constants["model"]),
+        # altrimenti si usa quello configurato sull'adapter, altrimenti "auto".
+        model = self._resolve_model(constants.get("model"))
+        copilot_session = await self._get_session(session_id, model, client)
         prompt = constants.get("message", constants.get("prompt"))
         if not isinstance(prompt, str) or not prompt.strip():
             raise ValueError("Copilot message must be a non-empty string")
@@ -63,6 +89,7 @@ class Adapter(message.Port):
             self._receive_response(
                 copilot_session,
                 session_id,
+                model,
                 prompt,
                 self._queue_domain(constants.get("domain")),
             )
@@ -74,24 +101,33 @@ class Adapter(message.Port):
         self,
         session: Any,
         session_id: str,
+        model: str,
         prompt: str,
         domain: str,
     ) -> None:
         async with self._response_locks[session_id]:
             try:
+                # send_and_wait vuole il prompt come stringa semplice, non
+                # incapsulato in un dict.
                 response = await session.send_and_wait(
-                    {"prompt": prompt},
+                    prompt,
                     timeout=self.config.get("timeout", 120.0),
                 )
                 content = self._response_content(response)
             except Exception as exc:
-                flow._dev_log("copilot.response.error type=%s error=%r", type(exc).__name__, exc)
-                content = f"Copilot error: {exc}"
+                flow._dev_log(
+                    "copilot.response.error model=%s type=%s error=%r",
+                    model,
+                    type(exc).__name__,
+                    exc,
+                )
+                content = self._friendly_error(model, exc)
         if content is not None:
             item = {
                 "domain": domain,
                 "message": content,
                 "session_id": session_id,
+                "model": model,
             }
             await self._queues[(session_id, self._queue_domain(domain))].put(item)
             if domain != "*":
@@ -148,11 +184,13 @@ class Adapter(message.Port):
             from copilot import CopilotClient
         except ImportError:
             return None
-        options = {
-            "github_token": token,
-            "cwd": self.config.get("working_directory"),
-        }
-        self._client = CopilotClient(options)
+        # CopilotClient.__init__ nella SDK reale (github-copilot-sdk) è
+        # keyword-only: niente dict posizionale, e il parametro si chiama
+        # "working_directory", non "cwd".
+        self._client = CopilotClient(
+            github_token=token,
+            working_directory=self.config.get("working_directory"),
+        )
         return self._client
 
     def _github_token(self) -> str | None:
@@ -163,20 +201,47 @@ class Adapter(message.Port):
             return os.environ.get(configured[6:-2])
         return configured or None
 
-    async def _get_session(self, session_id: str, client: Any) -> Any:
-        if session_id in self._sessions:
-            return self._sessions[session_id]
-        async with self._locks[session_id]:
-            if session_id in self._sessions:
-                return self._sessions[session_id]
+    def _resolve_model(self, override: Any = None) -> str:
+        """Risolve l'id modello da richiedere, espandendo alias e variabili
+        d'ambiente. Precedenza: override per-chiamata > config adapter > "auto".
+        """
+        raw = override if isinstance(override, str) and override.strip() else self.config.get("model", "auto")
+        if not isinstance(raw, str):
+            return "auto"
+        raw = raw.strip()
+        if raw.startswith("{{env.") and raw.endswith("}}"):
+            raw = os.environ.get(raw[6:-2], "auto")
+        return MODEL_ALIASES.get(raw.lower().strip(), raw)
+
+    async def _get_session(self, session_id: str, model: str, client: Any) -> Any:
+        cache_key = (session_id, model)
+        if cache_key in self._sessions:
+            return self._sessions[cache_key]
+        async with self._locks[cache_key]:
+            if cache_key in self._sessions:
+                return self._sessions[cache_key]
             start = getattr(client, "start", None)
             if start is not None:
                 result = start()
                 if inspect.isawaitable(result):
                     await result
-            create_session = getattr(client, "create_session")
+            # Controllo proattivo: la SDK reale espone client.list_models(),
+            # con lo stato di policy di ogni modello ("enabled"/"disabled"/
+            # "unconfigured"). Se il modello richiesto non è abilitato per
+            # l'account/org, meglio fallire qui con un messaggio chiaro che
+            # dentro un TypeError/RPC error criptico da create_session.
+            await self._check_model_policy(client, model)
+            create_session = getattr(client, "create_session", None)
+            if create_session is None:
+                raise RuntimeError(
+                    "Injected Copilot client is missing create_session(); "
+                    "check the client/client_factory you provided to the adapter"
+                )
+            # create_session nella SDK reale è keyword-only con parametri
+            # individuali (model, streaming, system_message, tools,
+            # available_tools, ...): NON accetta un unico dict "config=".
             kwargs: dict[str, Any] = {
-                "model": self.config.get("model", "auto"),
+                "model": model,
                 "streaming": False,
                 "system_message": {
                     "mode": "append",
@@ -191,11 +256,52 @@ class Adapter(message.Port):
                 kwargs["tools"] = tools
             if self.config.get("available_tools") is not None:
                 kwargs["available_tools"] = self.config["available_tools"]
-            session = create_session(config=kwargs)
-            if inspect.isawaitable(session):
-                session = await session
-            self._sessions[session_id] = session
+            try:
+                session = create_session(**kwargs)
+                if inspect.isawaitable(session):
+                    session = await session
+            except Exception as exc:
+                flow._dev_log(
+                    "copilot.session.create_error model=%s error=%r", model, exc
+                )
+                raise RuntimeError(
+                    f"Failed to open a Copilot session for model {model!r}: {exc}. "
+                    "If this is a newly released model, confirm (1) the id matches "
+                    "exactly what client.list_models() reports, and (2) it's enabled "
+                    "in your Copilot Business/Enterprise admin policy (new models "
+                    "default to off)."
+                ) from exc
+            self._sessions[cache_key] = session
             return session
+
+    async def _check_model_policy(self, client: Any, model: str) -> None:
+        """Verifica (best-effort) che `model` sia abilitato per l'account/org
+        prima di provare ad aprire la sessione, usando client.list_models().
+        Non fallisce mai per errori di rete/permessi su list_models stesso:
+        in quel caso lascia che sia create_session a dare l'errore reale.
+        """
+        list_models = getattr(client, "list_models", None)
+        if list_models is None:
+            return
+        try:
+            models = await list_models()
+        except Exception as exc:
+            flow._dev_log("copilot.list_models.warn model=%s error=%r", model, exc)
+            return
+        info = next((m for m in models if getattr(m, "id", None) == model), None)
+        if info is None:
+            # Id non trovato nella lista corrente: potrebbe essere un modello
+            # nuovo non ancora propagato, o un typo. Non blocchiamo qui,
+            # ce lo dirà create_session con un errore più specifico.
+            return
+        policy = getattr(info, "policy", None)
+        state = getattr(policy, "state", None) if policy is not None else None
+        if state in ("disabled", "unconfigured"):
+            raise RuntimeError(
+                f"Model {model!r} risulta {state!r} per questo account/organizzazione "
+                "(da client.list_models()). Un admin Copilot Business/Enterprise deve "
+                "abilitarlo in Copilot Settings > Models prima che sia utilizzabile."
+            )
 
     def _terminal_tools(self) -> list[Any]:
         executor = self.config.get("terminal_executor")
@@ -236,6 +342,25 @@ class Adapter(message.Port):
         )]
 
     @staticmethod
+    def _friendly_error(model: str, exc: Exception) -> str:
+        text = str(exc).lower()
+        if "not accessible" in text or "not supported" in text or "model_not_supported" in text:
+            return (
+                f"Copilot error: model {model!r} non è ancora richiedibile da questa "
+                "interfaccia (alcuni modelli appena rilasciati funzionano solo via "
+                "endpoint /responses, non /chat/completions). Riprova più tardi o "
+                "usa un altro modello."
+            )
+        if "policy" in text or "not enabled" in text or "forbidden" in text or "403" in text:
+            return (
+                f"Copilot error: il modello {model!r} risulta disabilitato per "
+                "questo account/organizzazione. Un admin Copilot Business/Enterprise "
+                "deve abilitarlo nelle impostazioni Copilot (i modelli nuovi sono "
+                "disattivati di default)."
+            )
+        return f"Copilot error: {exc}"
+
+    @staticmethod
     def _matches(pattern: str, domain: str) -> bool:
         if pattern == "*":
             return True
@@ -247,7 +372,14 @@ class Adapter(message.Port):
 
     @staticmethod
     def _session_id(session: Any, fallback: Any = None) -> str:
-        return str(getattr(session, "id", None) or fallback or "default")
+        # L'oggetto CopilotSession reale espone .session_id, non .id.
+        # Teniamo .id come fallback per compatibilità con mock/test doubles.
+        return str(
+            getattr(session, "session_id", None)
+            or getattr(session, "id", None)
+            or fallback
+            or "default"
+        )
 
     @staticmethod
     def _response_content(response: Any) -> str | None:

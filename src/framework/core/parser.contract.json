@@ -1,0 +1,6 @@
+{
+  "requires": [
+    "lark"
+  ],
+  "contract_version": 2
+}

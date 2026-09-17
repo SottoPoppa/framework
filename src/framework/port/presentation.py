@@ -69,6 +69,33 @@ class StorekeeperView:
                     ) from error
         return method_name, request
 
+    async def prepare_context(self, runtime_session, text, context):
+        if runtime_session is None or not isinstance(text, str):
+            return context
+        try:
+            root = ET.fromstring(text)
+        except ET.ParseError:
+            return context
+
+        storekeeper = self.adapter.loader.get_managers().get("storekeeper")
+        if storekeeper is None:
+            return context
+
+        store = dict(context.get("store", {}))
+        for node in root.iter():
+            if node.tag.split("}")[-1].casefold() != "storekeeper":
+                continue
+            alias = node.attrib.get("id")
+            if not alias:
+                continue
+            method_name, request = self.request(node.attrib)
+            if method_name not in {"overview", "gather"}:
+                continue
+            result = await getattr(storekeeper, method_name)(runtime_session, **request)
+            if flow.check(result):
+                store[alias] = flow.output(result)
+        return {**context, "store": store}
+
     @staticmethod
     def _child_text(child):
         return str(
@@ -82,15 +109,18 @@ class StorekeeperView:
         storekeeper = self.adapter.loader.get_managers().get("storekeeper")
         if storekeeper is None:
             raise RuntimeError("Storekeeper non disponibile per il tag <Storekeeper>")
-        method_name, request = self.request(attributes)
-        result = await getattr(storekeeper, method_name)(runtime_session, **request)
-        value = flow.output(result)
         alias = attributes.get("id")
         if not alias:
             raise ValueError("Il tag <Storekeeper> richiede l'attributo 'id'")
 
         child_context = dict(context)
         store = context.get("_jinja_context", {}).get("store", {})
+        if alias in store:
+            value = store[alias]
+        else:
+            method_name, request = self.request(attributes)
+            result = await getattr(storekeeper, method_name)(runtime_session, **request)
+            value = flow.output(result)
         child_context["_jinja_context"] = {
             **context.get("_jinja_context", {}),
             "store": {**store, alias: value},
@@ -619,7 +649,13 @@ class Port(ABC):
             file=file,
             controllers=controllers,
             source_name=source_name,
+            prepare_context=self.prepare_template_context,
             **constants,
+        )
+
+    async def prepare_template_context(self, runtime_session, text, context):
+        return await StorekeeperView(self).prepare_context(
+            runtime_session, text, context
         )
 
     async def render_node(self, parent, node, context, runtime_session=None):

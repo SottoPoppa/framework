@@ -343,7 +343,8 @@ def _make_action(x):
     action = widget(Button, lambda node: ((_text(node),), {"id": _attr(node, "id")}))(x)
     action._dsl_click = _attr(x, "data-click", _attr(x, "click"))
     action._dsl_route = _attr(x, "route")
-    action._dsl_value = _text(x)
+    value = _attr(x, "value")
+    action._dsl_value = _text(x) if value is None else value
     return action
 
 class XmlScreen(Screen):
@@ -424,6 +425,25 @@ class AppDinamica(App):
     def __init__(self, adapter, **kwargs):
         super().__init__(**kwargs)
         self.adapter = adapter
+
+    def _form_payload(self):
+        payload = {}
+        fields = []
+        active_screen = getattr(self, "screen", None)
+        for widget_type in (Input, TextArea, Select):
+            if active_screen is not None:
+                fields.extend(active_screen.query(widget_type))
+            else:
+                fields.extend(self.query(widget_type))
+        for field in fields:
+            node = self.adapter.node_get(field.id)
+            if node is None:
+                continue
+            attributes = self.adapter.presenter.estrai_attributi_tag(node)
+            name = attributes.get("name") or field.id
+            value = getattr(field, "value", "")
+            payload[name] = "" if value is None else str(value)
+        return payload
 
     async def _send_dsl_event(self, event_name, message):
         if not isinstance(event_name, str) or ":" not in event_name:
@@ -536,7 +556,12 @@ class AppDinamica(App):
                 self.adapter.close_modal()
                 return
 
-            await self._send_dsl_event(click, str(event.button.id))
+            message = (
+                self._form_payload()
+                if attrs_tag.get("form")
+                else str(event.button.id)
+            )
+            await self._send_dsl_event(click, message)
 
     async def on_click(self, event: Click) -> None:
         widget = event.widget

@@ -1,0 +1,25 @@
+{
+  "tasks": [
+    {
+      "id": "task-prova-utente-20260912",
+      "title": "Task di prova utente",
+      "description": "Creato tramite storekeeper",
+      "status": "backlog",
+      "priority": "medium",
+      "created_at": "2026-09-12T00:00:00Z",
+      "updated_at": null,
+      "completed_at": null
+    },
+    {
+      "id": "task-prova-utente-220260912",
+      "title": "Task di prova utente",
+      "description": "Creato tramite storekeeper",
+      "status": "backlog",
+      "priority": "medium",
+      "created_at": "2026-09-12T00:00:00Z",
+      "updated_at": null,
+      "completed_at": null
+    }
+  ]
+
+}

@@ -1,0 +1,45 @@
+{
+  "id": {
+    "type": "string",
+    "required": false
+  },
+  "title": {
+    "type": "string",
+    "required": true
+  },
+  "description": {
+    "type": "string",
+    "required": false,
+    "nullable": true
+  },
+  "status": {
+    "type": "string",
+    "required": true,
+    "allowed": ["backlog", "todo", "in_progress", "review", "done"]
+  },
+  "assigned_to": {
+    "type": "string",
+    "required": false,
+    "nullable": true
+  },
+  "priority": {
+    "type": "string",
+    "required": false,
+    "default": "medium",
+    "allowed": ["low", "medium", "high", "critical"]
+  },
+  "created_at": {
+    "type": "string",
+    "required": false
+  },
+  "updated_at": {
+    "type": "string",
+    "required": false,
+    "nullable": true
+  },
+  "completed_at": {
+    "type": "string",
+    "required": false,
+    "nullable": true
+  }
+}

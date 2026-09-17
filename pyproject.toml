@@ -3,9 +3,11 @@ name = "cloud.colosso"
 version = "0.1.0"
 description = "Un'app di esempio con OmniPort"  
 readme = "README.md"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     "jinja2",
     "tomli; python_version < '3.11'",
+    "cerberus",
     "github-copilot-sdk",
 ]
 

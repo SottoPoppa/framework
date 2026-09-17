@@ -75,6 +75,7 @@ jinja_env.filters.update({
     "get": lambda d, key: d.get(key) if isinstance(d, dict) else None,
 })
 
+
 async def format(target, **constants):
     """Formatta una stringa usando Jinja2 e l'environment condiviso (jinja)."""
     try:
@@ -89,6 +90,7 @@ async def format(target, **constants):
     except Exception as e:
         raise ValueError(f"Errore formattazione: {e}")
 
+
 async def render(
     loader,
     runtime_session,
@@ -97,12 +99,17 @@ async def render(
     file=None,
     controllers=None,
     source_name=None,
+    prepare_context=None,
     **constants,
 ):
     if text is None and file is None:
         raise ValueError("No text or file provided")
     if text is None:
         text = await loader.resource(file)
+    elif isinstance(text, ET.Element):
+        text = ET.tostring(text, encoding="unicode")
+    elif not isinstance(text, str):
+        text = str(text)
     source_name = source_name or file or "template string"
 
     environment = Environment(
@@ -134,7 +141,11 @@ async def render(
 
     #raise Exception(data)
 
-    render_context = constants | data | {"manager": loader.get_managers()}
+    render_context = constants | data | {
+        "manager": loader.get_managers(),
+    }
+    if prepare_context is not None:
+        render_context = await prepare_context(runtime_session, text, render_context)
     content = template.render(render_context)
     try:
         xml = ET.fromstring(content)

@@ -2,6 +2,7 @@ import sys
 import os
 import time
 import asyncio
+import json
 from pathlib import Path
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -114,6 +115,8 @@ class Adapter(persistence.Port):
         path = self._resolve_path(**values)
         if not os.path.isabs(path):
             path = os.path.join(self.path, path)
+        if self._is_structured_json(path, values):
+            return await self._request_json(path, constants.get('method'), values)
         data = self._payload_data(**values)
         method = constants.get('method')
 
@@ -150,6 +153,109 @@ class Adapter(persistence.Port):
                 return await self.query(**values)
             case _:
                 return flow.error()
+
+    @staticmethod
+    def _is_structured_json(path, constants):
+        return Path(path).suffix.casefold() == '.json' and isinstance(
+            constants.get('payload'), dict
+        ) and 'content' not in constants.get('payload', {})
+
+    async def _request_json(self, path, method, constants):
+        document = self._read_json(path)
+        records = self._json_records(document)
+        filters = constants.get('filter', {})
+        payload = constants.get('payload', {})
+
+        if method == 'POST':
+            records.append(payload)
+            self._write_json(
+                path,
+                self._json_document(document, records, constants.get('collection')),
+            )
+            return flow.success(payload)
+
+        matches = [record for record in records if self._matches(record, filters)]
+        if method == 'GET':
+            if filters and not matches:
+                return flow.error('Record non trovato')
+            return flow.success(matches if filters else records)
+
+        if method == 'PUT':
+            if not matches:
+                return flow.error('Record non trovato')
+            for record in records:
+                if self._matches(record, filters):
+                    record.update(payload)
+            self._write_json(
+                path,
+                self._json_document(document, records, constants.get('collection')),
+            )
+            updated = [record for record in records if self._matches(record, filters)]
+            return flow.success(updated[0] if len(updated) == 1 else updated)
+
+        if method == 'DELETE':
+            remaining = [record for record in records if not self._matches(record, filters)]
+            if len(remaining) == len(records):
+                return flow.error('Record non trovato')
+            self._write_json(
+                path,
+                self._json_document(document, remaining, constants.get('collection')),
+            )
+            return flow.success({})
+
+        return flow.error()
+
+    @staticmethod
+    def _read_json(path):
+        try:
+            with open(path, encoding='utf-8') as file:
+                return json.load(file)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+
+    @staticmethod
+    def _json_records(document):
+        if isinstance(document, list):
+            return [record for record in document if isinstance(record, dict)]
+        if isinstance(document, dict):
+            for value in document.values():
+                if isinstance(value, list):
+                    return [record for record in value if isinstance(record, dict)]
+        return []
+
+    @staticmethod
+    def _json_document(document, records, collection=None):
+        if isinstance(document, (list, tuple)):
+            return records
+        items = getattr(document, 'items', None)
+        if callable(items):
+            for key, value in items():
+                if isinstance(value, list):
+                    document[key] = records
+                    return document
+            if isinstance(collection, str) and collection:
+                document[collection] = records
+                return document
+            if not document:
+                return records
+        raise ValueError(
+            "JSON document must contain a list or specify a collection key"
+        )
+
+    @staticmethod
+    def _matches(record, filters):
+        if not filters:
+            return True
+        for field, expected in filters.get('eq', {}).items():
+            if record.get(field) != expected:
+                return False
+        return True
+
+    @staticmethod
+    def _write_json(path, document):
+        os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as file:
+            json.dump(document, file, ensure_ascii=False, indent=2)
 
     @staticmethod
     def _resolve_path(**constants):

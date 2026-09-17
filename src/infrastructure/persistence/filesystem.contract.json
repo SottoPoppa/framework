@@ -4,6 +4,9 @@
     "filter": [
       "Adapter.filter"
     ],
+    "json_document": [
+      "Adapter._json_document"
+    ],
     "payload_data": [
       "Adapter._payload_data"
     ],
@@ -13,6 +16,10 @@
   },
   "hashes": {
     "Adapter": {
+      "_json_document": {
+        "production": "3125f122e084db934e0d2fc7fb0c8f4d885505c7ccf522df34894a8f63dce608",
+        "test": "3125f122e084db934e0d2fc7fb0c8f4d885505c7ccf522df34894a8f63dce608"
+      },
       "_payload_data": {
         "production": "a69de6615c35053c56123f8dd04eaf5a1fdf8c27b355a15d19065e431d78aa30",
         "test": "a69de6615c35053c56123f8dd04eaf5a1fdf8c27b355a15d19065e431d78aa30"
