@@ -43,7 +43,7 @@ name = "broker"
 name = "copilot"
 model = "gpt-5.6-luna"
 working_directory = "."
-enable_terminal = false
+enable_terminal = true
 token = "{{ env('COPILOT_GITHUB_TOKEN') }}"
 
 #[[presentation.starlette]]

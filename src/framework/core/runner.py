@@ -215,6 +215,19 @@ class DagRunner:
                     else:
                         value = exec_coro
 
+                    if flow.is_result(value) and not flow.check(value):
+                        s.results[n] = value
+                        s.errors[n] = flow.output(value)
+                        s.mark(n, NodeState.FAILED)
+                        flow._dev_log(
+                            "dag.node.failed",
+                            controller=s.dag_name,
+                            node=n,
+                            error=flow._safe_log_value(flow.output(value)),
+                            success=False,
+                        )
+                        return
+
                     # Salvataggio del risultato nel contesto e nella mappa della sessione
                     s.results[n] = value
                     s.context.set(n, value)
@@ -237,6 +250,14 @@ class DagRunner:
                     if attempt >= max_retries:
                         s.errors[n] = exc
                         s.mark(n, NodeState.FAILED)
+                        flow._dev_log(
+                            "dag.node.error",
+                            controller=s.dag_name,
+                            node=n,
+                            error_message=str(exc),
+                            exception=exc,
+                            exc_info=True,
+                        )
                         return
 
                     attempt += 1
@@ -249,7 +270,7 @@ class DagRunner:
 
     async def emit(
         self, session: Session, node: str, payload: Any = None
-    ) -> None:
+    ) -> Any:
         """Invia un evento/payload e attiva direttamente un nodo."""
         dag = self.dags[session.dag_name]
 
@@ -262,14 +283,24 @@ class DagRunner:
             session.context.set(output, payload)
         self._reset_subgraph(dag, session, node)
         await self._run_node(dag, session, node)
-        on_end = dag.get(node).on_end
-        if (
-            session.states.get(node) == NodeState.SUCCESS
-            and on_end
-            and on_end in dag.nodes
-        ):
+        if session.states.get(node) != NodeState.SUCCESS:
+            return flow.error(
+                session.errors.get(node, f"Nodo DAG fallito: {node}")
+            )
+        current = node
+        visited = {node}
+        while session.states.get(current) == NodeState.SUCCESS:
+            on_end = dag.get(current).on_end
+            if not on_end or on_end not in dag.nodes or on_end in visited:
+                break
+            visited.add(on_end)
             self._reset_subgraph(dag, session, on_end)
             await self._run_node(dag, session, on_end)
+            if session.states.get(on_end) != NodeState.SUCCESS:
+                return flow.error(
+                    session.errors.get(on_end, f"Nodo DAG fallito: {on_end}")
+                )
+            current = on_end
         return session.results.get(node)
 
     def _reset_subgraph(self, dag: Dag, session: Session, node: str) -> None:

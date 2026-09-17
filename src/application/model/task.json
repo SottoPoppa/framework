@@ -12,6 +12,11 @@
     "required": false,
     "nullable": true
   },
+  "file": {
+    "type": "string",
+    "required": false,
+    "nullable": true
+  },
   "status": {
     "type": "string",
     "required": true,

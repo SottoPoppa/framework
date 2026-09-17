@@ -132,7 +132,7 @@ def _dev_log(
                 sink(
                     rendered,
                     exception=exception,
-                    level="ERROR" if exc_info else "DEBUG",
+                    level="ERROR" if exc_info or metadata.get("success") is False else "DEBUG",
                     metadata=metadata,
                 )
             except Exception as sink_error:
@@ -143,7 +143,7 @@ def _dev_log(
             logger_metadata = dict(metadata)
             if "component" in logger_metadata:
                 logger_metadata["flow_component"] = logger_metadata.pop("component")
-            if exc_info:
+            if exc_info or metadata.get("success") is False:
                 _dev_logger.error(rendered, exception=exception, **logger_metadata)
             else:
                 _dev_logger.debug(rendered, **logger_metadata)

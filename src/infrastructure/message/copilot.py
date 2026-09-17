@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import os
 from collections import defaultdict
+from pathlib import Path
 from typing import Any
 
 import framework.core.flow as flow
@@ -85,17 +86,13 @@ class Adapter(message.Port):
         if not isinstance(prompt, str) or not prompt.strip():
             raise ValueError("Copilot message must be a non-empty string")
 
-        task = asyncio.create_task(
-            self._receive_response(
-                copilot_session,
-                session_id,
-                model,
-                prompt,
-                self._queue_domain(constants.get("domain")),
-            )
+        await self._receive_response(
+            copilot_session,
+            session_id,
+            model,
+            prompt,
+            self._queue_domain(constants.get("domain")),
         )
-        self._response_tasks.add(task)
-        task.add_done_callback(self._response_tasks.discard)
 
     async def _receive_response(
         self,
@@ -246,12 +243,29 @@ class Adapter(message.Port):
                 "system_message": {
                     "mode": "append",
                     "content": (
+                        "You are an implementation agent, not a consultant. "
+                        "You MUST use the omniport_terminal tool to inspect and "
+                        "modify the workspace. Do not only describe a solution. "
+                        "Start by running pwd and reading SKILL.md, then inspect "
+                        "the relevant files, implement the requested task, run "
+                        "tests, and fix failures before reporting completion. "
                         "All workspace and terminal changes must be performed "
                         "through the OmniPort terminal tool."
                     ),
                 },
             }
             tools = self._terminal_tools()
+            try:
+                from copilot.session import PermissionHandler
+            except ImportError:
+                PermissionHandler = None
+            if PermissionHandler is not None:
+                kwargs["on_permission_request"] = PermissionHandler.approve_all
+            flow._dev_log(
+                "copilot.session.tools terminal_enabled=%s tool_count=%s",
+                self.config.get("enable_terminal", False),
+                len(tools),
+            )
             if tools:
                 kwargs["tools"] = tools
             if self.config.get("available_tools") is not None:
@@ -304,9 +318,9 @@ class Adapter(message.Port):
             )
 
     def _terminal_tools(self) -> list[Any]:
-        executor = self.config.get("terminal_executor")
-        if not self.config.get("enable_terminal", False) or executor is None:
+        if not self.config.get("enable_terminal", False):
             return []
+        executor = self.config.get("terminal_executor") or self._default_terminal_executor
         try:
             from copilot.tools import Tool, ToolInvocation, ToolResult
         except ImportError:
@@ -321,9 +335,19 @@ class Adapter(message.Port):
                     result_type="failure",
                     error="command is required",
                 )
+            flow._dev_log(
+                "copilot.terminal.start command=%s working_directory=%s",
+                command,
+                arguments.get("working_directory"),
+            )
             result = executor(command, arguments.get("working_directory"))
             if inspect.isawaitable(result):
                 result = await result
+            flow._dev_log(
+                "copilot.terminal.end command=%s result=%s",
+                command,
+                result,
+            )
             return ToolResult(text_result_for_llm=str(result), result_type="success")
 
         return [Tool(
@@ -338,8 +362,52 @@ class Adapter(message.Port):
                 "required": ["command"],
             },
             handler=execute,
-            is_terminal=True,
         )]
+
+    async def _default_terminal_executor(
+        self,
+        command: str,
+        working_directory: str | None = None,
+    ) -> str:
+        root = Path(self.config.get("working_directory") or os.getcwd()).resolve()
+        requested = Path(working_directory or root).expanduser()
+        if not requested.is_absolute():
+            requested = root / requested
+        cwd = requested.resolve()
+        if cwd != root and root not in cwd.parents:
+            return "terminal rejected: working directory is outside the workspace"
+
+        blocked = (
+            "sudo ", "rm -rf", "git reset --hard", "git clean -fd",
+            "mkfs", "shutdown", "reboot", ":(){", "> /dev/",
+        )
+        normalized = command.casefold()
+        if any(token in normalized for token in blocked):
+            return "terminal rejected: command is not permitted"
+
+        try:
+            process = await asyncio.create_subprocess_shell(
+                command,
+                cwd=str(cwd),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env=os.environ.copy(),
+            )
+            output, _ = await asyncio.wait_for(
+                process.communicate(),
+                timeout=float(self.config.get("terminal_timeout", 120.0)),
+            )
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+            return "terminal failed: command timed out"
+        except OSError as error:
+            return f"terminal failed: {error}"
+
+        text = output.decode("utf-8", errors="replace")
+        if process.returncode:
+            return f"exit code {process.returncode}\n{text}"
+        return text or "command completed successfully"
 
     @staticmethod
     def _friendly_error(model: str, exc: Exception) -> str:

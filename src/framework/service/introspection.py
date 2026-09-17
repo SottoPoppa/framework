@@ -113,7 +113,9 @@ class Reflection:
         )
 
     @staticmethod
-    def file_dependencies(file_path: str, root="src"):
+    def file_dependencies(file_path: str | None, root="src"):
+        if not file_path:
+            return []
         source_path = Path(file_path)
         root_path = Path(root)
 

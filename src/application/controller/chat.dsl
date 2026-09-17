@@ -4,14 +4,15 @@
     // Accedi esplicitamente al namespace 'shared' per evitare ambiguità
     dependencies(entry: false) -> file_dependencies(shared.terminal.selected);
 
-    send(entry:false, deps:false) -> messenger.send(
+    send(entry:false, deps: ["dependencies"]) -> messenger.send(
             session,
-            receiver: "copilot",
-            message: "File da considerare per primi, ma prima leggi SKILL.md se ancora non lo hai letto! :\n"
-                + str(dependencies)
-                + "\n\nRichiesta dell'utente:\n"
-                + message,
-            domain: "general"
+            adapter: "dsl",
+            receiver: "kanban",
+            message: {
+                "dependencies": dependencies;
+                "request": message;
+            },
+            domain: "work_tasks"
         );
 
     copilot_source(

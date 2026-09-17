@@ -73,30 +73,39 @@ class Manager(manager.Port):
 
         if adapter == "dsl":
             if not destination or not self.defender or destination not in self.defender.controllers:
-                return
+                return flow.error("Controller DSL non trovato")
             request = dict(constants)
             request.update({"adapter": "dsl", "provider": "dsl", "receiver": destination})
-            if await self.defender.authorized("message", action="publish", request=request):
-                if destination not in session.user_session.executions:
-                    await session.run(destination)
-                execution = session.user_session.executions[destination]
-                await session.runner.emit(
-                    execution,
-                    domain,
-                    constants.get("message"),
-                )
-            return
+            if not await self.defender.authorized("message", action="publish", request=request):
+                return flow.error("Messaggio DSL non autorizzato")
+            if destination not in session.user_session.executions:
+                started = await session.run(destination)
+                if flow.is_result(started) and not flow.check(started):
+                    return started
+            execution = session.user_session.executions[destination]
+            result = await session.runner.emit(
+                execution,
+                domain,
+                constants.get("message"),
+            )
+            if flow.is_result(result) and not flow.check(result):
+                return result
+            return flow.success(result)
 
         matched = self._matching_providers(destination, adapter)
 
         message_text = constants.get('message')
 
         if destination and not matched:
-            return
+            return flow.error("Nessun provider di messaggistica trovato")
 
+        failure = None
         for provider in matched:
             if await self._authorized_provider("publish", provider, destination, constants):
-                await provider.post(session, **constants | {'domain': domain})
+                result = await provider.post(session, **constants | {'domain': domain})
+                if flow.is_result(result) and not flow.check(result) and failure is None:
+                    failure = result
+        return failure or flow.success()
 
     @flow.result(inputs=('messenger',), outputs=())
     async def send(self, session, **constants):
@@ -110,7 +119,11 @@ class Manager(manager.Port):
             for key, value in constants.items()
             if key != "domain"
         }
-        await self._dispatch(session, constants.get('domain'), **dispatch_constants)
+        return await self._dispatch(
+            session,
+            constants.get('domain'),
+            **dispatch_constants,
+        )
 
     @flow.result(inputs=(), outputs=())
     async def receive(self, session, **constants):

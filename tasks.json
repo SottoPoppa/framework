@@ -4,17 +4,18 @@
       "id": "task-prova-utente-20260912",
       "title": "Task di prova utente",
       "description": "Creato tramite storekeeper",
-      "status": "backlog",
+      "status": "review",
       "priority": "medium",
       "created_at": "2026-09-12T00:00:00Z",
       "updated_at": null,
-      "completed_at": null
+      "completed_at": null,
+      "assigned_to": "yFsUf2xHdodCQ9HxRXmWnw"
     },
     {
       "id": "task-prova-utente-220260912",
       "title": "Task di prova utente",
       "description": "Creato tramite storekeeper",
-      "status": "backlog",
+      "status": "todo",
       "priority": "medium",
       "created_at": "2026-09-12T00:00:00Z",
       "updated_at": null,
@@ -30,6 +31,53 @@
       "updated_at": null,
       "completed_at": null,
       "assigned_to": "jXp0WjZhEhAVFMudTMF7Dw"
+    },
+    {
+      "id": "task-650977",
+      "title": "Fammi un repot",
+      "description": "fammi un report sullo stato del framework leggendo anche SKILL.md ",
+      "status": "in_progress",
+      "priority": "medium",
+      "created_at": "2026-09-12T00:00:00Z",
+      "updated_at": null,
+      "completed_at": null,
+      "assigned_to": "wwbX-5GEgDssRFkQBMHXmQ"
+    },
+    {
+      "id": "task-242846",
+      "title": "creami un file test.txt",
+      "description": "creami un file test.txt con dentro \"funziona!\"",
+      "status": "in_progress",
+      "priority": "low",
+      "created_at": "2026-09-12T00:00:00Z",
+      "updated_at": null,
+      "completed_at": null,
+      "assigned_to": "yP6HMytYmfPGBODzU5Nbfg"
+    },
+    {
+      "id": "task-381996",
+      "title": "#39",
+      "description": "fammi un file  .md con i possibili miglioramenti e uuna migliore separazione delle resposabilita tra i file !",
+      "file": "src/infrastructure/presentation/console.py",
+      "status": "in_progress",
+      "priority": "medium",
+      "created_at": "2026-09-12T00:00:00Z",
+      "updated_at": null,
+      "completed_at": null,
+      "assigned_to": "g1PVYAl9QXfvm_VDE8gyNg"
+    },
+    {
+      "id": "task-433376",
+      "title": "#88",
+      "description": "analizza tutto il flusso dalla richiesta a la riposta a come vengono costruiti gli adapter! e fai i miglioramenti per migliorare la matenibilitra ripsetttando le attuali file !",
+      "agent": null,
+      "file": "src/framework/manager/storekeeper.py",
+      "status": "in_progress",
+      "priority": "medium",
+      "created_at": "2026-09-12T00:00:00Z",
+      "updated_at": null,
+      "completed_at": null,
+      "assigned_to": "Bu7_aYzQga0koeZaNYjdOQ"
     }
   ]
 }

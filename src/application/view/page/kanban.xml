@@ -71,6 +71,14 @@
             <Column padding="1px" spacing="1px">
                 <Input id="task-title" type="text" name="title" placeholder="Task title" required="true" />
                 <Input id="task-description" type="textarea" name="description" placeholder="Description" />
+                <Input id="task-file" type="select" name="file" value="__none__" placeholder="Main file (optional)">
+                    <Option value="__none__" title="No file" />
+                    {% if kanban.files | check %}
+                        {% for item in kanban.files | value %}
+                            <Option value="{{ item['relative_path'] }}" title="{{ item['relative_path'] }}" />
+                        {% endfor %}
+                    {% endif %}
+                </Input>
                 <Input id="task-priority" type="select" name="priority" value="medium">
                     <Option value="low" /><Option value="medium" /><Option value="high" /><Option value="critical" />
                 </Input>
