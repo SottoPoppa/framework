@@ -1,11 +1,7 @@
-any:port_schema := "message";
-any:adapter_schema := "message_adapter";
-
 message:configuration := {
     "type": "event_bus";
     "url": "https://localhost/events";
-    "tls": { "enabled": false; "verify_cert": false };
-    "authentication": { "mechanism": "none" }
+    "tls": { "enabled": false; "verify_cert": false }
 };
 
 security: {

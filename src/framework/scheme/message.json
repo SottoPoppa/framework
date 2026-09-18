@@ -23,7 +23,7 @@
   },
   "authentication": {
     "type": "dict",
-    "required": true,
+    "required": false,
     "schema": {
       "mechanism": {
         "type": "string",

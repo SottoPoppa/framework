@@ -57,7 +57,6 @@ class Adapter(persistence.Port):
         "encryption_at_rest": False,
         "audit": False,
         "soft_delete": False,
-        "authentication": ["filesystem_permissions"],
     }
 
     def __init__(self, messenger: Messenger, **constants):

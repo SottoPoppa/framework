@@ -1,0 +1,46 @@
+{
+  "effect": {
+    "type": "string",
+    "required": false,
+    "allowed": ["allow", "deny"],
+    "regex": "^(allow|deny)$",
+    "default": "deny"
+  },
+  "target": {
+    "type": "dict",
+    "required": false,
+    "default": {
+      "action": "",
+      "resource": "",
+      "location": "",
+      "context": {}
+    },
+    "schema": {
+      "action": {
+        "type": "string",
+        "required": false
+      },
+      "resource": {
+        "type": "string",
+        "required": false
+      },
+      "location": {
+        "type": "string",
+        "required": false
+      },
+      "context": {
+        "type": "dict",
+        "required": false
+      }
+    }
+  },
+  "description": {
+    "type": "string",
+    "required": false,
+    "default": ""
+  },
+  "condition": {
+    "required": false,
+    "default": true
+  }
+}

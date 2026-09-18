@@ -39,6 +39,7 @@ persistence = "default.dsl"
 
 #[[message.bus]]
 #name = "broker"
+#implementation = "bus"
 
 #[[message.copilot]]
 #name = "copilot"
@@ -60,8 +61,12 @@ persistence = "default.dsl"
 name = "tui"
 implementation = "textual"
 
+#[[authentication.stub]]
+#name = "stub"
+
 #[[persistence.filesystem]]
-#name = "log"
+#name = "workfolder"
+#implementation = "filesystem"
 
 #[[persistence.filesystem]]
 #name = "workfolder"

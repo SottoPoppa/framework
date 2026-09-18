@@ -11,7 +11,6 @@ class Adapter(message.Port):
         "encryption": False,
         "audit": False,
         "rate_limiting": False,
-        "authentication": [],
     }
 
     def __init__(self, **constants):

@@ -1,6 +1,3 @@
-any:port_schema := "presentation";
-any:adapter_schema := "presentation_adapter";
-
 presentation:configuration := {
     "presentation_type": "rest_api";
     "cors_policy": {
@@ -13,39 +10,6 @@ presentation:configuration := {
     "authentication_guards": {
         "auth_required": false
     }
-};
-
-
-type:route := {
-    "path": { "type": "string" };
-    "method": { "type": "string"; "default": "GET" };
-    "type": { "type": "string" "allowed": ["view","authenticate","terminate","activate","reinstate"] };
-    "view": { "type": "string"; "default": "" };
-    "controllers": { "type": "list"; "schema": { "type": "string" }; "default": [] };
-};
-
-type:policy := {
-    "effect": { "type": "string"; "regex": "^(allow|deny)$"; "default": "deny" };
-    "target": { 
-        "schema": { "action": { "type": "string" }; "resource": { "type": "string" }; "location": { "type": "string" }; "context": { "type": "dict" } }; 
-        "default": { "action": ""; "resource": ""; "location": ""; "context": {} };
-    };
-    "description": { "type": "string"; "default": "" };
-    "condition": { "default": true };
-};
-
-type:user := {
-  "identifier": { "type": "string" };
-  "username": { "type": "string" };
-  "role": { "type": "string"; "regex": "^(admin|user|guest)$" };
-  "avatar": { "type": "string" };
-};
-
-type:role := {
-    "id": { "type": "string" };
-    "name": { "type": "string" };
-    "description": { "type": "string" };
-    "resources": { "type": "list"; "schema": { "type": "string" } };
 };
 
 roles:{

@@ -5,7 +5,7 @@
   "rate_limiting": { "type": "boolean", "required": true },
   "authentication": {
     "type": "list",
-    "required": true,
+    "required": false,
     "schema": { "type": "string" }
   }
 }

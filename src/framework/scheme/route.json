@@ -1,0 +1,29 @@
+{
+  "path": {
+    "type": "string",
+    "required": true
+  },
+  "method": {
+    "type": "string",
+    "required": false,
+    "default": "GET"
+  },
+  "type": {
+    "type": "string",
+    "required": true,
+    "allowed": ["view", "authenticate", "terminate", "activate", "reinstate"]
+  },
+  "view": {
+    "type": "string",
+    "required": false,
+    "default": ""
+  },
+  "controllers": {
+    "type": "list",
+    "required": false,
+    "default": [],
+    "schema": {
+      "type": "string"
+    }
+  }
+}

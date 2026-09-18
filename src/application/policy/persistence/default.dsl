@@ -1,6 +1,3 @@
-any:port_schema := "persistence";
-any:adapter_schema := "persistence_adapter";
-
 persistence:configuration := {
     "storage_type": "filesystem";
     "connection": {
@@ -24,8 +21,7 @@ persistence:configuration := {
 security: {
     "encryption_at_rest": false;
     "audit": false;
-    "soft_delete": false;
-    "required_authentication": "filesystem_permissions"
+    "soft_delete": false
 };
 
 policies: {

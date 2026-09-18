@@ -1,29 +1,19 @@
 {
-    "id": {
+    "identifier": {
         "type": "string",
-        "required": true,
-        "default": "uuid.uuid4()"
-    },
-    "email": {
-        "type": "string",
-        "required": true,
-        "regex": "^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$",
-        "default": "guest@colosso.cloud"
+        "required": true
     },
     "username": {
         "type": "string",
-        "required": true,
-        "regex": "^[a-zA-Z0-9_]+$",
-        "default": "guest"
+        "required": true
     },
     "role": {
         "type": "string",
         "required": true,
-        "default": "guest"
+        "allowed": ["admin", "user", "guest"]
     },
-    "avatar_url": {
+    "avatar": {
         "type": "string",
-        "required": false,
-        "default": ""
+        "required": true
     }
 }

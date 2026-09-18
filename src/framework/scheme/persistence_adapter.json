@@ -4,7 +4,7 @@
   "soft_delete": { "type": "boolean", "required": true },
   "authentication": {
     "type": "list",
-    "required": true,
+    "required": false,
     "schema": { "type": "string" }
   }
 }
