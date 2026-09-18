@@ -16,17 +16,17 @@ soglia_tentativi = 5
 timeout_blocchi = 3600
 
 [manager.presenter]
-presentation = "demo.dsl"
+presentation = "presentation.dsl"
 
 [manager.messenger]
 debug_mode = true
-message = "default.dsl"
+message = "message.dsl"
 
 [manager.authenticator]
-authentication = "default.dsl"
+authentication = "authentication.dsl"
 
 [manager.storekeeper]
-persistence = "default.dsl"
+persistence = "persistence.dsl"
 
 # -----------------------------------------------
 # ADAPTERS

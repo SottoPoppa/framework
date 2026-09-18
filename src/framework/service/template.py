@@ -1,6 +1,14 @@
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader, TemplateError, Undefined, select_autoescape
+from jinja2 import (
+    Environment,
+    FileSystemLoader,
+    StrictUndefined,
+    TemplateError,
+    Undefined,
+    select_autoescape,
+)
 import framework.core.flow as flow
 import framework.core.scheme as scheme
 
@@ -74,6 +82,29 @@ jinja_env.filters.update({
     "check": _result_success,
     "get": lambda d, key: d.get(key) if isinstance(d, dict) else None,
 })
+
+
+def preprocess_dsl(source: str, source_name: str = "<string>") -> str:
+    """Espande i costrutti Jinja2 di un file DSL prima del parsing DSL."""
+    if not isinstance(source, str) or "{%" not in source and "{{" not in source:
+        return source
+
+    environment = Environment(
+        loader=FileSystemLoader(
+            str(Path(__file__).resolve().parents[3] / "src" / "application" / "policy")
+        ),
+        autoescape=False,
+        keep_trailing_newline=True,
+        undefined=StrictUndefined,
+    )
+    try:
+        return environment.from_string(source).render()
+    except TemplateError as error:
+        line = getattr(error, "lineno", None)
+        location = f" riga {line}" if line else ""
+        raise ValueError(
+            f"Errore preprocessamento Jinja in '{source_name}'{location}: {error}"
+        ) from error
 
 
 async def format(target, **constants):
