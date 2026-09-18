@@ -14,6 +14,8 @@ presentation:configuration := {
         "auth_required": false
     }
 };
+
+
 type:route := {
     "path": { "type": "string" };
     "method": { "type": "string"; "default": "GET" };

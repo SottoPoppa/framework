@@ -669,9 +669,28 @@ class Loader:
 
     def _adapter_resource(self, spec: tuple[str, str, dict]) -> Resource:
         port_key, adapter_name, config = spec
+        implementation = config.get("implementation")
+        if implementation is None:
+            path = Path("src/infrastructure") / port_key / f"{adapter_name}.py"
+        else:
+            if not isinstance(implementation, str) or not implementation:
+                raise ValueError(
+                    f"Implementazione adapter non valida per {port_key}.{adapter_name}"
+                )
+            implementation_path = Path(implementation)
+            if implementation_path.is_absolute() or ".." in implementation_path.parts:
+                raise ValueError(
+                    f"Percorso implementazione adapter non valido: {implementation}"
+                )
+            path = (
+                Path("src/infrastructure")
+                / port_key
+                / adapter_name
+                / f"{implementation_path.with_suffix('')}.py"
+            )
         return Resource(
             name=f"framework.adapter.{port_key}.{adapter_name}",
-            path=f"src/infrastructure/{port_key}/{adapter_name}.py",
+            path=str(path),
             kind="ADAPTER",
             config=[config],
         )

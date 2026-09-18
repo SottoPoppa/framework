@@ -30,8 +30,7 @@ security: {
     "mfa": false;
     "token_rotation": false;
     "sso": false;
-    "account_lockout": false;
-    "required_authentication": "password"
+    "account_lockout": false
 };
 
 policies: {

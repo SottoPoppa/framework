@@ -8,7 +8,6 @@ dependencies = [
     "jinja2",
     "tomli; python_version < '3.11'",
     "cerberus",
-    "github-copilot-sdk",
 ]
 
 [manager.defender]
@@ -29,22 +28,24 @@ authentication = "default.dsl"
 [manager.storekeeper]
 persistence = "default.dsl"
 
-[[authentication.stub]]
-name = "stub"
+# -----------------------------------------------
+# ADAPTERS
+# -----------------------------------------------
+
 
 #[[message.console]]
 #persistence = "log"
 #name = "console"
 
-[[message.bus]]
-name = "broker"
+#[[message.bus]]
+#name = "broker"
 
-[[message.copilot]]
-name = "copilot"
-model = "gpt-5.6-luna"
-working_directory = "."
-enable_terminal = true
-token = "{{ env('COPILOT_GITHUB_TOKEN') }}"
+#[[message.copilot]]
+#name = "copilot"
+#model = "gpt-5.6-luna"
+#working_directory = "."
+#enable_terminal = true
+#token = "{{ env('COPILOT_GITHUB_TOKEN') }}"
 
 #[[presentation.starlette]]
 #name = "web"
@@ -55,17 +56,18 @@ token = "{{ env('COPILOT_GITHUB_TOKEN') }}"
 #cors_origins = []
 #cors_credentials = false
 
-[[presentation.console]]
+[[presentation.tui]]
 name = "tui"
+implementation = "textual"
 
-[[persistence.filesystem]]
-name = "log"
+#[[persistence.filesystem]]
+#name = "log"
 
-[[persistence.filesystem]]
-name = "workfolder"
+#[[persistence.filesystem]]
+#name = "workfolder"
 
-[[persistence.filesystem]]
-name = "source"
-path = "src/"
-watch = true
-message = "broker"
+#[[persistence.filesystem]]
+#name = "source"
+#path = "src/"
+#watch = true
+#message = "broker"
