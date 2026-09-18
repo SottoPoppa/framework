@@ -17,7 +17,7 @@ import os
 import pathlib
 
 import framework.core.flow as flow
-import framework.core.scheme as scheme
+import framework.service.scheme as scheme
 from framework.service.route import compile_pattern, match, normalize_path, register, register_many
 from framework.service.template import DeferredUndefined, render
 

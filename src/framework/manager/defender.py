@@ -5,7 +5,7 @@ from urllib.parse import urlparse, parse_qs, urljoin
 
 
 import framework.core.interpreter as interpreter
-import framework.core.scheme as scheme
+import framework.service.scheme as scheme
 import framework.core.flow as flow
 import framework.manager.loader as loader
 import framework.port.authentication as authentication
@@ -179,8 +179,6 @@ class Manager(manager.Port):
         if not normalized.is_success:
             return flow.error(f"Configurazione policy '{port}' non valida: {normalized.output.error}")
         policy["configuration"] = normalized.output.value
-        if not self.capabilities_authorized(None, policy, port, self.port_capabilities.get(port)):
-            return flow.error(f"Adapter della Port '{port}' non soddisfa i requisiti di sicurezza")
         return flow.success(policy)
 
     @flow.result(inputs=(), outputs=())

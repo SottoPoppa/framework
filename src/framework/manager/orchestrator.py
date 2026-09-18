@@ -5,7 +5,7 @@ import traceback
 
 import framework.core.interpreter as interpreter
 import framework.core.flow as flow
-import framework.core.scheme as scheme
+import framework.service.scheme as scheme
 import framework.manager.messenger as messenger
 import framework.port.manager as manager
 

@@ -8,7 +8,7 @@ import subprocess
 cwd = os.getcwd()
 sys.path.insert(1, cwd + '/src')
 
-import framework.core.flow as flow
+import framework.core.framework as framework
 
 
 
@@ -25,8 +25,8 @@ def setup_core_dependencies():
         check=True,
     )
 
-async def main(config):
-    flow.configure_dev_logging(config.get('dev', False))
+async def main2(config):
+    #flow.configure_dev_logging(config.get('dev', False))
 
     if config.get('setup'):
         setup_core_dependencies()
@@ -61,6 +61,13 @@ async def main(config):
     finally:
         await app.shutdown()
 
+
+async def main(config):
+    #flow.configure_dev_logging(config.get('dev', False))
+    framework_instance = framework.Framework()
+
+
+    return await framework_instance.bootstrap()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Avvia il framework con una configurazione specifica.")

@@ -303,7 +303,7 @@ class Interpreter:
 
     def _validate_context(self, dag_name: str, session) -> None:
         """Applica i custom type quando il contesto DSL e' pronto."""
-        from framework.core import scheme
+        from framework.service import scheme
 
         metadata = getattr(self.runner.dags[dag_name].definition, "metadata", {})
         custom_types = set(metadata.get("custom_types", ()))

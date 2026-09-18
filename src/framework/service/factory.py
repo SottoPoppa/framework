@@ -4,7 +4,7 @@ from jinja2 import Environment, meta, nodes
 import asyncio 
 import signal
 
-import framework.core.scheme as scheme
+import framework.service.scheme as scheme
 import framework.core.flow as flow
 import framework.service.template as template_service
 
