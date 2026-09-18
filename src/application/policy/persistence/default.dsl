@@ -18,12 +18,6 @@ persistence:configuration := {
     }
 };
 
-security: {
-    "encryption_at_rest": false;
-    "audit": false;
-    "soft_delete": false
-};
-
 policies: {
     policy:SESSION_ACCESS := { effect: "allow"; target: { resource: "sessions" }; condition: (@action == "READ" | @action == "UPDATE") & @resource == "sessions" & @request.filter.eq.id == @session.id };
     policy:CREATE := { effect: "allow"; target: { action: "CREATE" }; condition: @action == "CREATE" & @session.user.id != none };

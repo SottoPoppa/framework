@@ -11,7 +11,7 @@
   "hashes": {
     "Manager": {
       "capabilities_authorized": {
-        "production": "365390edff86655ac94a15bf59198204dc91f7f158cf6ce30a90a0f19f25efab",
+        "production": "e69758ee1fafcf8e0585f0074cf43add942c7c7d5494604ddad10642c82141b0",
         "test": "365390edff86655ac94a15bf59198204dc91f7f158cf6ce30a90a0f19f25efab"
       },
       "compatible_adapters": {

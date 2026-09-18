@@ -80,7 +80,7 @@ class Manager(manager.Port):
         security = policy.get("security", {})
         return self.compatible_adapters(session, port, security, adapters)
 
-    def capabilities_authorized(self, session, policy, profile=None) -> bool:
+    def capabilities_authorized(self, session, policy, port=None, profile=None) -> bool:
         """Verifica che almeno un profilo adapter soddisfi la sicurezza della policy."""
         if not isinstance(policy, dict):
             return False
@@ -89,7 +89,7 @@ class Manager(manager.Port):
             return True
         profiles = profile
         if profiles is None:
-            profiles = self.port_capabilities.get(policy.get("port_schema"), [])
+            profiles = self.port_capabilities.get(port, [])
         if isinstance(profiles, dict):
             profiles = (profiles,)
         return bool(profiles) and any(
@@ -169,19 +169,17 @@ class Manager(manager.Port):
         if not isinstance(policy, dict):
             return flow.error(f"Policy '{port}' non valida: il risultato DSL non è un dizionario")
         policy = dict(policy)
-        schema_name = policy.get("port_schema", port)
-        schema_key = schema_name if isinstance(schema_name, str) else port
         configuration = policy.get("configuration") or policy.get(f"{port}:configuration") or (policy.get(port, {}).get("configuration") if isinstance(policy.get(port), dict) else None)
         if configuration is None:
             return flow.error(f"Configurazione globale mancante per la Port '{port}'")
-        schema = scheme.schemes.get(schema_key)
+        schema = scheme.schemes.get(port)
         if not schema:
-            return flow.error(f"Schema '{schema_key}' non trovato per la policy '{port}'")
+            return flow.error(f"Schema '{port}' non trovato per la policy '{port}'")
         normalized = scheme.normalize(configuration, schema)
         if not normalized.is_success:
             return flow.error(f"Configurazione policy '{port}' non valida: {normalized.output.error}")
         policy["configuration"] = normalized.output.value
-        if not self.capabilities_authorized(None, policy, self.port_capabilities.get(port)):
+        if not self.capabilities_authorized(None, policy, port, self.port_capabilities.get(port)):
             return flow.error(f"Adapter della Port '{port}' non soddisfa i requisiti di sicurezza")
         return flow.success(policy)
 
@@ -222,7 +220,7 @@ class Manager(manager.Port):
         policy = self.get_policy(policy_name)
         if not policy:
             return False
-        if not self.capabilities_authorized(None, policy, self.port_capabilities.get(policy_name)):
+        if not self.capabilities_authorized(None, policy, policy_name, self.port_capabilities.get(policy_name)):
             return False
         rules = policy.get('rules', {})
         action, resource, location = constants.get('action', ''), constants.get('resource', ''), constants.get('location', '')

@@ -1,6 +1,3 @@
-any:port_schema := "authentication";
-any:adapter_schema := "authentication_adapter";
-
 authentication:configuration := {
     "policy_name": "default";
     "allowed_methods": ["password"];
