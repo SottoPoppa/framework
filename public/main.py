@@ -9,6 +9,7 @@ cwd = os.getcwd()
 sys.path.insert(1, cwd + '/src')
 
 import framework.core.framework as framework
+import framework.core.flow as flow
 
 
 
@@ -26,48 +27,45 @@ def setup_core_dependencies():
     )
 
 async def main2(config):
-    #flow.configure_dev_logging(config.get('dev', False))
-
-    if config.get('setup'):
-        setup_core_dependencies()
-        from framework.manager.loader import Loader
-        loader_instance = Loader()
-        await loader_instance.install(config)
-        return
-    else:
-        from framework.manager.loader import Loader
-        loader_instance = Loader()
-        
-
-    if config.get('install'):
-        await loader_instance.install(config)
-        return
-
-    if config.get('verify'):
-        return await loader_instance.verify_contracts(config)
-
-    app = await loader_instance.bootstrap(config)
-
-    try:
-        if config.get('test_integration') is not None:
-            return await loader_instance.run_integration_tests(config.get('test_integration'))
-        if config.get('test') is not None:
-            return await loader_instance.run_tests(config.get('test'))
-
-        await app.startup()
-    except Exception as e:
-        print(f"[!] Errore critico: {e}")
-        return False
-    finally:
-        await app.shutdown()
+    """Compatibilità per i caller esistenti: usa il percorso CLI corrente."""
+    return await main(config)
 
 
 async def main(config):
-    #flow.configure_dev_logging(config.get('dev', False))
     framework_instance = framework.Framework()
 
+    if config.get('setup'):
+        setup_core_dependencies()
+        return await framework_instance.install(config)
 
-    return await framework_instance.bootstrap()
+    if config.get('install'):
+        return await framework_instance.install(config)
+
+    app = await framework_instance.bootstrap(config)
+    try:
+        if config.get('test_integration') is not None:
+            tester = framework_instance.loader.get_managers().get('tester')
+            result = await tester.run_integration(
+                app._session,
+                filter=config.get('test_integration'),
+            )
+            return flow.output(result)
+
+        if config.get('test') is not None:
+            tester = framework_instance.loader.get_managers().get('tester')
+            result = await tester.run(
+                app._session,
+                filter=config.get('test'),
+            )
+            return flow.output(result)
+
+        await app.startup()
+        return True
+    except Exception as exc:
+        framework_instance.logger.error("Errore critico durante l'esecuzione", exception=exc)
+        return False
+    finally:
+        await app.shutdown()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Avvia il framework con una configurazione specifica.")

@@ -43,23 +43,27 @@ class Framework:
         self.logger = self.logger_resource.module.get_logger("framework")
         self.components: dict[str, Resource] = {}
         self.strict: bool = False
+        self.infrastructure = None
+        self.loader = None
 
-    async def bootstrap(self):
-        """Bootstrap the framework components."""
+    async def bootstrap(self, config_toml_path: Any = "pyproject.toml"):
+        """Inizializza il kernel e delega il bootstrap operativo al Loader."""
         cores = [
             Resource(name="framework.core.flow", path="src/framework/core/flow.py"),
-            Resource(name="framework.core.application", path="src/framework/core/application.py"),
             Resource(name="framework.core.infrastructure", path="src/framework/core/infrastructure.py"),
-            Resource(name="framework.manager.loader", path="src/framework/manager/loader.py"),
         ]
 
         self.logger.info("Bootstrap del framework avviato", components=len(cores))
         for core in cores:
             await self.add(core)
-        self.logger.info("Bootstrap del framework completato", components=len(cores))
 
-        instance_infrastructure = self.components.get("framework.core.infrastructure").module.Infrastructure()
-        #instance_application = self.components.get("framework.core.application").module.Application()
+        infrastructure_cls = self.components["framework.core.infrastructure"].module.Infrastructure
+        self.infrastructure = infrastructure_cls()
+
+        loader_module = importlib.import_module("framework.manager.loader")
+        self.loader = loader_module.Loader(self, self.infrastructure)
+        self.logger.info("Bootstrap del framework completato", components=len(cores))
+        return await self.loader.bootstrap(config_toml_path)
 
 
 
@@ -149,6 +153,10 @@ class Framework:
 
         return resource
 
+    async def load(self, resource: Resource, extra: dict = None):
+        """Carica una risorsa; API usata dal Loader durante la discovery."""
+        return await self.add(resource, extra)
+
     async def reload(self, resource: Resource):
         """Ricarica forzatamente una risorsa."""
         module = await self.load_module(
@@ -178,7 +186,7 @@ class Framework:
 
             graph[name] = {item.rsplit(".", 1)[-1] for item in imp_list} & modules.keys()
 
-        order = TopologicalSorter(graph).static_order()
+        order = list(TopologicalSorter(graph).static_order())
         self.logger.info("Ordine di caricamento del core calcolato", components=len(order))
 
         for name in order:
@@ -322,8 +330,8 @@ class Framework:
             if not source.exists():
                 self.logger.warning(
                     "Sorgente del componente non trovato",
-                    component_type=component_type,
-                    component=component_name,
+                    resource_type=component_type,
+                    resource=component_name,
                     path=source_path,
                 )
                 continue
@@ -338,7 +346,7 @@ class Framework:
                 self.logger.error(
                     "Errore nella lettura del contract",
                     exception=exc,
-                    component=component_name,
+                    resource=component_name,
                 )
                 continue
             if not data:
@@ -349,7 +357,7 @@ class Framework:
                 requires = [requires]
             if not isinstance(requires, list):
                 self.logger.warning(
-                    "Campo requires non valido nel contract", component=component_name
+                    "Campo requires non valido nel contract", resource=component_name
                 )
                 continue
             for requirement in requires:
@@ -392,12 +400,21 @@ class Framework:
         self,
         config_or_path: Any = "pyproject.toml",
         *,
-        infrastructure: Any,
-        cores: dict,
-        services: dict,
-        ports: dict,
+        infrastructure: Any = None,
+        cores: dict = None,
+        services: dict = None,
+        ports: dict = None,
     ) -> bool:
         """Analizza i contract e installa le dipendenze dichiarate in requires."""
+        if infrastructure is None or cores is None or services is None or ports is None:
+            from framework.core.infrastructure import Infrastructure
+            from framework.manager.loader import Loader
+
+            infrastructure = infrastructure or self.infrastructure or Infrastructure()
+            cores = cores or Loader.cores
+            services = services or Loader.services
+            ports = ports or Loader.ports
+
         context = self._install_context(config_or_path)
         context = self._read_install_config(context, infrastructure)
         context = self._find_enabled_adapters(context)

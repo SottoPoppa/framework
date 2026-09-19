@@ -6,10 +6,7 @@ from typing import Any, Callable, Dict, List, Tuple
 from collections.abc import Mapping
 from functools import partial
 
-try:
-    import tomllib as tomli
-except ImportError:
-    import tomli
+import tomllib as tomli
 
 from cerberus import Validator
 

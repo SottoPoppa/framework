@@ -18,6 +18,7 @@ from typing import Any, Optional, Type, TypedDict, get_args, get_type_hints
 from jinja2 import BaseLoader, Environment
 import framework.core.flow as flow
 import framework.service.scheme as scheme
+from framework.core.application import Application
 
 # ============================================================
 # RESOURCE
@@ -161,6 +162,7 @@ class Loader:
 
     def __init__(self, framework, infrastructure):
         self.framework = framework
+        self.logger = framework.logger
         self.infrastructure = infrastructure
         self.container = None
         self.handle = Handle(self)
@@ -305,7 +307,10 @@ class Loader:
         cls, resource = entry
         obj = self._build(cls, resource.config or {})
         self.container.put(cls, obj, singleton=True)
-        print(f"[✓] Manager {cls.__module__}.{cls.__name__}")
+        self.logger.info(
+            "Manager costruito",
+            manager=f"{cls.__module__}.{cls.__name__}",
+        )
         return obj
 
     def _build_adapters(
@@ -331,7 +336,11 @@ class Loader:
         self._register_adapter_capabilities(parts[2], obj)
         if save:
             self.container.add_port(interface, obj)
-        print(f"[✓] Adapter {adapter_cls.__name__} name={config.get('name')}")
+        self.logger.info(
+            "Adapter costruito",
+            adapter=adapter_cls.__name__,
+            name=config.get("name"),
+        )
         return obj
 
     def _register_adapter_capabilities(self, port: str, adapter: Any) -> None:
@@ -468,7 +477,11 @@ class Loader:
             hashes,
             exports=contract_exports if contract_exports is not None else declared_exports,
         )
-        print(f"[🔏] Contratto aggiornato: {source_path} → {', '.join(sorted(hashes))}")
+        self.logger.info(
+            "Contratto aggiornato",
+            path=source_path,
+            exports=sorted(hashes),
+        )
 
     def get_managers(self) -> dict:
         """Restituisce il dizionario di tutti i manager registrati."""
@@ -493,10 +506,9 @@ class Loader:
 
     async def _prepare_core(self, context: LoaderContext) -> LoaderContext:
         schemes = await self.load_schemes(["src/framework/scheme", "src/application/model"])
-        core_scheme = importlib.import_module("framework.core.scheme")
-        core_scheme.schemes.clear()
-        core_scheme.schemes.update(schemes)
-        core_scheme.jinja_env = self.infrastructure.jinja_env
+        scheme.schemes.clear()
+        scheme.schemes.update(schemes)
+        scheme.jinja_env = self.infrastructure.jinja_env
         await self.framework.load_core(
             self.services,
             self.ports,
@@ -591,8 +603,8 @@ class Loader:
 
     def _build_runtime(self, context: LoaderContext) -> LoaderContext:
         config, mgr_resources, adapter_resources = context["discovery"]
-        print("\n[*] Discovery...")
-        print("\n[*] Build...")
+        self.logger.info("Discovery risorse")
+        self.logger.info("Build runtime")
         managers = flow.unwrap(self._build_managers(mgr_resources))
         flow.unwrap(self._build_adapters(adapter_resources))
         return {**context, "config": config, "managers": managers}
@@ -612,7 +624,7 @@ class Loader:
                 self._apply_port_configurations(defender)
             if hasattr(defender, "session_create"):
                 session = flow.output(await defender.session_create())
-                print(f"[*] Sessione creata: {session}")
+                self.logger.info("Sessione creata", session=session)
 
         return {**context, "session": session}
 
@@ -667,30 +679,6 @@ class Loader:
             )
         )
 
-    async def run_tests(self, filter_value: str | None = None) -> bool:
-        """Esegue i test di contract DSL tramite il Manager del Tester."""
-        return await self._run_tester_suite("run", filter_value)
-
-    async def run_integration_tests(self, filter_value: str | None = None) -> bool:
-        """Esegue gli scenari di integrazione DSL sul runtime bootstrap-ato."""
-        return await self._run_tester_suite("run_integration", filter_value)
-
-    async def _run_tester_suite(self, method_name: str, filter_value: str | None) -> bool:
-        """Invoca una suite del Tester mantenendo il confine Flow nel Loader."""
-        managers = self.get_managers()
-        tester = managers.get("tester")
-        if tester is None:
-            print("[!] Manager 'tester' non trovato nel container")
-            return False
-        
-        session = getattr(self.app, "_session", None)
-        method = getattr(tester, method_name, None)
-        if method is None:
-            print(f"[!] Metodo Tester '{method_name}' non trovato nel container")
-            return False
-        result = await method(session, filter=filter_value)
-        return flow.output(result)
-
     async def verify_contracts(self, config_toml_path: Any) -> bool:
         """Verifica i contract senza costruire o avviare l'applicazione."""
         self.kwargs = (
@@ -704,26 +692,12 @@ class Loader:
             result = await self._discover_components(config_toml_path)
             flow.unwrap(result)
         except Exception as exc:
-            print(f"[!] Verifica contract fallita: {exc}")
+            self.logger.error("Verifica contract fallita", exception=exc)
             return False
 
-        print("[✓] Tutti i contract sono verificati in modalità strict.")
+        self.logger.info("Tutti i contract sono verificati in modalità strict")
         return True
 
     async def import_module(self, module_path: str):
         """Importa un modulo Python dinamicamente tramite l'infrastruttura."""
         return await self.infrastructure.import_module(module_path)
-
-    async def install(self, config_or_path: Any = "pyproject.toml") -> bool:
-        """Delega al Framework l'installazione delle dipendenze dei contract."""
-        try:
-            return await self.framework.install(
-                config_or_path,
-                infrastructure=self.infrastructure,
-                cores=self.cores,
-                services=self.services,
-                ports=self.ports,
-            )
-        except Exception as exc:
-            self.framework.logger.error("Installazione fallita", exception=exc)
-            return False

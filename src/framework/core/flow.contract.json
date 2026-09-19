@@ -1,52 +1,52 @@
 {
-  "requires": [
-    "networkx"
-  ],
   "contract_version": 2,
   "exports": {
+    "check": [
+      "check"
+    ],
+    "pipeline": [
+      "pipeline"
+    ],
     "reset": [
       "reset"
-    ],
-    "switch": [
-      "switch"
     ],
     "success": [
       "success"
     ],
-    "check": [
-      "check"
+    "switch": [
+      "switch"
     ],
     "transactions": [
       "transactions"
-    ],
-    "pipeline": [
-      "pipeline"
     ]
   },
   "hashes": {
-    "switch": {
-      "test": "eebf5c5efe090b8ec6ae6134781481d8eb0792c5a3e3b78ff1568f806a8444fb",
-      "production": "eebf5c5efe090b8ec6ae6134781481d8eb0792c5a3e3b78ff1568f806a8444fb"
-    },
-    "success": {
-      "test": "6ad6ec76c5a9d5ce42c42a33bd23b3119d1b3f5323905384bdd6d4d4251a2486",
-      "production": "6ad6ec76c5a9d5ce42c42a33bd23b3119d1b3f5323905384bdd6d4d4251a2486"
+    "check": {
+      "production": "3dbeddb72f0d9de9ecc104ce8667ba6b2970327c63c24a027c22ed5dbd0b2a53",
+      "test": "9bc5a31f41fbdeb72babfaa32f5ebf606691a1cf3dba8c9979afe77866300ad0"
     },
     "pipeline": {
-      "test": "3a9f08a08c9cd273a49882ce17c292eec608f40ce26004053bd7bdae9b223259",
-      "production": "3a9f08a08c9cd273a49882ce17c292eec608f40ce26004053bd7bdae9b223259"
-    },
-    "transactions": {
-      "test": "374af066ced78a1fe5d770c5454c1f1e7e2acc796e0401f3bf6eeda2ced0911a",
-      "production": "374af066ced78a1fe5d770c5454c1f1e7e2acc796e0401f3bf6eeda2ced0911a"
+      "production": "3a9f08a08c9cd273a49882ce17c292eec608f40ce26004053bd7bdae9b223259",
+      "test": "3a9f08a08c9cd273a49882ce17c292eec608f40ce26004053bd7bdae9b223259"
     },
     "reset": {
-      "test": "efabe157fb368873be24c5dce2710178c1df694ecde6a4782b4006066b944660",
-      "production": "efabe157fb368873be24c5dce2710178c1df694ecde6a4782b4006066b944660"
+      "production": "efabe157fb368873be24c5dce2710178c1df694ecde6a4782b4006066b944660",
+      "test": "efabe157fb368873be24c5dce2710178c1df694ecde6a4782b4006066b944660"
     },
-    "check": {
-      "test": "9bc5a31f41fbdeb72babfaa32f5ebf606691a1cf3dba8c9979afe77866300ad0",
-      "production": "9bc5a31f41fbdeb72babfaa32f5ebf606691a1cf3dba8c9979afe77866300ad0"
+    "success": {
+      "production": "b96cdd21d0463efb137693698d7e4aa5a84ad6081d7daffa287f3af4ab424f24",
+      "test": "6ad6ec76c5a9d5ce42c42a33bd23b3119d1b3f5323905384bdd6d4d4251a2486"
+    },
+    "switch": {
+      "production": "eebf5c5efe090b8ec6ae6134781481d8eb0792c5a3e3b78ff1568f806a8444fb",
+      "test": "eebf5c5efe090b8ec6ae6134781481d8eb0792c5a3e3b78ff1568f806a8444fb"
+    },
+    "transactions": {
+      "production": "374af066ced78a1fe5d770c5454c1f1e7e2acc796e0401f3bf6eeda2ced0911a",
+      "test": "374af066ced78a1fe5d770c5454c1f1e7e2acc796e0401f3bf6eeda2ced0911a"
     }
-  }
+  },
+  "requires": [
+    "networkx"
+  ]
 }

@@ -669,6 +669,7 @@ class AppDinamica(App):
     BINDINGS = [
         ("d", "toggle_dark", "Cambia Tema"),
         ("q", "quit", "Esci"),
+        ("ctrl+c", "quit", "Esci"),
         ("ctrl+s", "save", "Salva"),
         ("ctrl+l", "show_flow_logs", "Log Flow"),
     ]

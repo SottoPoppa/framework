@@ -6,6 +6,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Optional
 from jinja2 import Environment, BaseLoader
+from framework.service.diagnostic import get_logger
 import sys
 import types
 
@@ -14,6 +15,7 @@ class Infrastructure:
     """Gestisce I/O, schemi JSON, templating Jinja e risorse statiche."""
 
     def __init__(self):
+        self.logger = get_logger("infrastructure")
         self.jinja_env = Environment(loader=BaseLoader())
         self.jinja_env.filters["tojson"] = json.dumps
         self.jinja_env.globals["uuid4"] = lambda: str(uuid.uuid4())
@@ -52,7 +54,11 @@ class Infrastructure:
                         json_file.read_text(encoding="utf-8")
                     )
                 except json.JSONDecodeError as exc:
-                    print(f"[!] JSON {json_file.name}: {exc}")
+                    self.logger.error(
+                        "Schema JSON non valido",
+                        exception=exc,
+                        file=str(json_file),
+                    )
 
 
         cache: dict[str, Any] = {}
@@ -91,7 +97,10 @@ class Infrastructure:
             return cache[name]
 
         final = {name: resolve(name) for name in raw}
-        print(f"[+] Schemi: {', '.join(sorted(final))}" if final else "[!] Nessuno schema")
+        if final:
+            self.logger.info("Schemi caricati", schemas=sorted(final))
+        else:
+            self.logger.warning("Nessuno schema trovato")
         return final
 
     async def resource(self, path: str | Path) -> str:
