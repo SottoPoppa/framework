@@ -2,7 +2,7 @@ imports: {
     'module': import("framework.manager.defender")
 };
 
-any:defender := imports.module.Manager(none, ());
+any:defender := imports.module.Manager(none, none, ());
 
 exports: {
     'capabilities_authorized': defender.capabilities_authorized;

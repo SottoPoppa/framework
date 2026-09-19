@@ -4,7 +4,7 @@ imports: {
 };
 
 any:provider := imports.mock.Adapter(name: "console");
-any:messenger := imports.module.Manager(messages: (provider), defender: none);
+any:messenger := imports.module.Manager(messages: (provider), defender: none, framework: none);
 session:session := test.session;
 
 exports: {

@@ -26,10 +26,10 @@ tuple:test_suite := (
     },
     {
         "action": exports.load_file;
-        "inputs": ("demo", "int:value := 10;");
+        "inputs": ("demo", "path:value := \"{{filter.eq.filename}}\";");
         "outputs": "demo";
         "assert": @received.is_success == true & @received.output.value.name == @expected;
-        "note": "Interpreter.load_file registra un programma DSL"
+        "note": "Interpreter.load_file conserva i placeholder runtime del DSL"
     },
     {
         "action": exports.map_records;

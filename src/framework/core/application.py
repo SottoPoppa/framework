@@ -24,6 +24,14 @@ class Application:
         self._logger.info("Segnale di arresto ricevuto", signal=sig.name)
         self._stop_event.set()
 
+    def _handle_task_completion(self, task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        exception = task.exception()
+        if exception is not None:
+            self._logger.error("Task applicativo terminato con errore", exception=exception)
+            self._stop_event.set()
+
     def _install_signal_handlers(self) -> None:
         """Installa i segnali dopo il wiring, quando i manager hanno finito lo startup."""
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -92,10 +100,12 @@ class Application:
             if not result:
                 continue
 
-            coros = result if isinstance(result, list) else [result]
+            coros = result if isinstance(result, (list, tuple)) else [result]
             for c in coros:
                 if asyncio.iscoroutine(c) or inspect.isawaitable(c):
-                    self._running_tasks.append(asyncio.create_task(c))
+                    task = asyncio.create_task(c)
+                    task.add_done_callback(self._handle_task_completion)
+                    self._running_tasks.append(task)
 
         self._logger.info("Framework completamente attivo. In ascolto")
         await self._stop_event.wait()

@@ -1,37 +1,51 @@
 {
   "contract_version": 2,
+  "exports": {
+    "activate": [
+      "Manager.activate"
+    ],
+    "authenticate": [
+      "Manager.authenticate"
+    ],
+    "invalidate": [
+      "Manager.invalidate"
+    ],
+    "regenerate": [
+      "Manager.regenerate"
+    ],
+    "shutdown": [
+      "Manager.shutdown"
+    ],
+    "startup": [
+      "Manager.startup"
+    ]
+  },
   "hashes": {
     "Manager": {
       "activate": {
-        "production": "7e9afaf69be19b574fbaeb99004ce1dd029ef9d0557bd4b9eb5d4377b3313690"
+        "production": "7e9afaf69be19b574fbaeb99004ce1dd029ef9d0557bd4b9eb5d4377b3313690",
+        "test": "7e9afaf69be19b574fbaeb99004ce1dd029ef9d0557bd4b9eb5d4377b3313690"
       },
       "authenticate": {
-        "production": "cba8c62a81c6d800660adb3cf32f7963650c74fe043524b481f843d947a61feb"
+        "production": "cba8c62a81c6d800660adb3cf32f7963650c74fe043524b481f843d947a61feb",
+        "test": "cba8c62a81c6d800660adb3cf32f7963650c74fe043524b481f843d947a61feb"
       },
       "invalidate": {
-        "production": "9a3561d2fa85346bff30c1e83e180f5a0055905d77f9bbd20b2ec8d58e58c345"
-      },
-      "policy_allows_method": {
-        "production": "ba3dec9d2da55701633dd17a405ac0d2ab0d17723e9e0421c2793ba54e9742ef"
+        "production": "9a3561d2fa85346bff30c1e83e180f5a0055905d77f9bbd20b2ec8d58e58c345",
+        "test": "9a3561d2fa85346bff30c1e83e180f5a0055905d77f9bbd20b2ec8d58e58c345"
       },
       "regenerate": {
-        "production": "b2ce4a2838ce69538c87c750604140ed1ce55174a85c2d841fdf8e61de23eccf"
-      },
-      "reinstate": {
-        "production": "7c6e648460db783fed04778d248f12801d3a2a7a19ba38ccfc4f68bcc1ca2f78"
+        "production": "b2ce4a2838ce69538c87c750604140ed1ce55174a85c2d841fdf8e61de23eccf",
+        "test": "b2ce4a2838ce69538c87c750604140ed1ce55174a85c2d841fdf8e61de23eccf"
       },
       "shutdown": {
-        "production": "6ea432442825b6d1502427dad03d7a30a8c1cb26f2c873b5249dbb9f5bcdf176"
+        "production": "6ea432442825b6d1502427dad03d7a30a8c1cb26f2c873b5249dbb9f5bcdf176",
+        "test": "6ea432442825b6d1502427dad03d7a30a8c1cb26f2c873b5249dbb9f5bcdf176"
       },
       "startup": {
-        "production": "e991371e29df2dc64233d6f51e396d1840583bc2914d06fd526c1931f0fbbf30"
-      },
-      "terminate": {
-        "production": "c289ddd588ffc9152a345355abafd4752cd9f28eb2c49ef384c0c16db4f3688a"
+        "production": "e991371e29df2dc64233d6f51e396d1840583bc2914d06fd526c1931f0fbbf30",
+        "test": "e991371e29df2dc64233d6f51e396d1840583bc2914d06fd526c1931f0fbbf30"
       }
-    },
-    "policy_allows_method": {
-      "production": "a2814db590bac2d9b55e767d02fad77a2b6097c1d1fd6e79e552f16bff96313a"
     }
   }
 }

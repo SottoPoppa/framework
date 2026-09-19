@@ -57,16 +57,16 @@ persistence = "persistence.dsl"
 #cors_origins = []
 #cors_credentials = false
 
-#[[presentation.tui]]
-#name = "tui"
-#implementation = "textual"
+[[presentation.tui]]
+name = "tui"
+implementation = "textual"
 
 #[[authentication.stub]]
 #name = "stub"
 
-#[[persistence.filesystem]]
-#name = "workfolder"
-#implementation = "filesystem"
+[[persistence.filesystem]]
+name = "workfolder"
+implementation = "filesystem"
 
 #[[persistence.filesystem]]
 #name = "workfolder"

@@ -1,660 +1,30 @@
 import asyncio
 import framework.core.flow as flow
-import uuid
-import json
-import os
-import re
 import xml.etree.ElementTree as ET
-from datetime import datetime
-from typing import Dict, Any, Optional, List, Tuple, Callable
+from typing import Dict, Any
 
-from textual.app import App, ComposeResult
-from textual.containers import Container, HorizontalGroup, Vertical, Grid
+from textual.app import App
 from textual.widgets import (
-    Rule, Link, Checkbox, Static, Button, Input, Select, TextArea,
-    Header, Footer, Label, Markdown,
-    MaskedInput, OptionList, Switch, Pretty,
-    ListView, ListItem, Tabs, Tab, TabbedContent, TabPane,
-    RadioButton, RadioSet, SelectionList,
-    ProgressBar, Sparkline, DataTable, Tree, DirectoryTree,
-    Collapsible, ContentSwitcher, LoadingIndicator,
-    Log, RichLog, Digits, Placeholder, MarkdownViewer,
+    Button, Input, Select, TextArea, Static, Tab,
 )
-from rich.markup import escape
-from rich.text import Text
 from textual.screen import Screen, ModalScreen
-from textual.binding import Binding
 from textual.events import Click
+from infrastructure.presentation.tui.widgets import (
+    tags,
+    attrs,
+    XmlScreen,
+    XmlModalScreen,
+)
 
-
-def _protect_editor_jinja_delimiters(root):
-    replacements = {
-        "{{": "__OMNI_LBRACE____OMNI_LBRACE__",
-        "}}": "__OMNI_RBRACE____OMNI_RBRACE__",
-        "{%": "__OMNI_LBRACE____OMNI_PERCENT__",
-        "%}": "__OMNI_PERCENT____OMNI_RBRACE__",
-        "{#": "__OMNI_LBRACE____OMNI_HASH__",
-        "#}": "__OMNI_HASH____OMNI_RBRACE__",
-    }
-
-    def protect(value):
-        if not value:
-            return value
-        for source, target in replacements.items():
-            value = value.replace(source, target)
-        return value
-
-    def protect_editor_content(element, inside_storekeeper=False):
-        is_storekeeper = element.tag.split("}")[-1].lower() == "storekeeper"
-        skip_content = inside_storekeeper or is_storekeeper
-        if not skip_content:
-            element.text = protect(element.text)
-        for child in list(element):
-            protect_editor_content(child, skip_content)
-            if not skip_content:
-                child.tail = protect(child.tail)
-
-    for editor in root.iter():
-        if editor.attrib.get("type") == "editor":
-            protect_editor_content(editor)
-
-    protected = ET.tostring(root, encoding="unicode")
-    return (
-        protected
-        .replace("__OMNI_LBRACE__", "&#123;")
-        .replace("__OMNI_RBRACE__", "&#125;")
-        .replace("__OMNI_PERCENT__", "%")
-        .replace("__OMNI_HASH__", "#")
-    )
-
-
-import framework.port.presentation as presentation
+from infrastructure.presentation.adapter import (
+    Adapter as PresentationAdapter,
+    protect_editor_jinja_delimiters,
+)
 from framework.manager.defender import Manager as Defender
 from framework.manager.presenter import Manager as Presenter
 from framework.manager.messenger import Manager as Messenger
 from framework.manager.loader import Loader
 from framework.manager.authenticator import Manager as Authenticator
-
-# ==========================================================================
-# HELPER GENERICI
-#
-# Ogni nodo DSL arriva ai lambda come x = {"inner": [...], "attrs": {...}}.
-# Queste funzioni astraggono gli accessi ripetuti in ogni lambda, così i
-# widget dict sotto restano dichiarativi invece che pieni di boilerplate.
-# ==========================================================================
-
-def _attr(x: Dict[str, Any], key: str, default=None):
-    """Legge un attributo (già filtrato dallo schema di presentation.py)."""
-    return x.get("attrs", {}).get(key, default)
-
-
-def _widget_text(w) -> str:
-    """
-    Estrae il testo "sorgente" da un widget Textual già costruito.
-
-    IMPORTANTE: NON si può usare widget.render() qui — richiede un'app
-    Textual attiva e solleva NoActiveAppError se il widget non è ancora
-    montato (come nel nostro caso: node_create() costruisce i widget
-    PRIMA che vengano montati). Anche str(widget) non aiuta: restituisce
-    solo la rappresentazione della classe (es. "Label()"), non il testo.
-
-    Gli attributi pubblici giusti, verificati sui widget Textual reali:
-      - Static/Label:                      .content
-      - Button/Checkbox/RadioButton:       .label
-
-    NOTA: alcuni widget (es. Checkbox) hanno ENTRAMBI gli attributi, ma
-    '.content' è vuoto e solo '.label' contiene il testo — per questo si
-    prova ogni attributo e si accetta solo il primo risultato non vuoto,
-    invece di fermarsi al primo attributo semplicemente presente.
-    """
-    dsl_text = getattr(w, "_storekeeper_text", None)
-    if dsl_text is not None:
-        return str(dsl_text)
-    for attr in ("content", "label", "renderable"):
-        value = getattr(w, attr, None)
-        if value is None:
-            continue
-        text = str(value)
-        if text:
-            return text
-    return str(w)
-
-
-def _children(x: Dict[str, Any]) -> List[Any]:
-    """
-    Figli che sono widget da comporre inline: esclude il testo grezzo e le
-    Screen (es. un <Window type="modal"> annidato in un'altra vista).
-
-    Una Screen non va MAI composta come figlio dentro un Container/Column/
-    Row: Textual la gestisce tramite lo screen stack (push_screen/
-    pop_screen), non come nodo di un albero di widget. Resta comunque
-    registrata in self.widgets (node_create registra QUALSIASI nodo con un
-    id, Screen incluse) — recuperabile in seguito per essere mostrata
-    on-demand con Adapter.open_registered_modal(id).
-    """
-    return [f for f in x.get("inner", []) if not isinstance(f, str) and not isinstance(f, Screen)]
-
-
-def _text(x: Dict[str, Any]) -> str:
-    """Testo del nodo: concatena stringhe e il testo dei figli non testuali."""
-    parts = []
-    for f in x.get("inner", []):
-        parts.append(f if isinstance(f, str) else _widget_text(f))
-    return "".join(parts)
-
-
-def _bool_attr(x: Dict[str, Any], key: str, default: bool = False) -> bool:
-    v = _attr(x, key)
-    if v is None:
-        return default
-    return str(v).lower() in ("1", "true", "yes")
-
-
-def _format_flow_event(
-    message: str,
-    *,
-    exception: BaseException | None = None,
-    level: str = "DEBUG",
-    metadata: Dict[str, Any] | None = None,
-) -> str:
-    values = metadata or {}
-    operation = values.get("operation", "unknown")
-    component = values.get("component", "unknown")
-    elapsed = values.get("elapsed_ms")
-    duration = f" {elapsed}ms" if elapsed is not None else ""
-    trace_id = values.get("trace_id")
-    path = values.get("path")
-    succeeded = values.get("success") is True
-    message_lower = message.lower()
-    failed = values.get("success") is False or any(
-        marker in message_lower for marker in (".error", ".failed", ".failure")
-    )
-
-    if succeeded and exception is None and level != "ERROR":
-        return (
-            f"[green]OK[/green] [bold]{escape(str(operation))}[/bold]"
-            f" [dim]{escape(str(component))}{escape(duration)}[/dim]"
-        )
-
-    if not failed and level != "ERROR" and exception is None:
-        details = " ".join(
-            f"{escape(str(key))}={escape(str(value))}"
-            for key, value in values.items()
-        )
-        return f"[dim]TRACE[/dim] {escape(message)} {details}".rstrip()
-
-    lines = [
-        f"[bold red]ERROR[/bold red] [bold]{escape(str(operation))}[/bold]"
-        f" [dim]{escape(str(component))}{escape(duration)}[/dim]"
-    ]
-    if trace_id:
-        lines.append(f"  [cyan]trace[/cyan]: {escape(str(trace_id))}")
-    if path:
-        lines.append(f"  [cyan]path[/cyan]: {escape(str(path))}")
-    request = values.get("session_id")
-    if values.get("actor"):
-        request = f"{request or 'unknown'} actor={values['actor']}"
-    if request:
-        lines.append(f"  [cyan]request[/cyan]: {escape(str(request))}")
-    request_data = values.get("request_data")
-    if request_data:
-        lines.append("  [cyan]input[/cyan]:")
-        if isinstance(request_data, dict):
-            lines.extend(
-                f"    {escape(str(key))}: {escape(repr(value))}"
-                for key, value in request_data.items()
-            )
-        else:
-            lines.append(f"    {escape(repr(request_data))}")
-    cause = (
-        values.get("error_message")
-        or values.get("exception_message")
-        or str(exception or message)
-    )
-    error_type = values.get("error_type") or values.get("exception_type")
-    lines.append(f"  [red]cause[/red]: {escape(str(cause))}")
-    if error_type:
-        lines.append(f"  [red]type[/red]: {escape(str(error_type))}")
-
-    source_file = values.get("source_file")
-    source_line = values.get("source_line")
-    source_function = values.get("source_function")
-    if source_file:
-        location = f"{source_file}:{source_line or '?'}"
-        if source_function:
-            location += f" in {source_function}"
-        lines.append(f"  [yellow]location[/yellow]: {escape(location)}")
-    source_code = values.get("source_code")
-    if source_code:
-        lines.append(f"  [yellow]code[/yellow]: {escape(str(source_code))}")
-    source_context = values.get("source_context")
-    if source_context:
-        lines.append("  [yellow]context[/yellow]:")
-        lines.extend(f"    {escape(line)}" for line in str(source_context).splitlines())
-
-    if exception is not None:
-        lines.append(f"  [red]exception[/red]: {escape(repr(exception))}")
-
-    ignored = {
-        "operation", "component", "elapsed_ms", "success", "error_type",
-        "error_message", "exception_type", "exception_message",
-        "output_type", "transactions",
-        "trace_id", "path", "session_id", "actor",
-        "request_data",
-        "source_file", "source_line",
-        "source_function", "source_code", "source_context",
-    }
-    details = [
-        f"  [yellow]{escape(str(key))}[/yellow]: {escape(repr(value))}"
-        for key, value in values.items()
-        if key not in ignored
-    ]
-    if details:
-        lines.append("  [dim]details[/dim]")
-        lines.extend(details)
-    return "\n".join(lines)
-
-
-class OptionValue:
-    """Voce semantica usata esclusivamente da select e tabs."""
-
-    def __init__(self, label: str, value: str, click: str = None, content=None):
-        self.label = label
-        self.value = value
-        self._dsl_click = click
-        self._dsl_value = value
-        self.content = list(content or [])
-
-
-def _option_values(x: Dict[str, Any]) -> List[OptionValue]:
-    options = [
-        option for option in x.get("inner", [])
-        if option is not None and not (isinstance(option, str) and not option.strip())
-    ]
-    if not all(isinstance(option, OptionValue) for option in options):
-        received = ", ".join(type(option).__name__ for option in options) or "nessuno"
-        raise ValueError(
-            "Select e tabs richiedono esclusivamente figli <Option>; "
-            f"ricevuti: {received}"
-        )
-    return options
-
-
-def _options(x: Dict[str, Any]) -> List[Tuple[str, str]]:
-    """Coppie (etichetta, valore) dalle sole voci semantiche Option."""
-    return [(option.label, option.value) for option in _option_values(x)]
-
-def _parse_data(raw) -> List[float]:
-    """Converte l'attributo 'data' (CSV o lista) in lista di float per Sparkline."""
-    if raw is None:
-        return []
-    if isinstance(raw, (list, tuple)):
-        return [float(v) for v in raw]
-    if isinstance(raw, str):
-        try:
-            return [float(v.strip()) for v in raw.split(",") if v.strip()]
-        except ValueError:
-            return []
-    return []
-
-_NON_STYLE_KEYS = {
-    "id", "class", "type", "name", "value", "placeholder",
-    "title", "path", "label", "data", "value",
-    "required", "disabled", "readonly", "max", "min", "multiple",
-    "route", "act",
-    "click", "dblclick", "mouseover", "mouseout", "keydown", "keyup", "keypress",
-    "style",
-}
-
-
-def attrs(widget, attrs_dict: Dict[str, Any] = None):
-    """
-    Applica dinamicamente proprietà di stile Textual al widget.
-
-    Supporta sia un attributo 'style' in formato CSS-like
-    ("width: 80%; color: red; overflow: auto") sia attributi diretti
-    ({"width": "80%", "color": "red"}). Gli attributi diretti hanno
-    priorità sulla stringa 'style'. Default retrocompatibili se non
-    specificato altro: overflow-y=auto, overflow-x=hidden, height=80%.
-    """
-    attrs_dict = attrs_dict or {}
-
-    parsed: Dict[str, str] = {}
-    for rule in (attrs_dict.get("style") or "").split(";"):
-        rule = rule.strip()
-        if ":" in rule:
-            k, v = rule.split(":", 1)
-            parsed[k.strip().lower()] = v.strip()
-
-    merged = {**parsed, **{k: v for k, v in attrs_dict.items() if k != "style"}}
-
-    for key, value in merged.items():
-        key_norm = key.lower()
-        if key_norm in _NON_STYLE_KEYS:
-            continue
-        if key_norm == "overflow":
-            widget.styles.overflow_x = widget.styles.overflow_y = value
-            continue
-        try:
-            setattr(widget.styles, key_norm.replace("-", "_"), value)
-        except Exception as e:
-            print(f"[attrs] Impossibile impostare '{key_norm}' = '{value}' su {widget!r}: {e}")
-
-    if "overflow" not in merged and "overflow-y" not in merged:
-        widget.styles.overflow_y = "auto"
-    if "overflow" not in merged and "overflow-x" not in merged:
-        widget.styles.overflow_x = "hidden"
-    # NOTA: niente default di "height" qui. Un default percentuale (es. 80%)
-    # applicato a QUALSIASI widget si risolve a 0 quando il genitore ha
-    # height:auto (TabPane, Collapsible, ...) — causa esattamente il bug
-    # "il contenuto annidato è montato ma invisibile". Meglio lasciare che
-    # sia il widget Textual stesso a usare il proprio default (auto, 1fr,
-    # ecc.) a meno che il DSL non specifichi height esplicitamente.
-
-    return widget
-
-
-# ==========================================================================
-# widget(): factory che genera un lambda pronto per il dizionario `tags`.
-#
-# `build(x)` restituisce (args, kwargs) per il costruttore del widget.
-# Se `build` è None: nessun arg posizionale, kwargs={'id': <id>}.
-# `style=False` salta l'applicazione di attrs() (per widget senza .styles
-# rilevanti da esporre, es. Rule, LoadingIndicator).
-# ==========================================================================
-def widget(cls, build: Callable[[Dict[str, Any]], Tuple[tuple, dict]] = None, style: bool = True):
-    def factory(x):
-        args, kwargs = build(x) if build else ((), {"id": _attr(x, "id")})
-        instance = cls(*args, **kwargs)
-        return attrs(instance, x.get("attrs", {})) if style else instance
-    return factory
-
-
-def _build(children: bool = False, text: bool = False, default_text: str = "", extra: Dict[str, Any] = None):
-    """
-    Genera una funzione build(x) da passare a widget(), coprendo i due
-    pattern più comuni nel dizionario `tags`:
-
-      - children=True: passa i widget figli come argomenti posizionali
-        (es. Container(*figli), Grid(*figli), ...)
-      - text=True: passa il testo del nodo come unico argomento posizionale
-        (es. Button(testo), Checkbox(testo), ...)
-
-    `extra` aggiunge kwargs statici o dinamici (funzioni x -> valore), utile
-    per widget che hanno bisogno di un attributo specifico oltre a id/testo/
-    figli (es. {"language": "python"} o {"value": lambda x: _bool_attr(...)}).
-
-    kwargs include sempre {"id": _attr(x, "id")} come base.
-    """
-    extra = extra or {}
-
-    def build(x):
-        kwargs = {"id": _attr(x, "id")}
-        for key, value in extra.items():
-            kwargs[key] = value(x) if callable(value) else value
-        if children:
-            return tuple(_children(x)), kwargs
-        if text:
-            return (_text(x) or default_text,), kwargs
-        return (), kwargs
-
-    return build
-
-
-def _collapsible(default_title: str):
-    """Collapsible con titolo di default diverso (usato da <group type="collapsible"> e <accordion>)."""
-    return widget(Collapsible, _build(children=True, extra={"title": lambda x: _attr(x, "title", default_title)}))
-
-
-def _make_tabs(x):
-    tabs = []
-    tab_events = {}
-    for option in _option_values(x):
-        tab = Tab(option.label)
-        tab._dsl_click = option._dsl_click
-        tab._dsl_value = option._dsl_value
-        tabs.append(tab)
-    active = _attr(x, "value")
-    tabs_widget = attrs(Tabs(*tabs, id=_attr(x, "id")), x.get("attrs", {}))
-    if active is not None:
-        for tab in tabs_widget._tabs:
-            if str(active) in (str(tab.id), str(getattr(tab, "_dsl_value", ""))):
-                tabs_widget._first_active = tab.id
-                break
-    for tab in tabs:
-        if getattr(tab, "_dsl_click", None):
-            tab_events[tab.id] = (tab._dsl_click, tab._dsl_value)
-    tabs_widget._dsl_tab_events = tab_events
-    return tabs_widget
-
-
-def _make_option(x):
-    options = x.get("inner", [])
-    content = _children(x)
-    title = _attr(x, "title")
-    value = _attr(x, "value")
-    if title is None and len(options) > 1:
-        raise ValueError("<Option> richiede title quando contiene più elementi")
-    child = options[0] if options else None
-    label = str(title or (_widget_text(child) if child is not None else value or ""))
-    value = value or getattr(child, "_dsl_value", label)
-    return OptionValue(
-        label,
-        str(value),
-        _attr(x, "data-click", _attr(x, "click")),
-        content,
-    )
-
-
-def _make_action(x):
-    action = widget(Button, lambda node: ((_text(node),), {"id": _attr(node, "id")}))(x)
-    action._dsl_click = _attr(x, "data-click", _attr(x, "click"))
-    action._dsl_route = _attr(x, "route")
-    value = _attr(x, "value")
-    action._dsl_has_value = value is not None
-    action._dsl_value = _text(x) if value is None else value
-    return action
-
-class XmlScreen(Screen):
-    """Una schermata che si auto-costruisce leggendo un file XML."""
-
-    def __init__(self, inner: Any, title: str = "App", sub_title: str = "", **kwargs):
-        super().__init__(**kwargs)
-        self.inner = inner if isinstance(inner, (list, tuple)) else [inner]
-        self.title = title
-        self.sub_title = sub_title
-
-    def compose(self) -> ComposeResult:
-        yield Header()
-        yield Container(*self.inner)
-        yield Footer()
-
-class XmlModalScreen(ModalScreen):
-    """
-    Variante modale di XmlScreen: si sovrappone alla schermata corrente
-    (sfondo attenuato, contenuto centrato) invece di sostituirla. Si apre
-    con Adapter.open_modal()/open_registered_modal() e si chiude con
-    Adapter.close_modal(), con ESC, o con un bottone click="modal:close".
-
-    NOTA: ModalScreen di Textual NON lega ESC alla chiusura di default
-    (verificato nel sorgente: le sue BINDINGS coprono solo focus/copia) —
-    va aggiunto esplicitamente, da qui il binding sotto.
-
-    Niente Header/Footer: una modale è tipicamente un riquadro di dialogo,
-    non un'intera schermata applicativa.
-    """
-
-    BINDINGS = [Binding("escape", "dismiss_modal", "Chiudi", show=False)]
-
-    DEFAULT_CSS = """
-    XmlModalScreen {
-        align: center middle;
-    }
-    XmlModalScreen > Container {
-        width: auto;
-        height: auto;
-        max-width: 80%;
-        max-height: 80%;
-        border: thick $primary;
-        background: $surface;
-        padding: 1 2;
-    }
-    """
-
-    def __init__(self, inner: str, title: str = "", sub_title: str = "", **kwargs):
-        super().__init__(**kwargs)
-        self.inner = inner
-        self.title = title
-        self.sub_title = sub_title
-
-    def compose(self) -> ComposeResult:
-        yield Container(*self.inner)
-
-    async def action_dismiss_modal(self) -> None:
-        """Chiude questa modale (Screen.dismiss() la rimuove dallo screen stack)."""
-        await self.dismiss()
-
-
-class FlowLogScreen(Screen):
-    """Schermata Textual per consultare il tracing Flow della sessione."""
-
-    BINDINGS = [Binding("escape", "close", "Chiudi", show=False)]
-
-    DEFAULT_CSS = """
-    FlowLogScreen {
-        background: $surface;
-    }
-    FlowLogScreen > HorizontalGroup {
-        height: auto;
-        margin: 1 2 0 2;
-    }
-    FlowLogScreen Input {
-        width: 1fr;
-    }
-    FlowLogScreen Select {
-        width: 18;
-        margin-left: 1;
-    }
-    FlowLogScreen Checkbox {
-        width: 20;
-        margin-left: 1;
-    }
-    FlowLogScreen Button {
-        width: 12;
-        margin-left: 1;
-    }
-    FlowLogScreen RichLog {
-        height: 1fr;
-        border: round $primary;
-        margin: 1 2;
-        padding: 0 1;
-    }
-    """
-
-    def __init__(self, entries: List[str], **kwargs):
-        super().__init__(**kwargs)
-        self.entries = tuple(entries)
-        self.filter_text = ""
-        self.level_filter = "ALL"
-        self.aggregate = False
-
-    def compose(self) -> ComposeResult:
-        yield Header()
-        yield HorizontalGroup(
-            Input(placeholder="Filtra i log...", id="flow-log-filter"),
-            Select(
-                [("Tutti", "ALL"), ("Errori", "ERROR"), ("OK", "OK"), ("Trace", "TRACE")],
-                value="ALL",
-                id="flow-log-level",
-            ),
-            Checkbox("Raggruppa", id="flow-log-aggregate"),
-            Button("Copia", id="flow-log-copy", variant="primary"),
-        )
-        yield RichLog(id="flow-log", highlight=True, markup=True, wrap=True)
-        yield Footer()
-
-    def on_mount(self) -> None:
-        self.refresh_log()
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id == "flow-log-filter":
-            event.stop()
-            self.filter_text = event.value.casefold()
-            self.refresh_log()
-
-    def on_select_changed(self, event: Select.Changed) -> None:
-        if event.select.id == "flow-log-level":
-            event.stop()
-            self.level_filter = str(event.value or "ALL")
-            self.refresh_log()
-
-    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
-        if event.checkbox.id == "flow-log-aggregate":
-            event.stop()
-            self.aggregate = event.value
-            self.refresh_log()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id != "flow-log-copy":
-            return
-        event.stop()
-        content = "\n".join(
-            Text.from_markup(entry).plain for entry in self._visible_entries()
-        )
-        self.app.copy_to_clipboard(content)
-        self.app.notify("Log copiati negli appunti", severity="information")
-
-    def add_entry(self, entry: str) -> None:
-        self.entries = (*self.entries, entry)
-        self.refresh_log()
-
-    def refresh_log(self) -> None:
-        log = self.query_one("#flow-log", RichLog)
-        log.clear()
-        for entry in self._visible_entries():
-            log.write(entry)
-
-    def _visible_entries(self) -> List[str]:
-        entries = [
-            entry for entry in self.entries
-            if self._matches(entry)
-        ]
-        if self.aggregate:
-            entries = self._aggregate(entries)
-        return entries
-
-    def _matches(self, entry: str) -> bool:
-        plain = Text.from_markup(entry).plain
-        if self.filter_text and self.filter_text not in plain.casefold():
-            return False
-        if self.level_filter == "ERROR":
-            return "ERROR" in plain
-        if self.level_filter == "OK":
-            return plain.startswith("OK ")
-        if self.level_filter == "TRACE":
-            return plain.startswith("TRACE ")
-        return True
-
-    @staticmethod
-    def _aggregate(entries: List[str]) -> List[str]:
-        grouped: Dict[str, tuple[str, int]] = {}
-        order: List[str] = []
-        for entry in entries:
-            key = re.sub(r"\b\d+(?:\.\d+)?ms\b", "", entry)
-            key = re.sub(r"trace[^\n]*", "trace", key, flags=re.IGNORECASE)
-            if key not in grouped:
-                grouped[key] = (entry, 0)
-                order.append(key)
-            original, count = grouped[key]
-            grouped[key] = (original, count + 1)
-        return [
-            entry if count == 1 else f"{entry}\n[bold cyan]  x{count} eventi[/bold cyan]"
-            for key in order
-            for entry, count in [grouped[key]]
-        ]
-
-    def action_close(self) -> None:
-        self.app.pop_screen()
 
 class AppDinamica(App):
 
@@ -671,7 +41,6 @@ class AppDinamica(App):
         ("q", "quit", "Esci"),
         ("ctrl+c", "quit", "Esci"),
         ("ctrl+s", "save", "Salva"),
-        ("ctrl+l", "show_flow_logs", "Log Flow"),
     ]
 
     def __init__(self, adapter, **kwargs):
@@ -770,9 +139,6 @@ class AppDinamica(App):
             message=f"File salvato: {selected}",
         )
 
-    async def action_show_flow_logs(self) -> None:
-        await self.adapter.open_flow_log()
-
     async def on_mount(self) -> None:
         self.run_worker(
             self._render_initial_view(),
@@ -867,115 +233,12 @@ class AppDinamica(App):
     async def on_select_changed(self, event: Select.Changed) -> None:
         w = self.adapter.node_get(event.select.id)
 
-        flow._dev_log(
-            "tui.select id=%s value=%r type=%s",
-            event.select.id,
-            event.value,
-            type(event.value).__name__,
-        )
-
         if w is not None:
             attrs_tag = self.adapter.presenter.estrai_attributi_tag(w)
             await self._send_dsl_event(attrs_tag.get("change"), str(event.value))
-        
-        #a = self._dsl_attrs(event.select.id)
-        #raise Exception(f"[on_select_changed] Nessun attributo 'change' per Select {event.select.id} (DSL: {a})")
-
-    async def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
-        self._log_change("Checkbox", event.checkbox.id, event.value)
-
-    async def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
-        self._log_change("RadioSet", event.radio_set.id, event.pressed)
-
-    async def on_switch_changed(self, event: Switch.Changed) -> None:
-        self._log_change("Switch", event.switch.id, event.value)
-
-    async def on_list_view_selected(self, event: ListView.Selected) -> None:
-        print(f"ListView selezionata: {event.item}")
 
 
-# ==========================================================================
-# Casi speciali: non riducibili alla factory `widget()` per vincoli reali
-# dell'API Textual (non per pigrizia — vedi commenti).
-# ==========================================================================
-
-def _make_tabbed_content(x: Dict[str, Any]):
-    """
-    TabbedContent(*titles) accetta SOLO stringhe come titoli: passargli
-    un TabPane fa sì che Textual provi a renderizzarlo come testo e crasha
-    (AttributeError: 'TabPane' object has no attribute 'translate').
-    Il contenuto va aggiunto con compose_add_child(), il metodo pubblico
-    che Textual usa internamente per `with TabbedContent(): yield contenuto`.
-    """
-    children = _children(x)
-    options = _option_values(x)
-    panes = []
-    for option in options:
-        if not option.content:
-            raise ValueError("<Option> di un Group type='tab' richiede contenuto")
-        panes.append(TabPane(option.label, *option.content, id=option.value or None))
-    tabbed = TabbedContent(id=_attr(x, "id"))
-    for pane in panes:
-        tabbed.compose_add_child(pane)
-    return attrs(tabbed, x.get("attrs", {}))
-
-
-def _make_card(x: Dict[str, Any]):
-    """Container con bordo titolato: border_title è una proprietà d'istanza,
-    non un parametro del costruttore, quindi va impostata dopo la creazione."""
-    card = widget(Container, _build(children=True))(x)
-    title = _attr(x, "title")
-    if title:
-        card.border_title = title
-    return card
-
-def _make_editor(x):
-    editor = TextArea.code_editor(
-        _text(x),
-        id=_attr(x, "id"),
-        language=_attr(x, "language", "python"),
-        theme="monokai",
-    )
-
-    print("LANG:", editor.language)
-    print("AVAILABLE:", editor.available_languages)
-
-    return attrs(editor, x.get("attrs", {}))
-
-class DomRegistry:
-    """
-    Registro dei widget Textual LIVE (già montati/costruiti), indicizzati
-    per id. È distinto da `Adapter.DOM`, che contiene invece lo XML grezzo
-    dei nodi (usato per rileggere attributi originali del DSL come
-    'click'/'submit' — un widget Textual costruito non li conserva).
-
-    Questo registro è ciò che permette a node_update()/dom_*() di trovare
-    e patchare un widget esistente senza dover ripercorrere l'albero XML.
-    """
-
-    def __init__(self):
-        self._widgets: Dict[str, Any] = {}
-
-    def register(self, widget_id: Optional[str], instance):
-        if widget_id:
-            self._widgets[widget_id] = instance
-        return instance
-
-    def get(self, widget_id: Optional[str]):
-        return self._widgets.get(widget_id) if widget_id else None
-
-    def forget(self, widget_id: Optional[str]):
-        if widget_id:
-            self._widgets.pop(widget_id, None)
-
-    def forget_all(self):
-        self._widgets.clear()
-
-    def __contains__(self, widget_id) -> bool:
-        return widget_id in self._widgets
-
-
-class Adapter(presentation.Port):
+class Adapter(PresentationAdapter):
     """
     Adapter Textual nativo per il Framework.
 
@@ -988,129 +251,7 @@ class Adapter(presentation.Port):
         elemento = self.tags[tag].get(tipo) or self.tags[tag].get(tag)
     """
 
-    tags = {
-        presentation.Tag.WINDOW.value: {
-            "window": lambda x: XmlScreen(_children(x), _attr(x, "title", "App"), _attr(x, "subtitle", "")),
-            "modal": lambda x: XmlModalScreen(_children(x), _attr(x, "title", ""), _attr(x, "subtitle", "")),
-        },
-
-        presentation.Tag.OPTION.value: {
-            "option": _make_option,
-        },
-
-        presentation.Tag.NAVIGATION.value: {
-            # Static è un widget "foglia" (un solo renderable, niente figli
-            # montabili): usare Container qui faceva sì che i widget annidati
-            # (es. <Text> dentro <Navigation>) non venissero mai mostrati.
-            "navigation": widget(Container, _build(children=True, extra={"id": lambda x: _attr(x, "id", "nav")})),
-            "tabs": _make_tabs,
-        },
-
-        presentation.Tag.TEXT.value: {
-            "text": widget(Label, lambda x: ((Text(_text(x)),), {"id": _attr(x, "id")})),
-            "markdown": widget(Markdown, lambda x: ((_text(x),), {"id": _attr(x, "id")})),
-            "markdownviewer": widget(MarkdownViewer, lambda x: ((_text(x),), {"id": _attr(x, "id")})),
-            "pretty": widget(Pretty, _build(children=True)),
-            "digits": widget(Digits, lambda x: ((_text(x) or "0",), {"id": _attr(x, "id")})),
-            "log": widget(Log),
-            "richlog": widget(RichLog),
-        },
-
-        presentation.Tag.INPUT.value: {
-            "select": widget(Select, lambda x: (
-                (_options(x),),
-                {
-                    "id": _attr(x, "id"),
-                    "value": _attr(x, "value", Select.BLANK),
-                },
-            )),
-            "text": widget(Input, lambda x: ((), {
-                "id": _attr(x, "id"), 
-                "value": _attr(x, "value", ""),
-            })),
-            "editor": widget(TextArea.code_editor, lambda x: ((_text(x),), {
-                "id": _attr(x, "id"),
-                "language": _attr(x, "language", "python"),
-                "theme": _attr(x, "theme", "monokai"),
-            })),
-            "input": widget(Input, lambda x: ((), {
-                "placeholder": _attr(x, "placeholder", ""),
-                "value": _attr(x, "value", ""),
-                "password": _attr(x, "type") == "password",
-                "id": _attr(x, "id"),
-            })),
-            "checkbox": widget(Checkbox, lambda x: ((_text(x),), {"id": _attr(x, "id")})),
-            "masked": widget(MaskedInput, lambda x: ((), {"template": _attr(x, "placeholder", ""), "id": _attr(x, "id")})),
-            "option": widget(OptionList, _build(children=True)),
-            "switch": widget(Switch, lambda x: ((), {"value": _bool_attr(x, "value"), "id": _attr(x, "id")})),
-            "radio": widget(RadioButton, lambda x: ((_text(x),), {"id": _attr(x, "id")})),
-            "radioset": widget(RadioSet, _build(children=True)),
-            "selectionlist": widget(SelectionList, lambda x: ((_options(x),), {"id": _attr(x, "id")})),
-            "progress": widget(ProgressBar),
-        },
-
-        presentation.Tag.ACTION.value: {
-            "action": _make_action,
-            "button": _make_action,
-            "link": widget(Link, lambda x: ((_text(x) or _attr(x, "href", ""),), {"url": _attr(x, "href", "#")})),
-        },
-
-        presentation.Tag.CONTAINER.value: {
-            "container": widget(Container, _build(children=True)),
-            "loading": widget(LoadingIndicator, style=False),
-            "placeholder": widget(Placeholder),
-        },
-
-        presentation.Tag.ROW.value: {
-            "row": widget(HorizontalGroup, _build(children=True)),
-        },
-        presentation.Tag.COLUMN.value: {
-            "column": widget(Vertical, _build(children=True)),
-        },
-        presentation.Tag.STACK.value: {
-            # Textual non ha un widget "Stack" nativo: ContentSwitcher mostra
-            # un solo figlio per volta, comportamento equivalente a uno stack.
-            "stack": widget(ContentSwitcher, _build(children=True)),
-        },
-
-        presentation.Tag.DIVIDER.value: {
-            "divider": widget(Rule, style=False),
-            "horizontal": widget(Rule, style=False),
-        },
-
-        presentation.Tag.ICON.value: {
-            "icon": widget(Static, lambda x: ((_attr(x, "class", _attr(x, "name", "•")),), {}), style=False),
-        },
-
-        presentation.Tag.GROUP.value: {
-            "list": widget(ListView, lambda x: (tuple(ListItem(c) for c in _children(x)), {"id": _attr(x, "id")})),
-            "tab": _make_tabbed_content,
-            "tree": widget(Tree, lambda x: ((_attr(x, "label", "root"),), {"id": _attr(x, "id")})),
-            "directorytree": widget(DirectoryTree, lambda x: ((_attr(x, "path", "."),), {"id": _attr(x, "id")})),
-            "collapsible": _collapsible("Toggle"),
-            "contentswitcher": widget(ContentSwitcher, _build(children=True)),
-        },
-
-        presentation.Tag.ACCORDION.value: {
-            "accordion": _collapsible("Accordion"),
-        },
-
-        presentation.Tag.CARD.value: {
-            "card": _make_card,
-        },
-
-        presentation.Tag.MEDIA.value: {
-            # Un terminale non può riprodurre audio/video: mostriamo un
-            # segnaposto testuale invece di far fallire il render.
-            "media": widget(Static, lambda x: ((f"[media: {_attr(x, 'src', '?')}]",), {}), style=False),
-        },
-
-        presentation.Tag.GRID.value: {
-            "grid": widget(Grid, _build(children=True)),
-            "sparkline": widget(Sparkline, lambda x: ((_parse_data(_attr(x, "data")),), {"id": _attr(x, "id")})),
-            "datatable": widget(DataTable),
-        },
-    }
+    tags = tags
 
     def __init__(self, loader: Loader, defender: Defender, presenter: Presenter, messenger: Messenger, authenticator: Authenticator, **constants):
         """
@@ -1125,86 +266,10 @@ class Adapter(presentation.Port):
             **constants: Configurazione da pyproject.toml (adapter.registry)
         """
         super().__init__(loader, defender, presenter, messenger, authenticator, **constants)
-        self._render_lock = asyncio.Lock()
-        self._rebuild_lock = asyncio.Lock()
-        self.sessions: Dict[str, Dict[str, Any]] = {}
         self.active_screens: Dict[str, Screen] = {}
-        self.widgets = DomRegistry()  # registro dei widget live, per id
-        self._pending_rebuilds: Dict[str, tuple[Any, Dict[str, Any] | None]] = {}
-        self._flow_log_entries: List[str] = []
-        self._flow_log_screen: FlowLogScreen | None = None
+        self.widgets = self.nodes  # alias compatibile per il runtime Textual
         self.app = AppDinamica(self)
-        flow.set_dev_sink(self._print_flow_event)
         self.validate_adapter()
-
-    def _print_flow_event(
-        self,
-        message: str,
-        *,
-        exception: BaseException | None = None,
-        level: str = "DEBUG",
-        metadata: Dict[str, Any] | None = None,
-    ) -> None:
-        """Memorizza e visualizza il tracing Flow nella schermata dedicata."""
-        if metadata and metadata.get("propagated"):
-            return
-        entry = _format_flow_event(
-            message,
-            exception=exception,
-            level=level,
-            metadata=metadata,
-        )
-        self._flow_log_entries.append(entry)
-        max_entries = int(self.config.get("flow_log_max_entries", 1000))
-        del self._flow_log_entries[:-max_entries]
-        screen = self._flow_log_screen
-        if screen is not None and screen.is_attached:
-            screen.add_entry(entry)
-
-    async def open_modal(self, view_path: str, **context):
-        """Apre una vista XML separata come modale."""
-        xml_view = flow.output(await self.presenter.get_view(self.session, view_path))
-        modal = await self.render_template(
-            self.session,
-            text=xml_view,
-            controllers=self.routes[view_path]["GET"].get("controllers", []),
-            **context,
-        )
-        await self.app.push_screen(modal)
-        return modal
-
-    async def open_registered_modal(self, modal_id: str):
-        """Ricostruisce e apre il Window modal registrato nella vista corrente."""
-        xml_fragment = self.DOM.get(modal_id)
-        if xml_fragment is None:
-            print(f"[open_registered_modal] Nessun nodo con id '{modal_id}' in DOM")
-            return None
-        modal = await self.render_template(
-            self.session,
-            text=xml_fragment,
-            controllers=getattr(self, "_current_view_controllers", []),
-        )
-        await self.app.push_screen(modal)
-        return modal
-
-    async def open_flow_log(self) -> FlowLogScreen | None:
-        """Apre o chiude la schermata con gli eventi Flow della console."""
-        if (
-            self._flow_log_screen is not None
-            and self._flow_log_screen.is_attached
-            and self.app.screen is self._flow_log_screen
-        ):
-            self.app.pop_screen()
-            self._flow_log_screen = None
-            return None
-        self._flow_log_screen = FlowLogScreen(self._flow_log_entries)
-        await self.app.push_screen(self._flow_log_screen)
-        return self._flow_log_screen
-
-    def close_modal(self) -> None:
-        """Chiude la modale corrente, se presente nello screen stack."""
-        if isinstance(self.app.screen, ModalScreen):
-            self.app.pop_screen()
 
     def _ensure_active_app(self):
         if hasattr(self, 'app') and self.app:
@@ -1214,114 +279,47 @@ class Adapter(presentation.Port):
             except LookupError:
                 active_app.set(self.app)
 
-    async def start(self, session):
-        """Avvia l'applicazione TUI (equivalente di Starlette server.serve())."""
-        session_result = await self.defender.session_create()
-        self.session = flow.output(session_result)
-        await self.parse_route()
-        return self.app.run_async()
-
-    async def shutdown(self):
-        flow.set_dev_sink(None)
-        if getattr(self, "session", None) is not None:
-            await self.session.close()
-        if self.app:
-            self.app.exit()
-
     def mount_css(self, css_content: str) -> None:
         """Inietta lo stile nell'applicazione."""
         if self.app:
             self._ensure_active_app()
             self.app.parse_stylesheet(css_content)
 
-    async def mount_view(self, url):
+    async def _run_runtime(self):
+        return self.app.run_async()
+
+    async def _shutdown_runtime(self):
+        if self.app:
+            self.app.exit()
+
+    def _prepare_runtime(self):
         self._ensure_active_app()
-        route_info, params = self.match_route(url, 'GET')
-        if not route_info:
-            raise KeyError(f"Nessuna rotta GET trovata per l'URL '{url}'")
 
-        view_path = route_info.get('view')
-        controllers = route_info.get("controllers") or []
+    async def _show_screen(self, screen):
+        if self.app.screen.id == "_default":
+            await self.app.push_screen(screen)
+        else:
+            await self.app.switch_screen(screen)
 
-        xml_view = flow.output(await self.presenter.get_view(self.session, view_path))
-        self._current_view_text = xml_view
-        self._current_view_controllers = controllers
-        return await self.render_template(
-            self.session,
-            controllers=controllers,
-            text=xml_view,
-            source_name=view_path,
-        )
+    async def _push_screen(self, screen):
+        await self.app.push_screen(screen)
 
-    async def render_view(self, url):
-        self._ensure_active_app()
-        self.url = url
-        async with self._render_lock:
-            result = await self.mount_view(url)
-            if not flow.check(result):
-                return result
-            screen = flow.output(result)
+    async def _pop_screen(self):
+        self.app.pop_screen()
 
-            if self.app.screen.id == "_default":
-                await self.app.push_screen(screen)
-            else:
-                await self.app.switch_screen(screen)
-            await self._flush_pending_rebuilds()
-
-    async def navigate_to(self, url: str, modal: bool = False):
-        """
-        Naviga a una nuova schermata/pagina.
-
-        Args:
-            url: L'URL della nuova pagina (deve corrispondere a una rotta GET)
-            modal: Se True, apre come modal screen (push); se False, sostituisce lo schermo corrente (switch)
-
-        Returns:
-            Result object con lo stato dell'operazione
-        """
-        self._ensure_active_app()
-        self.url = url
-        async with self._render_lock:
-            result = await self.mount_view(url)
-            if not flow.check(result):
-                return result
-            screen = flow.output(result)
-
-            if modal:
-                await self.app.push_screen(screen)
-            else:
-                await self.app.switch_screen(screen)
-            await self._flush_pending_rebuilds()
-        return result
-
-    async def _flush_pending_rebuilds(self):
-        pending = self._pending_rebuilds
-        self._pending_rebuilds = {}
-        for node_id, (session, context) in pending.items():
-            await self.rebuild(session, node_id, context)
-
-    async def go_back(self):
-        """Torna alla schermata precedente (pop_screen). Usato per chiudere modal o tornare indietro."""
-        self._ensure_active_app()
+    def _close_modal_runtime(self):
         if isinstance(self.app.screen, ModalScreen):
             self.app.pop_screen()
-        else:
-            self.app.pop_screen()
 
-    async def mount_route(self, routes):
-        for path, methods_dict in self.routes.items():
-            for method, data in methods_dict.items():
-                self.views[path] = data.get('view')
-
-    async def rebuild(self, session, node_id: str, context: Dict[str, Any] = None, dsl_alias: str = None):
-        async with self._rebuild_lock:
-            return await self._rebuild(session, node_id, context, dsl_alias)
-
-    async def _rebuild(self, session,node_id: str, context: Dict[str, Any] = None, dsl_alias: str = None):
+    async def _rebuild(
+        self,
+        session,
+        node_id: str,
+        context: Dict[str, Any] = None,
+        dsl_alias: str = None,
+    ):
         """Ricalcola il DOM e sostituisce solo il widget richiesto."""
         self._ensure_active_app()
-
-        flow._dev_log("tui.rebuild node=%s", node_id)
 
         # Un evento Select può arrivare nello stesso ciclo in cui il template
         # sta ancora montando i widget. Lasciamo terminare quel mount prima di
@@ -1336,11 +334,9 @@ class Adapter(presentation.Port):
         if old_widget is None:
             self.widgets.forget(node_id)
             if getattr(self, "url", None) and not self._render_lock.locked():
-                flow._dev_log("tui.rebuild.recover node=%s", node_id)
                 await self.render_view(self.url)
                 return self.dom_get(node_id)
             self._pending_rebuilds[node_id] = (session, context)
-            flow._dev_log("tui.rebuild.pending node=%s", node_id)
             return None
 
         # Il DOM contiene XML già elaborato da Jinja. Ricalcoliamo la sorgente
@@ -1357,14 +353,8 @@ class Adapter(presentation.Port):
         if xml_fragment is None:
             raise LookupError(f"Nodo XML '{node_id}' non trovato nel DOM")
 
-        flow._dev_log(
-            "tui.rebuild.ready node=%s fragment_size=%d",
-            node_id,
-            len(xml_fragment),
-        )
-
         fragment_root = ET.fromstring(xml_fragment)
-        protected_fragment = _protect_editor_jinja_delimiters(fragment_root)
+        protected_fragment = protect_editor_jinja_delimiters(fragment_root)
         rendered_node = await self.render_template(
             session,
             controllers=[],
@@ -1386,71 +376,6 @@ class Adapter(presentation.Port):
         return rendered_node
 
     def dom_get(self, widget_id):
-        try:
-            return self.app.query_one(f"#{widget_id}")
-        except Exception:
-            return None
-
-    def node_create(self, tag, attrs=None, inner=None):
-        attrs = attrs or {}
-        inner = inner or []
-        """
-        Chiamato da mount_tag() come: self.node_create(elemento, new_attrs, inner)
-        dove `elemento` è il lambda selezionato da self.tags[tag][tipo].
-
-        Oltre a costruire il widget, lo registra in self.widgets (se ha un
-        id), così node_update()/dom_*() potranno trovarlo in seguito senza
-        dover ripercorrere l'albero XML.
-        """
-        if not (callable(tag) and type(tag).__name__ == "function"):
-            raise NotImplementedError("node_create è stato deprecato. Usa node_create2 per creare widget Textual direttamente da tag DSL.")
-        instance = tag({"inner": inner, "attrs": attrs})
-        return self.widgets.register(attrs.get("id"), instance)
-
-    async def node_update(self, node, context: Dict[str, Any] = None):
-        """
-        Applica un aggiornamento a un widget Textual GIÀ MONTATO (patch in
-        place), invece di ricostruirlo da zero. `context` ha la stessa forma
-        di un nodo DSL: {'attrs': {...}, 'inner': [...]}.
-
-        Aggiorna, se applicabile al widget:
-          1. Stile     -> tramite attrs()
-          2. Testo     -> tramite widget.update(...) se il widget lo espone
-                          (Label, Static, Markdown, Digits, ...)
-          3. Figli     -> tramite remove_children()+mount() se il widget è
-                          un container già montato (Container, Vertical, ...)
-
-        È async perché il montaggio/smontaggio di figli in Textual lo è.
-        Se un tipo di widget deve cambiare del tutto (non solo il suo
-        contenuto), usare dom_replace() invece: node_update() patcha
-        un'istanza esistente, non può trasformarla in un'altra classe.
-        """
-        descriptor = self.node_union({"attrs": {}, "inner": []}, context or {})
-        new_attrs = descriptor["attrs"]
-        new_text, new_children = presentation.split_text_and_children(descriptor["inner"])
-
-        # 1. Stile
-        if new_attrs:
-            attrs(node, new_attrs)
-
-        # 2. Testo (widget "foglia" con update(), es. Label/Static/Markdown/Digits)
-        if new_text and hasattr(node, "update") and callable(getattr(node, "update", None)):
-            try:
-                node.update(new_text)
-            except Exception as e:
-                print(f"[node_update] update() fallito su {node!r}: {e}")
-
-        # 3. Figli (container già montato)
-        if new_children and hasattr(node, "remove_children") and hasattr(node, "mount"):
-            try:
-                await node.remove_children()
-                await node.mount(*new_children)
-            except Exception as e:
-                print(f"[node_update] impossibile aggiornare i figli di {node!r}: {e}")
-
-        return node
-
-    def dom_get(self, widget_id: str):
         """Restituisce il widget Textual live con quell'id, o None."""
         try:
             return self.app.query_one(f"#{widget_id}")
@@ -1461,37 +386,12 @@ class Adapter(presentation.Port):
             self.widgets.forget(widget_id)
             return None
 
-    async def dom_update(self, widget_id: str, context: Dict[str, Any]):
-        """Applica node_update() al widget live con quell'id."""
-        node = self.dom_get(widget_id)
-        if node is None:
-            print(f"[dom_update] Nessun widget live con id '{widget_id}'")
-            return None
-        return await self.node_update(node, context)
+    def _apply_node_attrs(self, node, attrs_dict: Dict[str, Any]):
+        attrs(node, attrs_dict)
 
-    async def dom_replace(self, widget_id: str, tag: str, attrs_dict: Dict[str, Any] = None, inner: List[Any] = None):
-        """
-        Sostituisce completamente il widget con quell'id: lo smonta e monta
-        un widget nuovo al suo posto. Usare quando cambia il TIPO di widget
-        (es. da <text> a <input>), non solo il suo contenuto — in quel caso
-        node_update()/dom_update() bastano e sono più economici.
-        """
-        old = self.dom_get(widget_id)
-        new_attrs = dict(attrs_dict or {})
-        new_attrs.setdefault("id", widget_id)
-        new_widget = self.mount_tag(tag, new_attrs, inner or [])
+    def _register_node(self, widget_id: str, node):
+        return self.widgets.register(widget_id, node)
 
-        if old is not None and getattr(old, "parent", None) is not None:
-            parent = old.parent
-            await old.remove()
-            await parent.mount(new_widget)
-
-        self.widgets.register(widget_id, new_widget)
-        return new_widget
-
-    async def dom_remove(self, widget_id: str):
-        """Rimuove un widget dalla UI (se montato) e dal registro."""
-        node = self.dom_get(widget_id)
-        if node is not None and getattr(node, "parent", None) is not None:
-            await node.remove()
+    def _forget_node(self, widget_id: str):
         self.widgets.forget(widget_id)
+

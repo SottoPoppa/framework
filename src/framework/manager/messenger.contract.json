@@ -10,7 +10,7 @@
     "Manager": {
       "receive": {
         "production": "d1a12db66f61aa5b9226e22d68d9795802e76076c8d5c02df4e9bfdbf141a320",
-        "test": "69e8225e90e1f4290e84851c0cbb0075315e8c9fcd793a2cd67d7f2d22e98384"
+        "test": "d1a12db66f61aa5b9226e22d68d9795802e76076c8d5c02df4e9bfdbf141a320"
       },
       "send": {
         "production": "12f448d75204cb09772e27cdf2ffadd6794a9c3f26416c31d0bc40ee3bcaa81b",

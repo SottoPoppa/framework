@@ -13,7 +13,7 @@ any:provider := imports.persistence.Adapter(name:"test");
 any:preparation_provider := imports.persistence.Adapter(name:"test");
 // Il repository traduce il payload del provider nel modello canonico "file".
 any:repository := imports.factory.Repository(
-    location: {"test": ["items/{{id}}"]},
+    location: {"test": ["items/{% raw %}{{id}}{% endraw %}"]},
     model: {
         "path": {"type": "string"; "required": true; "empty": false};
         "name": {"type": "string"; "required": true; "empty": false};
@@ -36,12 +36,13 @@ any:repository := imports.factory.Repository(
     }
 );
 any:orchestrator := imports.orchestrator.Manager(none);
-any:messenger_defender := imports.defender_module.Manager(none, []);
+any:messenger_defender := imports.defender_module.Manager(none, none, []);
 // Provider message mock per verificare startup/shutdown end-to-end.
 any:message_provider := imports.message.Adapter(name: "console");
 any:messenger := imports.messenger_module.Manager(
     messages: [message_provider],
-    defender: messenger_defender
+    defender: messenger_defender,
+    framework: none
 );
 any:preparation_manager := imports.module.Manager(
     providers: [preparation_provider],

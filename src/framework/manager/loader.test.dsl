@@ -1,20 +1,19 @@
 imports: {
     'module': import("framework.manager.loader");
+    'framework_module': import("framework.core.framework");
+    'infrastructure_module': import("framework.core.infrastructure")
 };
 
-any:framework := imports.module.Framework();
-any:infrastructure := imports.module.Infrastructure();
-any:loader := imports.module.Loader();
+any:framework := imports.framework_module.Framework();
+any:infrastructure := imports.infrastructure_module.Infrastructure();
+any:loader := imports.module.Loader(framework, infrastructure);
 
 exports: {
     'imports': framework.imports;
     'component': framework.component;
     'import_module': infrastructure.import_module;
-    'load_module': framework.load_module;
-    'run_integration_tests': loader.run_integration_tests;
+    'load_module': framework.load_module
 };
-
-
 
 tuple:test_suite := (
     {
@@ -22,34 +21,27 @@ tuple:test_suite := (
         "inputs": "import os";
         "outputs": true;
         "assert": @received.is_success == @expected;
-        "note": "imports estrae un modulo Python dal sorgente";
+        "note": "imports estrae un modulo Python dal sorgente"
     },
     {
         "action": exports.component;
         "inputs": "missing.component";
         "outputs": none;
         "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "component restituisce none per una risorsa non registrata";
+        "note": "component restituisce none per una risorsa non registrata"
     },
     {
         "action": exports.import_module;
         "inputs": "framework.manager.loader";
         "outputs": true;
         "assert": @received.is_success == true & @received.output.value.Framework != none;
-        "note": "import_module risolve un modulo framework reale senza fixture";
+        "note": "import_module risolve un modulo framework reale senza fixture"
     },
     {
         "action": exports.load_module;
-        "inputs": ("framework.core.scheme", "src/framework/core/scheme.py", {"schemes": {"test": {}}});
+        "inputs": ("framework.service.scheme", "src/framework/service/scheme.py", {"schemes": {"test": {}}});
         "outputs": true;
         "assert": @received.is_success == true & @received.output.value.schemes.test != none;
-        "note": "load_module inietta gli extra anche in un modulo già importato";
-    },
-    {
-        "action": exports.run_integration_tests;
-        "inputs": none;
-        "outputs": false;
-        "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "run_integration_tests fallisce in modo esplicito senza Tester nel container";
+        "note": "load_module inietta gli extra anche in un modulo già importato"
     }
 );

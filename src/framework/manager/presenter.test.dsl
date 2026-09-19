@@ -4,7 +4,7 @@ imports: {
 };
 
 any:provider := imports.stub.Adapter(name: "stub");
-any:presenter := imports.module.Manager(presentations: (provider), loader: none);
+any:presenter := imports.module.Manager(presentations: (provider), loader: none, framework: none);
 
 exports: {
     'rebuild': presenter.rebuild
