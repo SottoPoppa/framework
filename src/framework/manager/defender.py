@@ -8,6 +8,7 @@ import framework.core.interpreter as interpreter
 import framework.service.scheme as scheme
 import framework.core.flow as flow
 import framework.manager.loader as loader
+import framework.core.framework as framework_module
 import framework.port.authentication as authentication
 import framework.port.manager as manager
 
@@ -20,7 +21,13 @@ class Manager(manager.Port):
         "resolve_route",
         "get_configuration",
     }
-    def __init__(self, loader: loader.Loader, authentications: list[authentication.Port], **constants):
+    def __init__(
+        self,
+        loader: loader.Loader,
+        framework: framework_module.Framework,
+        authentications: list[authentication.Port],
+        **constants,
+    ):
         """
         Inizializza il manager con i servizi necessari alla gestione delle richieste.
 
@@ -33,6 +40,7 @@ class Manager(manager.Port):
 
         # Interpreta i file DSL e gestisce le sessioni dell'interprete.
         self.interpreter = interpreter.Interpreter(scheme.schemes)
+        self.framework = framework
 
         # Loader condiviso dal framework per leggere risorse e manager.
         self.loader = loader
@@ -151,7 +159,7 @@ class Manager(manager.Port):
             validated_policy = validation.output.value
             self.policies[policy] = validated_policy
             self.port_configurations[policy] = validated_policy["configuration"]
-            print(f"[+] Policy: {policy}/{filename}")
+            self.framework.logger.info("Policy caricata", policy=f"{policy}/{filename}")
 
         from pathlib import Path
 
@@ -162,7 +170,7 @@ class Manager(manager.Port):
             self.controllers.append(controller_name)
             await self.interpreter.load_file(controller_name, code)
         
-        print("[+] Controllers: ",self.controllers)
+        self.framework.logger.info("Controller caricati", controllers=self.controllers)
 
     def _validate_policy(self, port, policy):
         """Valida configurazione, schema e capability della policy di una Port."""

@@ -3,6 +3,7 @@ import asyncio
 import framework.port.message as message
 import framework.port.manager as manager
 import framework.core.flow as flow
+import framework.core.framework as framework_module
 
 from framework.manager.defender import Manager as Defender
 
@@ -12,10 +13,12 @@ class Manager(manager.Port):
         self,
         messages: list[message.Port],
         defender: Defender,
+        framework: framework_module.Framework,
         **constants,
     ):
         self.defender = defender
         self.providers = messages
+        self.framework = framework
 
     def _matching_providers(self, receiver: str | None, adapter: str | None = None) -> list:
         """
@@ -168,6 +171,6 @@ class Manager(manager.Port):
 
             return result
 
-        except Exception as e:
-            print(f"[Messenger] Errore nel loop di ricezione: {e}")
+        except Exception as exc:
+            self.framework.logger.error("Errore nel loop di ricezione", exception=exc)
             return None

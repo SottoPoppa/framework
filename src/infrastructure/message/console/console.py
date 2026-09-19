@@ -1,12 +1,9 @@
-import datetime
 import fnmatch
-import logging
-import os
-import sys
 from typing import Any, Dict, List
 
 import framework.port.message as message
 import framework.manager.storekeeper as storekeeper
+from framework.core.infrastructure import Infrastructure
 
 class Adapter(message.Port):
     """
@@ -15,24 +12,12 @@ class Adapter(message.Port):
     evitando formattazioni ANSI non standard in ambienti di produzione.
     """
 
-    class AuditFormatter(logging.Formatter):
-        """Formatter enterprise per audit log conformi allo standard ISO 8601."""
-        
-        def format(self, record: logging.LogRecord) -> str:
-            # Generazione del timestamp standardizzato ISO 8601 con Timezone locale/UTC
-            record.asctime = datetime.datetime.fromtimestamp(
-                record.created, datetime.timezone.utc
-            ).isoformat(timespec='milliseconds')
-
-            # Iniezione sicura dei campi obbligatori per l'auditing aziendale
-            record.transaction_id = getattr(record, 'transaction_id', 'SYSTEM')
-            record.domain = getattr(record, 'domain', 'UNKNOWN')
-            record.user_id = getattr(record, 'user_id', 'ANONYMOUS')
-            record.action = getattr(record, 'action', 'NOT_SPECIFIED')
-
-            return super().format(record)
-
-    def __init__(self, storekeeper: storekeeper.Manager, **constants) -> None:
+    def __init__(
+        self,
+        storekeeper: storekeeper.Manager,
+        infrastructure: Infrastructure,
+        **constants,
+    ) -> None:
         """
         Inizializza il sottosistema di logging aziendale verificando i parametri di runtime.
         """
@@ -43,6 +28,7 @@ class Adapter(message.Port):
         self.adapter = __name__.split('.')[-1]
         self.config = constants
         self.storekeeper = storekeeper
+        self._logger = infrastructure.get_logger("message.console")
         self.persistence = constants.get('persistence')
         self.project_meta: Dict[str, Any] = self.config.get('project', {})
         
@@ -54,45 +40,6 @@ class Adapter(message.Port):
         self._history: Dict[str, List[Any]] = {}
         self.processable: List[str] = ['log', 'audit']
 
-        # Configurazione del Logger Core dell'Adapter
-        self._logger = logging.getLogger(f"audit.{self.project_id}")
-        self._logger.propagate = False
-        
-        # Gestione dei Log Level in base all'ambiente (Principio del Least Privilege sui dati di log)
-        if self.environment == 'production':
-            self._logger.setLevel(logging.INFO)
-        else:
-            self._logger.setLevel(logging.DEBUG)
-
-        self._initialize_handler(constants.get('format'))
-
-    def _initialize_handler(self, custom_format: str = None) -> None:
-        """Configura lo stream di output standard per l'architettura a container (Twelve-Factor App)."""
-        # Utilizza stdout per convogliare correttamente i log nei collettori di container (Docker/Kubernetes)
-        stdout_handler = logging.StreamHandler(sys.stdout)
-        stdout_handler.setLevel(self._logger.level)
-
-        # Formato standard di Audit aziendale (Scannabile sia da umani che da regex/parser)
-        # Struttura: TIMESTAMP | ENV | ENV_ID | TX_ID | DOMAIN | USER | LEVEL | LOCATION | MSG
-        default_audit_format = (
-            "%(asctime)s | "
-            f"[{self.environment.upper()}] | "
-            f"[{self.project_id}] | "
-            "[TX:%(transaction_id)s] | "
-            "[DOM:%(domain)s] | "
-            "[USER:%(user_id)s] | "
-            "%(levelname)-8s | "
-            "%(filename)s:%(lineno)d | "
-            "%(message)s"
-        )
-
-        log_format = custom_format if custom_format else default_audit_format
-        formatter = self.AuditFormatter(log_format)
-        stdout_handler.setFormatter(formatter)
-        
-        # Reset preventivo degli handler per evitare duplicazioni in caso di hot-reload
-        self._logger.handlers.clear()
-        self._logger.addHandler(stdout_handler)
 
     async def can(self, *services: Any, **constants: Any) -> bool:
         """Verifica se l'operazione richiesta rientra nelle capacità dell'interfaccia."""
@@ -123,18 +70,8 @@ class Adapter(message.Port):
         }
 
         # Mapping dinamico dei livelli di log nativi senza costrutti condizionali pesanti
-        log_level_map = {
-            'DEBUG': logging.DEBUG,
-            'INFO': logging.INFO,
-            'WARNING': logging.WARNING,
-            'ERROR': logging.ERROR,
-            'CRITICAL': logging.CRITICAL
-        }
-        
-        target_level = log_level_map.get(level, logging.INFO)
-        
-        # Scrittura nel flusso di log con iniezione del contesto di Audit
-        self._logger.log(target_level, message_text, extra=audit_context)
+        log_method = getattr(self._logger, level.lower(), self._logger.info)
+        log_method(message_text, **audit_context)
         if self.persistence:
             from datetime import datetime
 

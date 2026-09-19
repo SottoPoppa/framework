@@ -20,6 +20,10 @@ class Infrastructure:
         self.jinja_env.filters["tojson"] = json.dumps
         self.jinja_env.globals["uuid4"] = lambda: str(uuid.uuid4())
 
+    def get_logger(self, component: str):
+        """Restituisce un logger coerente con il sistema diagnostico del framework."""
+        return get_logger(component)
+
     def render_jinja(self, target: str, context: Optional[dict] = None) -> str:
         """Renderizza una stringa Jinja con i global registrati in Infrastructure."""
         if not isinstance(target, str):

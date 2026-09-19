@@ -1,10 +1,19 @@
 import framework.port.network as network
 import framework.port.manager as manager
 import framework.core.flow as flow
+import framework.manager.loader as loader
+import framework.core.framework as framework_module
 
 class Manager(manager.Port):
-    def __init__(self, networks: list[network.Port], **constants):
+    def __init__(
+        self,
+        networks: list[network.Port],
+        loader: loader.Loader,
+        framework: framework_module.Framework,
+        **constants,
+    ):
         self.networks = networks
+        self.framework = framework
 
     def _select_provider(self, requirements: dict) -> object | None:
         best = None
@@ -59,7 +68,7 @@ class Manager(manager.Port):
         for provider in self.networks:
             result = await provider.compute()
             results.append(result)
-        print("Results from all providers:", results)
+        self.framework.logger.debug("Risultati dei provider di rete", results=results)
         return results
 
     @flow.result()

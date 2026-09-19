@@ -2,6 +2,7 @@ import framework.port.presentation as presentation
 import framework.port.manager as manager
 import framework.core.flow as flow
 from framework.manager.loader import Loader
+import framework.core.framework as framework_module
 
 import re
 import xml.etree.ElementTree as ET
@@ -17,9 +18,16 @@ class Manager(manager.Port):
         "estrai_attributi_tag",
         "estrai_da_xml_string",
     }
-    def __init__(self, presentations: list[presentation.Port], loader:Loader, **constants):
+    def __init__(
+        self,
+        presentations: list[presentation.Port],
+        loader: Loader,
+        framework: framework_module.Framework,
+        **constants,
+    ):
         self.presentations = presentations
         self.loader = loader
+        self.framework = framework
         #self.executor = constants.get('executor')
 
     @flow.result(inputs=(), outputs=())
@@ -186,7 +194,7 @@ class Manager(manager.Port):
                     method="xml",
                 ).strip()
                 
-        except Exception as e:
-            print(f"Errore durante l'estrazione: {e}")
+        except Exception as exc:
+            self.framework.logger.error("Errore durante l'estrazione", exception=exc)
         
         return None

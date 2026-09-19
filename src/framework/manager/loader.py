@@ -595,6 +595,9 @@ class Loader:
         container_cls = getattr(container_mod, "Container")
         self.container = container_cls()
         self.container.put(container_cls, self.container, singleton=True)
+        self.container.put(type(self.framework), self.framework, singleton=True)
+        self.container.put(type(self.infrastructure), self.infrastructure, singleton=True)
+        #self.container.put(type(self.application), self.application, singleton=True)
         return context
 
     async def _discover_bootstrap(self, context: LoaderContext) -> LoaderContext:
