@@ -1,13 +1,9 @@
-import importlib
 import json
-import os
-import tomllib
 from pathlib import Path
 from typing import Any, Optional
-from jinja2 import Environment, FileSystemLoader, StrictUndefined, TemplateNotFound, nodes
 from framework.service.diagnostic import get_logger
-import sys
-import types
+import framework.service.scheme as scheme
+import framework.service.template as template
 
 
 class Infrastructure:
@@ -15,18 +11,11 @@ class Infrastructure:
 
     def __init__(self):
         self.logger = get_logger("infrastructure")
-        self._jinja_environments = {}
+        self.jinja_environments = {}
 
-    def get_jinja(self, **options) -> Environment:
-        """Restituisce un ambiente Jinja riusando la configurazione già vista."""
-        key = tuple(sorted((name, id(value)) for name, value in options.items()))
-        environment = self._jinja_environments.get(key)
-        if environment is not None:
-            return environment
-
-        environment = Environment(**options)
-        self._jinja_environments[key] = environment
-        return environment
+    def get_jinja(self, **options):
+        """Restituisce un ambiente Jinja dalla cache locale."""
+        return template.get_jinja(self, **options)
 
     def get_logger(self, component: str):
         """Restituisce un logger coerente con il sistema diagnostico del framework."""
@@ -36,41 +25,11 @@ class Infrastructure:
         """Legge il contenuto di una risorsa statica come stringa."""
         return Path(path).read_text(encoding="utf-8")
 
-    def _select_jinja_environment(self, target: str) -> Environment:
-        """Sceglie l'ambiente in cache adatto ai riferimenti del template."""
-        default = self.get_jinja()
-        try:
-            references = [
-                node.template.value
-                for node in default.parse(target).find_all(
-                    (nodes.Include, nodes.Extends, nodes.Import, nodes.FromImport)
-                )
-                if isinstance(node.template, nodes.Const)
-                and isinstance(node.template.value, str)
-            ]
-        except Exception:
-            return default
-
-        if not references:
-            return default
-
-        for environment in self._jinja_environments.values():
-            loader = getattr(environment, "loader", None)
-            if loader is None:
-                continue
-            try:
-                for reference in references:
-                    loader.get_source(environment, reference)
-            except TemplateNotFound:
-                continue
-            return environment
-        return default
-
     def render_jinja(
         self,
         target: str,
         context: Optional[dict] = None,
-        environment: Optional[Environment] = None,
+        environment: Optional[Any] = None,
     ) -> str:
         """Renderizza una stringa Jinja con i global registrati in Infrastructure."""
         if not isinstance(target, str):
@@ -78,21 +37,7 @@ class Infrastructure:
         if "{{" not in target and "{%" not in target and "{#" not in target:
             return target
 
-        def env(name: str, default: str = "") -> str:
-            return os.environ.get(name, default)
-
-        payload = {
-            "env": env,
-            **(context or {}),
-        }
-
-        environment = environment or self._select_jinja_environment(target)
-
-        return environment.from_string(target).render(**payload)
-
-    def convert_str_to_toml(self, content) -> dict:
-        """Legge un file TOML e renderizza eventuali placeholder Jinja prima del parse."""
-        return tomllib.loads(content)
+        return template.render_jinja(self, target, context, environment)
 
     def _load_scheme_files(self, directories: list[str]) -> dict[str, Any]:
         """Legge gli schemi JSON presenti nelle directory indicate."""
@@ -184,22 +129,22 @@ class Infrastructure:
             case p if p.endswith(".toml"):
                 content = self.get_resource(path_str)
                 rendered = self.render_jinja(content)
-                return self.convert_str_to_toml(rendered)
+                return scheme.convert(rendered, format="toml")
             case p if p.endswith(".json"):
                 content = self.get_resource(path_str)
                 rendered = self.render_jinja(content)
-                return self.convert_str_to_json(rendered)
+                return scheme.convert(rendered, format="json")
             case p if p.endswith(".dsl"):
                 content = self.get_resource(path_str)
                 environment = self.get_jinja(
-                    loader=FileSystemLoader(
+                    loader=template.FileSystemLoader(
                         str(Path(__file__).resolve().parents[3] / "src" / "application" / "policy")
                     ),
                     autoescape=False,
                     keep_trailing_newline=True,
-                    undefined=StrictUndefined,
+                    undefined=template.StrictUndefined,
                 )
-                return self.render_jinja(content)
+                return self.render_jinja(content, environment=environment)
             case _:
                 # Caso di default se l'estensione non coincide
                 raise ValueError(f"Formato file non supportato: {path_str}")

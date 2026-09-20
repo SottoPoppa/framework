@@ -1,4 +1,5 @@
 import xml.etree.ElementTree as ET
+import os
 from pathlib import Path
 
 from jinja2 import (
@@ -6,23 +7,15 @@ from jinja2 import (
     FileSystemLoader,
     StrictUndefined,
     TemplateError,
+    TemplateNotFound,
     Undefined,
+    nodes,
     select_autoescape,
 )
 import framework.core.flow as flow
 import framework.service.scheme as scheme
 
-'''jinja_env = Environment(
-    loader=FileSystemLoader("src/application/view/layout/"),
-    autoescape=select_autoescape(["html", "xml"]),
-    undefined=DebugUndefined,
-)'''
-
-jinja_env = Environment(
-    autoescape=select_autoescape(['html', 'xml'])
-)
 _html_autoescape = select_autoescape(["html", "xml"])
-
 
 class DeferredUndefined(Undefined):
     """Mantiene le espressioni da valutare dopo un nodo dati asincrono."""
@@ -78,20 +71,73 @@ def _result_success(value):
     return True
 
 
-jinja_env.filters.update({
-    "value": _result_output,
-    "check": _result_success,
-    "get": lambda d, key: d.get(key) if isinstance(d, dict) else None,
-})
+def _template_filters():
+    return {
+        "value": _result_output,
+        "check": _result_success,
+        "get": lambda d, key: d.get(key) if isinstance(d, dict) else None,
+    }
+
+
+def get_jinja(infrastructure, **options):
+    """Restituisce un ambiente Jinja dalla cache dell'infrastruttura."""
+    key = tuple(sorted((name, id(value)) for name, value in options.items()))
+    environment = infrastructure.jinja_environments.get(key)
+    if environment is None:
+        environment = Environment(**options)
+        infrastructure.jinja_environments[key] = environment
+    environment.filters.update(_template_filters())
+    return environment
+
+
+def _select_environment(infrastructure, target: str):
+    default = get_jinja(infrastructure)
+    try:
+        references = [
+            node.template.value
+            for node in default.parse(target).find_all(
+                (nodes.Include, nodes.Extends, nodes.Import, nodes.FromImport)
+            )
+            if isinstance(node.template, nodes.Const)
+            and isinstance(node.template.value, str)
+        ]
+    except Exception:
+        return default
+    if not references:
+        return default
+    for environment in infrastructure.jinja_environments.values():
+        loader = getattr(environment, "loader", None)
+        if loader is None:
+            continue
+        try:
+            for reference in references:
+                loader.get_source(environment, reference)
+        except TemplateNotFound:
+            continue
+        return environment
+    return default
+
+
+def render_jinja(infrastructure, target: str, context=None, environment=None) -> str:
+    if not isinstance(target, str):
+        return target
+    if "{{" not in target and "{%" not in target and "{#" not in target:
+        return target
+    environment = environment or _select_environment(infrastructure, target)
+    payload = {
+        "env": lambda name, default="": os.environ.get(name, default),
+        **(context or {}),
+    }
+    return environment.from_string(target).render(**payload)
 
 
 def _create_environment(infrastructure=None, **options):
-    if infrastructure is not None and hasattr(infrastructure, "get_jinja"):
-        environment = infrastructure.get_jinja(**options)
-    else:
-        environment = Environment(**options)
-    environment.filters.update(jinja_env.filters)
+    if infrastructure is not None:
+        return get_jinja(infrastructure, **options)
+    environment = Environment(**options)
+    environment.filters.update(_template_filters())
     return environment
+
 
 async def format(target, infrastructure=None, **constants):
     """Formatta una stringa usando l'ambiente Jinja dell'infrastruttura."""
@@ -100,14 +146,12 @@ async def format(target, infrastructure=None, **constants):
             return target
         if not isinstance(target, str):
             target = str(target)
-        if '{' not in target:
+        if "{" not in target:
             return target
-        environment = _create_environment(
+        return _create_environment(
             infrastructure,
             autoescape=_html_autoescape,
-        )
-        template = environment.from_string(target)
-        return template.render(**constants)
+        ).from_string(target).render(**constants)
     except Exception as e:
         raise ValueError(f"Errore formattazione: {e}")
 
