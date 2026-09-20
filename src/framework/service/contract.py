@@ -1,6 +1,10 @@
 import os
 from pathlib import Path
 import json
+from framework.service.diagnostic import get_logger
+
+
+logger = get_logger("contract")
 
 class Contract:
     VERSION = 2
@@ -193,11 +197,15 @@ class Contract:
 
         stale = missing + modified
         if missing:
-            print(f"[!] '{source_path}': export mancanti nel codice: {', '.join(missing)}")
+            logger.warning(
+                f"'{source_path}': export mancanti nel codice: {', '.join(missing)}"
+            )
         if modified:
-            print(f"[!] '{source_path}': export non testati o modificati: {', '.join(modified)}")
+            logger.warning(
+                f"'{source_path}': export non testati o modificati: {', '.join(modified)}"
+            )
         if not stale:
-            print(f"[✓] '{source_path}': tutti gli export testati e verificati.")
+            logger.info(f"'{source_path}': tutti gli export testati e verificati.")
 
         if strict and stale:
             raise RuntimeError(

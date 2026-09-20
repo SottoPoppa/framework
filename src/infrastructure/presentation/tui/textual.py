@@ -57,6 +57,8 @@ class LogScreen(ModalScreen):
 
     def _refresh_log(self) -> None:
         log_widget = self.query_one("#runtime-log", RichLog)
+        scroll_position = log_widget.scroll_y
+        follow_tail = scroll_position >= log_widget.max_scroll_y
         try:
             lines = self.LOG_PATH.read_text(encoding="utf-8").splitlines()[-200:]
         except OSError as error:
@@ -64,7 +66,11 @@ class LogScreen(ModalScreen):
 
         log_widget.clear()
         for line in lines:
-            log_widget.write(line)
+            log_widget.write(line, scroll_end=False)
+        if follow_tail:
+            log_widget.scroll_end(animate=False)
+        else:
+            log_widget.scroll_to(y=scroll_position, animate=False)
 
     async def action_close(self) -> None:
         await self.dismiss()
