@@ -15,8 +15,6 @@ from jinja2 import (
 import framework.core.flow as flow
 import framework.service.scheme as scheme
 
-_html_autoescape = select_autoescape(["html", "xml"])
-
 class DeferredUndefined(Undefined):
     """Mantiene le espressioni da valutare dopo un nodo dati asincrono."""
 
@@ -145,7 +143,7 @@ async def format(target, infrastructure=None, **constants):
             return target
         environment = get_jinja(
             infrastructure,
-            autoescape=_html_autoescape,
+            autoescape=select_autoescape(["html", "xml"]),
         )
         return render_jinja(
             infrastructure,
@@ -182,7 +180,7 @@ async def render(
     environment = get_jinja(
         infrastructure,
         loader=FileSystemLoader("src/application/view/layout/"),
-        autoescape=_html_autoescape,
+        autoescape=select_autoescape(["html", "xml"]),
         undefined=DeferredUndefined,
     )
     try:
