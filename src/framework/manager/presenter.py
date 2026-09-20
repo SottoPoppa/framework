@@ -4,19 +4,9 @@ import framework.core.flow as flow
 from framework.manager.loader import Loader
 import framework.core.framework as framework_module
 
-import re
-import xml.etree.ElementTree as ET
-
-import asyncio
-
 class Manager(manager.Port):
     _session_exempt_methods = {
         "sono_stessa_risorsa",
-        "split_text_and_children",
-        "apply_text_and_children",
-        "estrai_da_nodo",
-        "estrai_attributi_tag",
-        "estrai_da_xml_string",
     }
     def __init__(
         self,
@@ -115,86 +105,3 @@ class Manager(manager.Port):
             view_path = route_data.get('view')
             if view_path and self.sono_stessa_risorsa(path, view_path):
                 await driver.render_view(driver.url)
-
-
-    def split_text_and_children(self,inner=None):
-        """Separa testo e figli mantenendo l'ordine dei contenuti."""
-        text_parts = []
-        children = []
-        for item in inner or []:
-            if isinstance(item, str):
-                text_parts.append(item)
-            else:
-                children.append(item)
-        return "".join(text_parts), children
-
-    def apply_text_and_children(self, target, text=None, children=None):
-        """Applica testo e figli a un elemento XML in modo centralizzato."""
-        if text is None and children is None:
-            return target
-
-        for child in list(target):
-            target.remove(child)
-
-        if text is not None:
-            target.text = str(text)
-            return target
-
-        if children is not None:
-            for child in children:
-                if isinstance(child, ET.Element):
-                    target.append(child)
-                else:
-                    target.text = str(child)
-
-        return target
-
-    def estrai_da_nodo(self, nodo_padre, target_id):
-        """
-        Cerca un elemento per ID partendo da un nodo già esistente
-        e lo restituisce come stringa XML.
-        """
-        # Cerchiamo il sotto-nodo partendo dal nodo_padre
-        elemento = nodo_padre.find(f".//*[@id='{target_id}']")
-        
-        if elemento is not None:
-            # Serializziamo il nodo trovato
-            return ET.tostring(elemento, encoding='unicode', method='xml').strip()
-        
-        return None
-
-    def estrai_attributi_tag(self, tag_string: str):
-        """
-        Riceve una stringa del tag XML/DSL ed estrae tutti gli attributi in un dizionario.
-        Gestisce sia virgolette singole che doppie.
-        """
-        # Questa regex cerca pattern tipo: chiave="valore" oppure chiave='valore'
-        pattern = r'(\w+)=["\']([^"\']*)["\']'
-        
-        # Trova tutte le corrispondenze nella stringa
-        matches = re.findall(pattern, tag_string)
-        
-        # Converte la lista di tuple (chiave, valore) in un dizionario
-        return dict(matches)
-
-    def estrai_da_xml_string(self, xml_string, target_id):
-        if not xml_string:
-            return None
-
-        try:
-            root = ET.fromstring(xml_string)
-            elemento = root if root.get("id") == target_id else root.find(
-                f".//*[@id='{target_id}']"
-            )
-            
-            if elemento is not None:
-                return ET.tostring(
-                    elemento,
-                    encoding="unicode",
-                    method="xml",
-                ).strip()
-                
-        except Exception as exc:
-            self.framework.logger.error("Errore durante l'estrazione", exception=exc)
-        
-        return None

@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-import xml.etree.ElementTree as ET
 import json
 from bs4 import BeautifulSoup
 from jinja2 import Environment, select_autoescape,FileSystemLoader,BaseLoader,ChoiceLoader,Template,DebugUndefined
@@ -17,6 +16,7 @@ import os
 import pathlib
 
 import framework.core.flow as flow
+import framework.service.dom as dom
 import framework.service.scheme as scheme
 from framework.service.route import compile_pattern, match, normalize_path, register, register_many
 from framework.service.template import DeferredUndefined, render
@@ -73,8 +73,8 @@ class StorekeeperView:
         if runtime_session is None or not isinstance(text, str):
             return context
         try:
-            root = ET.fromstring(text)
-        except ET.ParseError:
+            root = dom.parse(text)
+        except dom.parse_error():
             return context
 
         storekeeper = self.adapter.loader.get_managers().get("storekeeper")
@@ -82,13 +82,13 @@ class StorekeeperView:
             return context
 
         store = dict(context.get("store", {}))
-        for node in root.iter():
-            if node.tag.split("}")[-1].casefold() != "storekeeper":
+        for node in dom.iter_nodes(root):
+            if dom.tag_name(node).casefold() != "storekeeper":
                 continue
-            alias = node.attrib.get("id")
+            alias = dom.attributes(node).get("id")
             if not alias:
                 continue
-            method_name, request = self.request(node.attrib)
+            method_name, request = self.request(dom.attributes(node))
             if method_name not in {"overview", "gather"}:
                 continue
             result = await getattr(storekeeper, method_name)(runtime_session, **request)
@@ -129,7 +129,7 @@ class StorekeeperView:
             await self.adapter.render_node(
                 parent, child, child_context, runtime_session=runtime_session
             )
-            for child in list(node)
+            for child in dom.children(node)
         ]
         container = self.adapter.mount_tag("container", {"id": alias}, children)
         container._storekeeper_text = "".join(
@@ -427,12 +427,11 @@ class Port(ABC):
             if original is not None:
                 setattr(cls, method_name, decorator(original))
 
-    def __init__(self, loader, defender, presenter, messenger, authenticator, **constants):
+    def __init__(self, loader, defender, messenger, authenticator, **constants):
         self.config = constants
         self.loader = loader
         self.defender = defender
         self.authenticator = authenticator
-        self.presenter = presenter
         self.messenger = messenger
         self.executor = constants.get("executor")
         self.views = {}
@@ -489,7 +488,7 @@ class Port(ABC):
         #self.env.filters['route'] = language.route
 
     def validate_adapter(self):
-        required_state = ('loader', 'defender', 'presenter', 'messenger', 'DOM', 'routes', 'env')
+        required_state = ('loader', 'defender', 'messenger', 'DOM', 'routes', 'env')
         missing = [name for name in required_state if not hasattr(self, name)]
         if missing:
             raise RuntimeError(f"Adapter presentation incompleto: mancano {', '.join(missing)}")
@@ -659,9 +658,25 @@ class Port(ABC):
             runtime_session, text, context
         )
 
+    def _extract_from_xml_string(self, xml_string, target_id):
+        if not xml_string:
+            return None
+
+        try:
+            root = dom.parse(xml_string)
+            element = (
+                root
+                if dom.attributes(root).get("id") == target_id
+                else dom.find_by_id(root, target_id)
+            )
+            return dom.serialize(element).strip() if element is not None else None
+        except dom.parse_error() as error:
+            self.logger.error("Errore durante l'estrazione", exception=error)
+            return None
+
     async def render_node(self, parent, node, context, runtime_session=None):
         """Trasforma ricorsivamente i nodi XML in oggetti del Driver"""
-        tag = node.tag.split('}')[-1] if '}' in node.tag else node.tag
+        tag = dom.tag_name(node)
         in_svg = context.get('in_svg', False)
         if tag.lower() == "svg":
             in_svg = True
@@ -673,9 +688,11 @@ class Port(ABC):
         }
         attributes = {
             key: StorekeeperView.render_deferred(value, jinja_context)
-            for key, value in node.attrib.items()
+            for key, value in dom.attributes(node).items()
         }
-        node_text = StorekeeperView.render_deferred(node.text, jinja_context)
+        node_text = StorekeeperView.render_deferred(
+            dom.text(node), jinja_context
+        )
 
         if tag.lower() == "storekeeper":
             return await StorekeeperView(self).render(
@@ -711,7 +728,7 @@ class Port(ABC):
                             **context.get("_jinja_context", {}), alias: received,
                         },
                     }
-                if not list(node):
+                if not dom.has_children(node):
                     return self.mount_tag("text", {}, [str(message or "")])
             elif operation == "send":
                 message = attributes.get("message") or node_text
@@ -752,7 +769,7 @@ class Port(ABC):
 
         ID = attributes.get('id')
         if isinstance(ID, str):
-            extracted = self.presenter.estrai_da_xml_string(parent, ID)
+            extracted = self._extract_from_xml_string(parent, ID)
             if extracted:
                 self.DOM[ID] = extracted
 
@@ -772,11 +789,18 @@ class Port(ABC):
                 
                 # 1. Cattura i nodi figli originali come stringa XML pura (non renderizzata)
                 # Questo evita che il parser XML veda tag HTML durante l'espansione
-                inner_xml = "".join([ET.tostring(child, encoding='unicode') for child in list(node)])
+                inner_xml = "".join(
+                    dom.serialize(child)
+                    for child in dom.children(node)
+                )
                 
                 # 2. Prepara ID e Attributi
-                node_id = node.attrib.get('id', str(uuid.uuid4()))
-                attributes = {k.split('}')[-1]: v for k, v in node.attrib.items()}
+                node_attributes = dom.attributes(node)
+                node_id = node_attributes.get('id', str(uuid.uuid4()))
+                attributes = {
+                    dom.attribute_name(key): value
+                    for key, value in node_attributes.items()
+                }
                 attributes['id'] = node_id
                 
                 # 3. Renderizza il componente iniettando l'XML non ancora processato
@@ -797,7 +821,7 @@ class Port(ABC):
         children = []
         new_context = context.copy()
         new_context['in_svg'] = in_svg
-        for child in list(node):
+        for child in dom.children(node):
             children.append(
                 await self.render_node(
                     parent,

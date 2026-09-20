@@ -1,4 +1,3 @@
-import xml.etree.ElementTree as ET
 import os
 from pathlib import Path
 
@@ -13,6 +12,7 @@ from jinja2 import (
     select_autoescape,
 )
 import framework.core.flow as flow
+import framework.service.dom as dom
 import framework.service.scheme as scheme
 
 class DeferredUndefined(Undefined):
@@ -171,8 +171,8 @@ async def render(
         raise ValueError("No text or file provided")
     if text is None:
         text = infrastructure.resource(file)
-    elif isinstance(text, ET.Element):
-        text = ET.tostring(text, encoding="unicode")
+    elif isinstance(text, dom.element_type()):
+        text = dom.serialize(text)
     elif not isinstance(text, str):
         text = str(text)
     source_name = source_name or file or "template string"
@@ -211,8 +211,8 @@ async def render(
         render_context = await prepare_context(runtime_session, text, render_context)
     content = template.render(render_context)
     try:
-        xml = ET.fromstring(content)
-    except ET.ParseError as error:
+        xml = dom.parse(content)
+    except dom.parse_error() as error:
         line, column = getattr(error, "position", (None, None))
         rendered_line = None
         if line and 1 <= line <= len(content.splitlines()):

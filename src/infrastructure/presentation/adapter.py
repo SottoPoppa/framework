@@ -6,11 +6,11 @@ Questo modulo non importa alcun toolkit UI.
 """
 
 import asyncio
-import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
 import framework.core.flow as flow
+import framework.service.dom as dom
 import framework.port.presentation as presentation
 
 
@@ -46,7 +46,7 @@ def protect_editor_jinja_delimiters(root):
         if editor.attrib.get("type") == "editor":
             protect_editor_content(editor)
 
-    protected = ET.tostring(root, encoding="unicode")
+    protected = dom.serialize(root)
     return (
         protected
         .replace("__OMNI_LBRACE__", "&#123;")
@@ -97,11 +97,10 @@ class Adapter(presentation.Port, ABC):
     tags = {}
     capabilities = dict(presentation.Port.capabilities)
 
-    def __init__(self, loader, defender, presenter, messenger, authenticator, **constants):
+    def __init__(self, loader, defender, messenger, authenticator, **constants):
         super().__init__(
             loader,
             defender,
-            presenter,
             messenger,
             authenticator,
             **constants,
@@ -134,7 +133,7 @@ class Adapter(presentation.Port, ABC):
 
         view_path = route_info.get("view")
         controllers = route_info.get("controllers") or []
-        xml_view = flow.output(await self.presenter.get_view(self.session, view_path))
+        xml_view = flow.output(await self.loader.resource(view_path))
         self._current_view_text = xml_view
         self._current_view_controllers = controllers
         return await self.render_template(
@@ -170,7 +169,7 @@ class Adapter(presentation.Port, ABC):
         return result
 
     async def open_modal(self, view_path: str, **context):
-        xml_view = flow.output(await self.presenter.get_view(self.session, view_path))
+        xml_view = flow.output(await self.loader.resource(view_path))
         modal = await self.render_template(
             self.session,
             text=xml_view,

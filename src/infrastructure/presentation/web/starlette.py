@@ -18,7 +18,6 @@ import framework.core.flow as flow
 import framework.service.route as route
 from framework.service.route import split_url
 from framework.manager.defender import Manager as Defender
-from framework.manager.presenter import Manager as Presenter
 from framework.manager.messenger import Manager as Messenger
 from framework.manager.authenticator import Manager as Authenticator
 from framework.manager.storekeeper import Manager as Storekeeper
@@ -734,8 +733,8 @@ class Adapter(presentation.Port):
         presentation.Tag.PATTERN.value: {"pattern": lambda x: htpy.Element("pattern")(**attrs(presentation.Tag.PATTERN.value, x))[[Markup(i) for i in x['inner']]]},
     }
 
-    def __init__(self, loader: Loader, defender: Defender, presenter: Presenter, messenger: Messenger, authenticator: Authenticator, storekeeper: Storekeeper, **constants):
-        super().__init__(loader, defender, presenter, messenger, authenticator, **constants)
+    def __init__(self, loader: Loader, defender: Defender, messenger: Messenger, authenticator: Authenticator, storekeeper: Storekeeper, **constants):
+        super().__init__(loader, defender, messenger, authenticator, **constants)
         self.storekeeper = storekeeper
         self.ssh = {}
         cwd = os.getcwd()
@@ -988,7 +987,7 @@ class Adapter(presentation.Port):
     async def mount_view(self, url, metadata, session):
         view = metadata.get('view')
         controllers = metadata.get("controllers") or []
-        xml_view = await self.presenter.get_view(session, view)
+        xml_view = await self.loader.resource(view)
         if flow.is_result(xml_view):
             xml_view = flow.output(xml_view)
 

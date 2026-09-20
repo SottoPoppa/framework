@@ -1,5 +1,6 @@
 import asyncio
 import framework.core.flow as flow
+import framework.service.dom as dom
 import xml.etree.ElementTree as ET
 from typing import Dict, Any
 
@@ -21,7 +22,6 @@ from infrastructure.presentation.adapter import (
     protect_editor_jinja_delimiters,
 )
 from framework.manager.defender import Manager as Defender
-from framework.manager.presenter import Manager as Presenter
 from framework.manager.messenger import Manager as Messenger
 from framework.manager.loader import Loader
 from framework.manager.authenticator import Manager as Authenticator
@@ -60,7 +60,7 @@ class AppDinamica(App):
             node = self.adapter.node_get(field.id)
             if node is None:
                 continue
-            attributes = self.adapter.presenter.estrai_attributi_tag(node)
+            attributes = dom.attributes_from_tag(node)
             name = attributes.get("name") or field.id
             value = getattr(field, "value", "")
             payload[name] = "" if value is None else str(value)
@@ -164,7 +164,7 @@ class AppDinamica(App):
         if w is None and not click:
             return
 
-        attrs_tag = self.adapter.presenter.estrai_attributi_tag(w) if w is not None else {}
+        attrs_tag = dom.attributes_from_tag(w) if w is not None else {}
 
         # Se il pulsante ha un attributo route, naviga a quella URL
         route = getattr(event.button, "_dsl_route", None) or attrs_tag.get("route")
@@ -218,7 +218,7 @@ class AppDinamica(App):
         node = self.adapter.node_get(event.input.id)
         if node is None:
             return
-        attributes = self.adapter.presenter.estrai_attributi_tag(node)
+        attributes = dom.attributes_from_tag(node)
         if 'submit' in attributes:
             await self._send_dsl_event(attributes['submit'], str(event.value))
     
@@ -226,7 +226,7 @@ class AppDinamica(App):
         node = self.adapter.node_get(event.input.id)
         if node is None:
             return
-        attributes = self.adapter.presenter.estrai_attributi_tag(node)
+        attributes = dom.attributes_from_tag(node)
         if 'change' in attributes:
             await self._send_dsl_event(attributes['change'], str(event.value))
 
@@ -234,7 +234,7 @@ class AppDinamica(App):
         w = self.adapter.node_get(event.select.id)
 
         if w is not None:
-            attrs_tag = self.adapter.presenter.estrai_attributi_tag(w)
+            attrs_tag = dom.attributes_from_tag(w)
             await self._send_dsl_event(attrs_tag.get("change"), str(event.value))
 
 
@@ -253,7 +253,7 @@ class Adapter(PresentationAdapter):
 
     tags = tags
 
-    def __init__(self, loader: Loader, defender: Defender, presenter: Presenter, messenger: Messenger, authenticator: Authenticator, **constants):
+    def __init__(self, loader: Loader, defender: Defender, messenger: Messenger, authenticator: Authenticator, **constants):
         """
         Inizializza l'adapter Textual.
 
@@ -262,10 +262,9 @@ class Adapter(PresentationAdapter):
             defender: Manager per autenticazione/autorizzazione
             messenger: Manager per messaggistica
             executor: Manager per esecuzione DSL
-            presenter: Manager per presentazione
             **constants: Configurazione da pyproject.toml (adapter.registry)
         """
-        super().__init__(loader, defender, presenter, messenger, authenticator, **constants)
+        super().__init__(loader, defender, messenger, authenticator, **constants)
         self.active_screens: Dict[str, Screen] = {}
         self.widgets = self.nodes  # alias compatibile per il runtime Textual
         self.app = AppDinamica(self)
