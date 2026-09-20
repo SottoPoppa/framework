@@ -21,6 +21,7 @@ import framework.service.scheme as scheme
 jinja_env = Environment(
     autoescape=select_autoescape(['html', 'xml'])
 )
+_html_autoescape = select_autoescape(["html", "xml"])
 
 
 class DeferredUndefined(Undefined):
@@ -84,31 +85,16 @@ jinja_env.filters.update({
 })
 
 
-def preprocess_dsl(source: str, source_name: str = "<string>") -> str:
-    """Espande i costrutti Jinja2 di un file DSL prima del parsing DSL."""
-    if not isinstance(source, str) or "{%" not in source and "{{" not in source:
-        return source
+def _create_environment(infrastructure=None, **options):
+    if infrastructure is not None and hasattr(infrastructure, "get_jinja"):
+        environment = infrastructure.get_jinja(**options)
+    else:
+        environment = Environment(**options)
+    environment.filters.update(jinja_env.filters)
+    return environment
 
-    environment = Environment(
-        loader=FileSystemLoader(
-            str(Path(__file__).resolve().parents[3] / "src" / "application" / "policy")
-        ),
-        autoescape=False,
-        keep_trailing_newline=True,
-        undefined=StrictUndefined,
-    )
-    try:
-        return environment.from_string(source).render()
-    except TemplateError as error:
-        line = getattr(error, "lineno", None)
-        location = f" riga {line}" if line else ""
-        raise ValueError(
-            f"Errore preprocessamento Jinja in '{source_name}'{location}: {error}"
-        ) from error
-
-
-async def format(target, **constants):
-    """Formatta una stringa usando Jinja2 e l'environment condiviso (jinja)."""
+async def format(target, infrastructure=None, **constants):
+    """Formatta una stringa usando l'ambiente Jinja dell'infrastruttura."""
     try:
         if not target:
             return target
@@ -116,7 +102,11 @@ async def format(target, **constants):
             target = str(target)
         if '{' not in target:
             return target
-        template = jinja_env.from_string(target)
+        environment = _create_environment(
+            infrastructure,
+            autoescape=_html_autoescape,
+        )
+        template = environment.from_string(target)
         return template.render(**constants)
     except Exception as e:
         raise ValueError(f"Errore formattazione: {e}")
@@ -133,6 +123,7 @@ async def render(
     prepare_context=None,
     **constants,
 ):
+    infrastructure = getattr(loader, "infrastructure", None)
     if text is None and file is None:
         raise ValueError("No text or file provided")
     if text is None:
@@ -143,12 +134,12 @@ async def render(
         text = str(text)
     source_name = source_name or file or "template string"
 
-    environment = Environment(
+    environment = _create_environment(
+        infrastructure,
         loader=FileSystemLoader("src/application/view/layout/"),
-        autoescape=select_autoescape(["html", "xml"]),
+        autoescape=_html_autoescape,
         undefined=DeferredUndefined,
     )
-    environment.filters.update(jinja_env.filters)
     try:
         template = environment.from_string(text)
     except TemplateError as error:

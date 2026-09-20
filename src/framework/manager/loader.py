@@ -413,7 +413,7 @@ class Loader:
         return await self.infrastructure.load_schemes(directories)
 
     async def resource(self, path: Any) -> str:
-        return await self.infrastructure.resource(path)
+        return self.infrastructure.resource(path)
 
     def record_contract(self, test_path: str, outcome: dict):
         """Registra i risultati dei test di contratto."""
@@ -506,18 +506,19 @@ class Loader:
 
     async def _prepare_core(self, context: LoaderContext) -> LoaderContext:
         schemes = await self.load_schemes(["src/framework/scheme", "src/application/model"])
+        jinja_env = self.infrastructure.get_jinja()
         scheme.schemes.clear()
         scheme.schemes.update(schemes)
-        scheme.jinja_env = self.infrastructure.jinja_env
+        scheme.jinja_env = jinja_env
         await self.framework.load_core(
             self.services,
             self.ports,
-            extra_by_name={"scheme": {"schemes": schemes, "jinja_env": self.infrastructure.jinja_env}},
+            extra_by_name={"scheme": {"schemes": schemes, "jinja_env": jinja_env}},
         )
         return {**context, "schemes": schemes}
 
     def _read_discovery_config(self, context: LoaderContext) -> LoaderContext:
-        config = self.infrastructure.load_toml_config(context["config_file"])
+        config = self.infrastructure.resource(context["config_file"])
         self.current_config = config
         return {**context, "config": config}
 

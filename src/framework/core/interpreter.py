@@ -16,7 +16,6 @@ from .parser import Parser
 from .data import Registry
 from .session import UserSession
 from framework.service.introspection import Reflection
-from framework.service.template import preprocess_dsl
 
 
 class DSLSourceError(ValueError):
@@ -287,10 +286,6 @@ class Interpreter:
             ) from error
 
     async def load_file(self, name: str, code: str):
-        try:
-            code = preprocess_dsl(code, name)
-        except ValueError as error:
-            raise DSLSourceError(name, "preprocessamento DSL", str(error)) from error
         ast_prog = self.parse_only(code, name)
         try:
             dag_def = self.compiler.compile(ast_prog, name=name)

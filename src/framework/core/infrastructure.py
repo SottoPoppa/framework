@@ -2,10 +2,9 @@ import importlib
 import json
 import os
 import tomllib
-import uuid
 from pathlib import Path
 from typing import Any, Optional
-from jinja2 import Environment, BaseLoader
+from jinja2 import Environment, FileSystemLoader, StrictUndefined, TemplateNotFound, nodes
 from framework.service.diagnostic import get_logger
 import sys
 import types
@@ -16,15 +15,63 @@ class Infrastructure:
 
     def __init__(self):
         self.logger = get_logger("infrastructure")
-        self.jinja_env = Environment(loader=BaseLoader())
-        self.jinja_env.filters["tojson"] = json.dumps
-        self.jinja_env.globals["uuid4"] = lambda: str(uuid.uuid4())
+        self._jinja_environments = {}
+
+    def get_jinja(self, **options) -> Environment:
+        """Restituisce un ambiente Jinja riusando la configurazione già vista."""
+        key = tuple(sorted((name, id(value)) for name, value in options.items()))
+        environment = self._jinja_environments.get(key)
+        if environment is not None:
+            return environment
+
+        environment = Environment(**options)
+        self._jinja_environments[key] = environment
+        return environment
 
     def get_logger(self, component: str):
         """Restituisce un logger coerente con il sistema diagnostico del framework."""
         return get_logger(component)
 
-    def render_jinja(self, target: str, context: Optional[dict] = None) -> str:
+    def get_resource(self, path: str) -> str:
+        """Legge il contenuto di una risorsa statica come stringa."""
+        return Path(path).read_text(encoding="utf-8")
+
+    def _select_jinja_environment(self, target: str) -> Environment:
+        """Sceglie l'ambiente in cache adatto ai riferimenti del template."""
+        default = self.get_jinja()
+        try:
+            references = [
+                node.template.value
+                for node in default.parse(target).find_all(
+                    (nodes.Include, nodes.Extends, nodes.Import, nodes.FromImport)
+                )
+                if isinstance(node.template, nodes.Const)
+                and isinstance(node.template.value, str)
+            ]
+        except Exception:
+            return default
+
+        if not references:
+            return default
+
+        for environment in self._jinja_environments.values():
+            loader = getattr(environment, "loader", None)
+            if loader is None:
+                continue
+            try:
+                for reference in references:
+                    loader.get_source(environment, reference)
+            except TemplateNotFound:
+                continue
+            return environment
+        return default
+
+    def render_jinja(
+        self,
+        target: str,
+        context: Optional[dict] = None,
+        environment: Optional[Environment] = None,
+    ) -> str:
         """Renderizza una stringa Jinja con i global registrati in Infrastructure."""
         if not isinstance(target, str):
             return target
@@ -38,23 +85,24 @@ class Infrastructure:
             "env": env,
             **(context or {}),
         }
-        return self.jinja_env.from_string(target).render(**payload)
 
-    def load_toml_config(self, config_file: str | Path, context: Optional[dict] = None) -> dict:
+        environment = environment or self._select_jinja_environment(target)
+
+        return environment.from_string(target).render(**payload)
+
+    def convert_str_to_toml(self, content) -> dict:
         """Legge un file TOML e renderizza eventuali placeholder Jinja prima del parse."""
-        content = Path(config_file).read_text(encoding="utf-8")
-        rendered = self.render_jinja(content, context=context)
-        return tomllib.loads(rendered)
+        return tomllib.loads(content)
 
-    async def load_schemes(self, directories: list[str]) -> dict:
-        """Carica e risolve ricorsivamente i file di schema JSON nelle cartelle."""
-        raw: dict[str, Any] = {}
+    def _load_scheme_files(self, directories: list[str]) -> dict[str, Any]:
+        """Legge gli schemi JSON presenti nelle directory indicate."""
+        schemes: dict[str, Any] = {}
         for directory in map(Path, directories):
             if not directory.exists():
                 continue
             for json_file in directory.glob("*.json"):
                 try:
-                    raw[json_file.stem] = json.loads(
+                    schemes[json_file.stem] = json.loads(
                         json_file.read_text(encoding="utf-8")
                     )
                 except json.JSONDecodeError as exc:
@@ -63,102 +111,95 @@ class Infrastructure:
                         exception=exc,
                         file=str(json_file),
                     )
+        return schemes
 
+    def _render_scheme_value(
+        self,
+        value: Any,
+        schemes: dict[str, Any],
+        resolved: dict[str, Any],
+    ) -> Any:
+        """Risolve riferimenti e placeholder Jinja dentro un valore di schema."""
+        if isinstance(value, dict):
+            return {
+                key: self._render_scheme_value(item, schemes, resolved)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [
+                self._render_scheme_value(item, schemes, resolved)
+                for item in value
+            ]
+        if not isinstance(value, str) or "{{" not in value:
+            return value
 
-        cache: dict[str, Any] = {}
+        stripped = value.strip()
+        if stripped.startswith("{{") and stripped.endswith("}}") and "|" not in stripped:
+            reference = stripped[2:-2].strip()
+            if reference in schemes:
+                return self._resolve_scheme(reference, schemes, resolved)
+            global_value = self.get_jinja().globals.get(reference)
+            return global_value() if callable(global_value) else global_value
 
-        def resolve(name: str) -> Any:
-            if name in cache:
-                return cache[name]
-            obj = raw.get(name)
-            if obj is None:
-                return None
+        context = {**self.get_jinja().globals, **schemes, **resolved}
+        return self.get_jinja().from_string(value).render(**context)
 
-            cache[name] = {}
+    def _resolve_scheme(
+        self,
+        name: str,
+        schemes: dict[str, Any],
+        resolved: dict[str, Any],
+    ) -> Any:
+        """Risolve uno schema e i riferimenti agli altri schemi."""
+        if name in resolved:
+            return resolved[name]
+        if name not in schemes:
+            return None
 
-            def render(val: Any) -> Any:
-                if isinstance(val, dict):
-                    return {k: render(v) for k, v in val.items()}
-                if isinstance(val, list):
-                    return [render(v) for v in val]
-                if isinstance(val, str) and "{{" in val:
-                    stripped = val.strip()
-                    if (
-                        stripped.startswith("{{")
-                        and stripped.endswith("}}")
-                        and "|" not in stripped
-                    ):
-                        ref = stripped[2:-2].strip()
-                        if ref in raw:
-                            return resolve(ref)
-                        g_val = self.jinja_env.globals.get(ref)
-                        return g_val() if callable(g_val) else g_val
-                    context = {**self.jinja_env.globals, **raw, **cache}
-                    return self.jinja_env.from_string(val).render(**context)
-                return val
+        resolved[name] = {}
+        resolved[name] = self._render_scheme_value(
+            schemes[name], schemes, resolved
+        )
+        return resolved[name]
 
-            cache[name] = render(obj)
-            return cache[name]
-
-        final = {name: resolve(name) for name in raw}
+    async def load_schemes(self, directories: list[str]) -> dict:
+        """Carica e risolve ricorsivamente i file di schema JSON nelle cartelle."""
+        schemes = self._load_scheme_files(directories)
+        resolved: dict[str, Any] = {}
+        final = {
+            name: self._resolve_scheme(name, schemes, resolved)
+            for name in schemes
+        }
         if final:
             self.logger.info("Schemi caricati", schemas=sorted(final))
         else:
             self.logger.warning("Nessuno schema trovato")
         return final
 
-    async def resource(self, path: str | Path) -> str:
+    def resource(self, path: str | Path) -> str:
         """Legge un file risorsa dal file-system in modo asincrono/trasparente."""
-        p = Path(path)
-        if str(p).startswith("application/"):
-            p = Path("src") / p
-        return p.read_bytes().decode("utf-8")
-
-    async def import_module(self, module_path: str):
-        """Importa un modulo Python dinamicamente e lo rende disponibile nel DSL.
+        path_str = str(path)
         
-        :param module_path: Percorso del modulo (es. "framework.manager.tester")
-        :return: Il modulo importato
-        """
-        try:
-            return importlib.import_module(module_path)
-        except ModuleNotFoundError as import_error:
-            parts = module_path.split(".")
-            candidates = [
-                Path("src") / Path(*parts).with_suffix(".py"),
-            ]
-            for split in range(len(parts) - 1, 0, -1):
-                directory = Path("src") / Path(*parts[:split])
-                filename = ".".join(parts[split:]) + ".py"
-                candidates.append(directory / filename)
-
-            source_path = next((path for path in candidates if path.is_file()), None)
-            if source_path is None:
-                raise import_error
-
-            package_names = [".".join(parts[:index]) for index in range(1, len(parts))]
-            for package_name in package_names:
-                if package_name in sys.modules:
-                    continue
-                package = types.ModuleType(package_name)
-                package.__path__ = []
-                package.__package__ = package_name.rpartition(".")[0]
-                sys.modules[package_name] = package
-                if "." in package_name:
-                    parent, child = package_name.rsplit(".", 1)
-                    setattr(sys.modules[parent], child, package)
-
-            spec = importlib.util.spec_from_file_location(module_path, source_path)
-            if spec is None or spec.loader is None:
-                raise ImportError(f"Impossibile creare ModuleSpec per {source_path}")
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[module_path] = module
-            parent, child = module_path.rsplit(".", 1)
-            setattr(sys.modules[parent], child, module)
-            try:
-                spec.loader.exec_module(module)
-            except Exception:
-                sys.modules.pop(module_path, None)
-                raise
-            return module
-
+        match path_str:
+            case p if p.endswith(".toml"):
+                content = self.get_resource(path_str)
+                rendered = self.render_jinja(content)
+                return self.convert_str_to_toml(rendered)
+            case p if p.endswith(".json"):
+                content = self.get_resource(path_str)
+                rendered = self.render_jinja(content)
+                return self.convert_str_to_json(rendered)
+            case p if p.endswith(".dsl"):
+                content = self.get_resource(path_str)
+                environment = self.get_jinja(
+                    loader=FileSystemLoader(
+                        str(Path(__file__).resolve().parents[3] / "src" / "application" / "policy")
+                    ),
+                    autoescape=False,
+                    keep_trailing_newline=True,
+                    undefined=StrictUndefined,
+                )
+                return self.render_jinja(content)
+            case _:
+                # Caso di default se l'estensione non coincide
+                raise ValueError(f"Formato file non supportato: {path_str}")
