@@ -79,13 +79,16 @@ def _template_filters():
     }
 
 
-def get_jinja(infrastructure, **options):
-    """Restituisce un ambiente Jinja dalla cache dell'infrastruttura."""
+def get_jinja(infrastructure=None, **options):
+    """Restituisce un ambiente Jinja, usando la cache se disponibile."""
     key = tuple(sorted((name, id(value)) for name, value in options.items()))
-    environment = infrastructure.jinja_environments.get(key)
-    if environment is None:
+    if infrastructure is None:
         environment = Environment(**options)
-        infrastructure.jinja_environments[key] = environment
+    else:
+        environment = infrastructure.jinja_environments.get(key)
+        if environment is None:
+            environment = Environment(**options)
+            infrastructure.jinja_environments[key] = environment
     environment.filters.update(_template_filters())
     return environment
 
@@ -131,14 +134,6 @@ def render_jinja(infrastructure, target: str, context=None, environment=None) ->
     return environment.from_string(target).render(**payload)
 
 
-def _create_environment(infrastructure=None, **options):
-    if infrastructure is not None:
-        return get_jinja(infrastructure, **options)
-    environment = Environment(**options)
-    environment.filters.update(_template_filters())
-    return environment
-
-
 async def format(target, infrastructure=None, **constants):
     """Formatta una stringa usando l'ambiente Jinja dell'infrastruttura."""
     try:
@@ -148,16 +143,23 @@ async def format(target, infrastructure=None, **constants):
             target = str(target)
         if "{" not in target:
             return target
-        return _create_environment(
+        environment = get_jinja(
             infrastructure,
             autoescape=_html_autoescape,
-        ).from_string(target).render(**constants)
+        )
+        return render_jinja(
+            infrastructure,
+            target,
+            context=constants,
+            environment=environment,
+        )
     except Exception as e:
         raise ValueError(f"Errore formattazione: {e}")
 
 
 async def render(
-    loader,
+    infrastructure,
+    managers,
     runtime_session,
     render_node,
     text=None,
@@ -167,18 +169,17 @@ async def render(
     prepare_context=None,
     **constants,
 ):
-    infrastructure = getattr(loader, "infrastructure", None)
     if text is None and file is None:
         raise ValueError("No text or file provided")
     if text is None:
-        text = await loader.resource(file)
+        text = infrastructure.resource(file)
     elif isinstance(text, ET.Element):
         text = ET.tostring(text, encoding="unicode")
     elif not isinstance(text, str):
         text = str(text)
     source_name = source_name or file or "template string"
 
-    environment = _create_environment(
+    environment = get_jinja(
         infrastructure,
         loader=FileSystemLoader("src/application/view/layout/"),
         autoescape=_html_autoescape,
@@ -196,20 +197,18 @@ async def render(
             source_function="Jinja template",
         ) from error
     data = {}
-    managers = {"manager": loader.get_managers()}
+    manager_context = {"manager": managers}
     for controller in controllers or []:
         runtime_session.context["session"] = runtime_session
         run_result = await runtime_session.run(
             controller,
-            {"session": runtime_session}|managers,
+            {"session": runtime_session} | manager_context,
         )
         data[controller] = flow.output(run_result)
 
     #raise Exception(data)
 
-    render_context = constants | data | {
-        "manager": loader.get_managers(),
-    }
+    render_context = constants | data | manager_context
     if prepare_context is not None:
         render_context = await prepare_context(runtime_session, text, render_context)
     content = template.render(render_context)

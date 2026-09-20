@@ -642,7 +642,8 @@ class Port(ABC):
         **constants,
     ):
         return await render(
-            self.loader,
+            self.loader.infrastructure,
+            self.loader.get_managers(),
             runtime_session,
             self.render_node,
             text=text,
