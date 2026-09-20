@@ -30,9 +30,9 @@
     "required": false
   },
   "sla": {
-    "type": "dict",
-    "required": false,
-    "schema": "{{ user }}"
+     "type": "dict",
+     "required": false,
+     "schema": "{{ scheme.user }}"
   },
   "priority": {
     "type": "string",

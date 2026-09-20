@@ -155,6 +155,52 @@ def convert(value: Any, target: type = str, format: str | None = None) -> Any:
         return value
     return target(value)
 
+
+def resolve_schemes(
+    schemes: dict[str, Any],
+    render: Callable[[str, dict], str],
+) -> dict[str, Any]:
+    """Risolve riferimenti e template presenti negli schemi caricati."""
+    resolved: dict[str, Any] = {}
+    namespace: dict[str, Any] = {}
+    reference_pattern = re.compile(r"\bscheme\.([A-Za-z_][A-Za-z0-9_]*)")
+
+    def resolve_value(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {key: resolve_value(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [resolve_value(item) for item in value]
+        if not isinstance(value, str) or "{{" not in value:
+            return value
+
+        for reference in set(reference_pattern.findall(value)):
+            resolve_scheme(reference)
+
+        stripped = value.strip()
+        if stripped.startswith("{{") and stripped.endswith("}}"):
+            expression = stripped[2:-2].strip()
+            if expression.startswith("scheme.") and "|" not in expression:
+                return resolve_scheme(expression.removeprefix("scheme."))
+
+        return render(
+            value,
+            {**schemes, **resolved, "scheme": namespace},
+        )
+
+    def resolve_scheme(name: str) -> Any:
+        if name in resolved:
+            return resolved[name]
+        if name not in schemes:
+            return None
+
+        resolved[name] = {}
+        namespace[name] = resolved[name]
+        resolved[name] = resolve_value(schemes[name])
+        namespace[name] = resolved[name]
+        return resolved[name]
+
+    return {name: resolve_scheme(name) for name in schemes}
+
 class Scheme(flow.Immutable):
     """Dict immutabile basato su schema nativo."""
     SCHEME: dict[str, dict[str, Any]] = {}

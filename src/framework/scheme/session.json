@@ -77,7 +77,7 @@
     },
     "user": {
         "type": "dict",
-        "schema": "{{ user }}",
+        "schema": "{{ scheme.user }}",
         "required": true,
         "default": {}
     },

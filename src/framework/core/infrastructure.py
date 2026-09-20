@@ -58,63 +58,10 @@ class Infrastructure:
                     )
         return schemes
 
-    def _render_scheme_value(
-        self,
-        value: Any,
-        schemes: dict[str, Any],
-        resolved: dict[str, Any],
-    ) -> Any:
-        """Risolve riferimenti e placeholder Jinja dentro un valore di schema."""
-        if isinstance(value, dict):
-            return {
-                key: self._render_scheme_value(item, schemes, resolved)
-                for key, item in value.items()
-            }
-        if isinstance(value, list):
-            return [
-                self._render_scheme_value(item, schemes, resolved)
-                for item in value
-            ]
-        if not isinstance(value, str) or "{{" not in value:
-            return value
-
-        stripped = value.strip()
-        if stripped.startswith("{{") and stripped.endswith("}}") and "|" not in stripped:
-            reference = stripped[2:-2].strip()
-            if reference in schemes:
-                return self._resolve_scheme(reference, schemes, resolved)
-            global_value = self.get_jinja().globals.get(reference)
-            return global_value() if callable(global_value) else global_value
-
-        context = {**self.get_jinja().globals, **schemes, **resolved}
-        return self.get_jinja().from_string(value).render(**context)
-
-    def _resolve_scheme(
-        self,
-        name: str,
-        schemes: dict[str, Any],
-        resolved: dict[str, Any],
-    ) -> Any:
-        """Risolve uno schema e i riferimenti agli altri schemi."""
-        if name in resolved:
-            return resolved[name]
-        if name not in schemes:
-            return None
-
-        resolved[name] = {}
-        resolved[name] = self._render_scheme_value(
-            schemes[name], schemes, resolved
-        )
-        return resolved[name]
-
     async def load_schemes(self, directories: list[str]) -> dict:
         """Carica e risolve ricorsivamente i file di schema JSON nelle cartelle."""
         schemes = self._load_scheme_files(directories)
-        resolved: dict[str, Any] = {}
-        final = {
-            name: self._resolve_scheme(name, schemes, resolved)
-            for name in schemes
-        }
+        final = scheme.resolve_schemes(schemes, self.render_jinja)
         if final:
             self.logger.info("Schemi caricati", schemas=sorted(final))
         else:
