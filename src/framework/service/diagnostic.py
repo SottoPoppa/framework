@@ -4,6 +4,7 @@ import sys
 import os
 import platform
 import socket
+import re
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from contextlib import contextmanager
@@ -237,6 +238,11 @@ def _indent_str(indent: int) -> str:
     return "│ " * indent
 
 
+def _strip_ansi(value: str) -> str:
+    """Rimuove i codici colore dal testo destinato a file e viewer."""
+    return re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", value)
+
+
 def _format_entry(
     level: str,
     message: str,
@@ -308,7 +314,7 @@ def log(level: str, message: str, component: Optional[str] = None,
         with _log_file_lock:
             os.makedirs(os.path.dirname(_log_file_path) or ".", exist_ok=True)
             with open(_log_file_path, "a", encoding="utf-8") as logfile:
-                logfile.write(entry + "\n")
+                logfile.write(_strip_ansi(entry) + "\n")
 
 
 @contextmanager

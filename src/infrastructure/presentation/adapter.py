@@ -115,9 +115,16 @@ class Adapter(presentation.Port, ABC):
 
     async def start(self, session):
         """Crea la sessione, prepara le route e avvia il runtime concreto."""
+        logger = getattr(self, "logger", None)
+        if logger:
+            logger.info("Adapter.start: inizio", adapter=type(self).__name__)
         session_result = await self.defender.session_create()
         self.session = flow.output(session_result)
+        if logger:
+            logger.debug("Adapter.start: sessione creata")
         await self.parse_route()
+        if logger:
+            logger.info("Adapter.start: route registrate", routes=len(self.routes))
         return await self._run_runtime()
 
     async def shutdown(self):
@@ -127,13 +134,18 @@ class Adapter(presentation.Port, ABC):
 
     async def mount_view(self, url):
         self._prepare_runtime()
+        logger = getattr(self, "logger", None)
         route_info, _params = self.match_route(url, "GET")
         if not route_info:
             raise KeyError(f"Nessuna rotta GET trovata per l'URL '{url}'")
 
         view_path = route_info.get("view")
         controllers = route_info.get("controllers") or []
+        if logger:
+            logger.info("mount_view: route trovata", url=url, view=view_path, controllers=controllers)
         xml_view = flow.output(await self.loader.resource(view_path))
+        if logger:
+            logger.debug("mount_view: XML caricato", size=len(xml_view))
         self._current_view_text = xml_view
         self._current_view_controllers = controllers
         return await self.render_template(
@@ -146,12 +158,23 @@ class Adapter(presentation.Port, ABC):
     async def render_view(self, url):
         self._prepare_runtime()
         self.url = url
+        logger = getattr(self, "logger", None)
+        if logger:
+            logger.info("render_view: inizio", url=url)
         async with self._render_lock:
             result = await self.mount_view(url)
             if not flow.check(result):
+                if logger:
+                    logger.error("render_view: template fallito", result=flow.output(result))
                 return result
-            await self._show_screen(flow.output(result))
+            screen = flow.output(result)
+            if logger:
+                logger.info("render_view: screen creato", screen=type(screen).__name__)
+            await self._show_screen(screen)
             await self._flush_pending_rebuilds()
+            if logger:
+                logger.info("render_view: screen montato")
+            return result
 
     async def navigate_to(self, url: str, modal: bool = False):
         self._prepare_runtime()

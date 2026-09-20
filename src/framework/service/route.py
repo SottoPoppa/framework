@@ -38,7 +38,7 @@ def compile_pattern(path):
 
 
 def register(routes, route):
-    view = f"application/view/page/{route['view']}" if route.get("view") else None
+    view = f"src/application/view/page/{route['view']}" if route.get("view") else None
     path = normalize_path(route.get("path") or (view.replace(".xml", "") if view else ""))
     method = route.get("method", "GET").upper()
     if method not in ROUTE_METHODS:
@@ -54,7 +54,7 @@ def register(routes, route):
 
 def register_many(routes, route_items):
     for route in route_items:
-        view = f"application/view/page/{route['view']}" if route.get("view") else None
+        view = f"src/application/view/page/{route['view']}" if route.get("view") else None
         path = normalize_path(route.get("path") or (view.replace(".xml", "") if view else ""))
         matches = list(re.finditer(r"\{([a-zA-Z0-9_|]+)\}", path))
         option_sets = [match.group(1).split("|") for match in matches if "|" in match.group(1)]

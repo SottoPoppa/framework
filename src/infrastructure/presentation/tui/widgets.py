@@ -260,10 +260,28 @@ def _make_editor(x):
     return attrs(editor, x.get("attrs", {}))
 
 
+def _make_window(x):
+    screen = XmlScreen(
+        _children(x),
+        _attr(x, "title", "App"),
+        _attr(x, "subtitle", ""),
+    )
+    return attrs(screen, x.get("attrs", {}))
+
+
+def _make_modal_window(x):
+    screen = XmlModalScreen(
+        _children(x),
+        _attr(x, "title", ""),
+        _attr(x, "subtitle", ""),
+    )
+    return attrs(screen, x.get("attrs", {}))
+
+
 tags = {
     presentation.Tag.WINDOW.value: {
-        "window": lambda x: XmlScreen(_children(x), _attr(x, "title", "App"), _attr(x, "subtitle", "")),
-        "modal": lambda x: XmlModalScreen(_children(x), _attr(x, "title", ""), _attr(x, "subtitle", "")),
+        "window": _make_window,
+        "modal": _make_modal_window,
     },
 
     presentation.Tag.OPTION.value: {

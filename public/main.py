@@ -10,6 +10,10 @@ sys.path.insert(1, cwd + '/src')
 
 import framework.core.framework as framework
 import framework.core.flow as flow
+from framework.service.diagnostic import configure_log_file, get_logger
+
+
+main_logger = get_logger("main")
 
 
 
@@ -32,6 +36,10 @@ async def main2(config):
 
 
 async def main(config):
+    if config.get("dev") or config.get("debug"):
+        configure_log_file("/tmp/framework-tui.log", console=False)
+        main_logger.info("Avvio CLI", config=config)
+
     framework_instance = framework.Framework()
 
     if config.get('setup'):
@@ -41,7 +49,9 @@ async def main(config):
     if config.get('install'):
         return await framework_instance.install(config)
 
+    main_logger.info("Bootstrap framework: inizio")
     app = await framework_instance.bootstrap(config)
+    main_logger.info("Bootstrap framework: completato")
     try:
         if config.get('test_integration') is not None:
             tester = framework_instance.loader.get_managers().get('tester')
@@ -59,6 +69,7 @@ async def main(config):
             )
             return flow.output(result)
 
+        main_logger.info("Application.startup: inizio")
         await app.startup()
         return True
     except Exception as exc:

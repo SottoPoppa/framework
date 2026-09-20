@@ -61,21 +61,19 @@ class Application:
                     continue
 
                 message_result = await messenger.receive(self._session, domain="event")
-                if not flow.is_result(message_result):
-                    continue
-                if not flow.check(message_result):
-                    continue
-                message = flow.output(message_result)
-                for name, mgr in list(self._loader.get_managers().items()):
-                    if hasattr(mgr, "reload"):
-                        try:
-                            await mgr.reload(self._session, message)
-                        except Exception as exc:
-                            self._logger.error(
-                                "Errore durante reload",
-                                exception=exc,
-                                manager=name,
-                            )
+                if flow.is_result(message_result) and flow.check(message_result):
+                    message = flow.output(message_result)
+                    for name, mgr in list(self._loader.get_managers().items()):
+                        if hasattr(mgr, "reload"):
+                            try:
+                                await mgr.reload(self._session, message)
+                            except Exception as exc:
+                                self._logger.error(
+                                    "Errore durante reload",
+                                    exception=exc,
+                                    manager=name,
+                                )
+                await asyncio.sleep(0)
         except asyncio.CancelledError:
             self._logger.info("Worker di messaggistica terminato")
 
@@ -83,8 +81,14 @@ class Application:
         """Avvia l'applicazione e gestisce i segnali di arresto."""
         self._logger.info("Avvio dei manager del framework")
         if self._loader.kwargs.get("dev"):
-            self._running_tasks.append(
-                asyncio.create_task(self._message_consumer_worker())
+            message_task = asyncio.create_task(
+                self._message_consumer_worker(),
+                name="message-consumer",
+            )
+            self._running_tasks.append(message_task)
+            self._logger.debug(
+                "Task indipendente avviato",
+                task=message_task.get_name(),
             )
 
         self._install_signal_handlers()
@@ -103,9 +107,13 @@ class Application:
             coros = result if isinstance(result, (list, tuple)) else [result]
             for c in coros:
                 if asyncio.iscoroutine(c) or inspect.isawaitable(c):
-                    task = asyncio.create_task(c)
+                    task = asyncio.create_task(c, name=f"manager-{type(manager).__name__}")
                     task.add_done_callback(self._handle_task_completion)
                     self._running_tasks.append(task)
+                    self._logger.debug(
+                        "Task indipendente avviato",
+                        task=task.get_name(),
+                    )
 
         self._logger.info("Framework completamente attivo. In ascolto")
         await self._stop_event.wait()

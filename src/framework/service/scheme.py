@@ -6,7 +6,8 @@ from typing import Any, Callable, Dict, List, Tuple
 from collections.abc import Mapping
 from functools import partial
 
-import tomllib as tomli
+import tomllib
+
 
 from cerberus import Validator
 
@@ -136,7 +137,7 @@ def normalize(value: Any, schema: dict) -> flow.Result:
 
 
 _FORMAT_PARSERS: Dict[str, Callable[[str], Any]] = {
-    "toml": tomli.loads,
+    "toml": tomllib.loads,
     "json": json.loads,
 }
 

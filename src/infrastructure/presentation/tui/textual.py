@@ -1,12 +1,15 @@
 import asyncio
+from pathlib import Path
 import framework.core.flow as flow
 import framework.service.dom as dom
+from framework.service.diagnostic import get_logger
 import xml.etree.ElementTree as ET
 from typing import Dict, Any
 
-from textual.app import App
+from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.widgets import (
-    Button, Input, Select, TextArea, Static, Tab,
+    Button, Input, Select, TextArea, Static, Tab, RichLog,
 )
 from textual.screen import Screen, ModalScreen
 from textual.events import Click
@@ -26,6 +29,47 @@ from framework.manager.messenger import Manager as Messenger
 from framework.manager.loader import Loader
 from framework.manager.authenticator import Manager as Authenticator
 
+
+class LogScreen(ModalScreen):
+    """Visualizza le ultime righe del log diagnostico dell'applicazione."""
+
+    BINDINGS = [Binding("escape", "close", "Chiudi", show=False)]
+    DEFAULT_CSS = """
+    LogScreen {
+        align: center middle;
+    }
+
+    LogScreen RichLog {
+        width: 90%;
+        height: 80%;
+        border: round $accent;
+        background: $surface;
+    }
+    """
+    LOG_PATH = Path("/tmp/framework-tui.log")
+
+    def compose(self) -> ComposeResult:
+        yield RichLog(id="runtime-log", highlight=True, markup=False)
+
+    def on_mount(self) -> None:
+        self._refresh_log()
+        self.set_interval(1.0, self._refresh_log)
+
+    def _refresh_log(self) -> None:
+        log_widget = self.query_one("#runtime-log", RichLog)
+        try:
+            lines = self.LOG_PATH.read_text(encoding="utf-8").splitlines()[-200:]
+        except OSError as error:
+            lines = [f"Impossibile leggere il log: {error}"]
+
+        log_widget.clear()
+        for line in lines:
+            log_widget.write(line)
+
+    async def action_close(self) -> None:
+        await self.dismiss()
+
+
 class AppDinamica(App):
 
     DEFAULT_CSS = """
@@ -41,6 +85,7 @@ class AppDinamica(App):
         ("q", "quit", "Esci"),
         ("ctrl+c", "quit", "Esci"),
         ("ctrl+s", "save", "Salva"),
+        ("ctrl+l", "show_log", "Log"),
     ]
 
     def __init__(self, adapter, **kwargs):
@@ -139,17 +184,34 @@ class AppDinamica(App):
             message=f"File salvato: {selected}",
         )
 
+    async def action_show_log(self) -> None:
+        if isinstance(self.screen, LogScreen):
+            return
+        await self.push_screen(LogScreen())
+
     async def on_mount(self) -> None:
-        self.run_worker(
-            self._render_initial_view(),
-            exclusive=True,
-            name="initial-render",
+        self.adapter.logger.debug(
+            "Textual.on_mount: iniziato",
+            screen_stack=len(self._screen_stack),
         )
+        self.adapter.logger.debug("Textual.on_mount: avvio render diretto")
+        await self._render_initial_view()
 
     async def _render_initial_view(self) -> None:
         try:
-            await self.adapter.render_view(url="/")
+            result = await self.adapter.render_view(url="/")
+            if not flow.check(result):
+                self.adapter.logger.error(
+                    "Rendering iniziale fallito",
+                    result=flow.output(result),
+                )
+                raise RuntimeError(flow.output(result))
+            self.adapter.logger.info("Rendering iniziale completato")
         except Exception as error:
+            self.adapter.logger.error(
+                "Eccezione durante il rendering iniziale",
+                exception=error,
+            )
             await self.mount(
                 Static(
                     f"Initial render failed: {type(error).__name__}: {error}",
@@ -265,6 +327,7 @@ class Adapter(PresentationAdapter):
             **constants: Configurazione da pyproject.toml (adapter.registry)
         """
         super().__init__(loader, defender, messenger, authenticator, **constants)
+        self.logger = get_logger("tui")
         self.active_screens: Dict[str, Screen] = {}
         self.widgets = self.nodes  # alias compatibile per il runtime Textual
         self.app = AppDinamica(self)
@@ -285,7 +348,14 @@ class Adapter(PresentationAdapter):
             self.app.parse_stylesheet(css_content)
 
     async def _run_runtime(self):
-        return self.app.run_async()
+        self.logger.info("Avvio runtime Textual")
+        await self.app.run_async()
+        self.logger.info("Runtime Textual terminato")
+
+        application = getattr(self.loader, "app", None)
+        stop_event = getattr(application, "_stop_event", None)
+        if stop_event is not None:
+            stop_event.set()
 
     async def _shutdown_runtime(self):
         if self.app:
@@ -295,10 +365,20 @@ class Adapter(PresentationAdapter):
         self._ensure_active_app()
 
     async def _show_screen(self, screen):
+        self.logger.debug(
+            "Textual._show_screen: inizio",
+            screen=type(screen).__name__,
+            screen_stack=len(self.app._screen_stack),
+        )
         if self.app.screen.id == "_default":
             await self.app.push_screen(screen)
         else:
             await self.app.switch_screen(screen)
+        self.logger.debug(
+            "Textual._show_screen: completato",
+            screen_stack=len(self.app._screen_stack),
+            active=type(self.app.screen).__name__,
+        )
 
     async def _push_screen(self, screen):
         await self.app.push_screen(screen)

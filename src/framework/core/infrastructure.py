@@ -25,6 +25,26 @@ class Infrastructure:
         """Legge il contenuto di una risorsa statica come stringa."""
         return Path(path).read_text(encoding="utf-8")
 
+    @staticmethod
+    def same_resource(first: str, second: str) -> bool:
+        """Confronta due riferimenti normalizzati alla stessa risorsa."""
+        if not first or not second:
+            return False
+
+        first_parts = [
+            part for part in str(first).replace("\\", "/").split("/")
+            if part and part != "."
+        ]
+        second_parts = [
+            part for part in str(second).replace("\\", "/").split("/")
+            if part and part != "."
+        ]
+        if not first_parts or not second_parts:
+            return False
+
+        shorter, longer = sorted((first_parts, second_parts), key=len)
+        return longer[-len(shorter):] == shorter
+
     def render_jinja(
         self,
         target: str,
@@ -71,6 +91,7 @@ class Infrastructure:
     def resource(self, path: str | Path) -> str:
         """Legge un file risorsa dal file-system in modo asincrono/trasparente."""
         path_str = str(path)
+        self.logger.debug("Caricamento risorsa", path=path_str)
         
         match path_str:
             case p if p.endswith(".toml"):
@@ -92,6 +113,14 @@ class Infrastructure:
                     undefined=template.StrictUndefined,
                 )
                 return self.render_jinja(content, environment=environment)
+            case p if p.endswith(".xml"):
+                content = self.get_resource(path_str)
+                self.logger.debug(
+                    "Risorsa XML caricata",
+                    path=path_str,
+                    size=len(content),
+                )
+                return content
             case _:
                 # Caso di default se l'estensione non coincide
                 raise ValueError(f"Formato file non supportato: {path_str}")
