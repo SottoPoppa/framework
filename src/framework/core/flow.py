@@ -34,6 +34,24 @@ _trace_state: contextvars.ContextVar[dict[str, Any] | None] = contextvars.Contex
 )
 
 
+def request_boundary(func: Callable) -> Callable:
+    """Isola una nuova richiesta root dal contesto di una task longeva."""
+    @wraps(func)
+    async def wrapper(*args: Any, **kwargs: Any):
+        trace_token = _trace_state.set(None)
+        log_token = set_log_context({})
+        try:
+            result = func(*args, **kwargs)
+            if inspect.isawaitable(result):
+                result = await result
+            return result
+        finally:
+            _trace_state.reset(trace_token)
+            reset_log_context(log_token)
+
+    return wrapper
+
+
 class LocatedError(ValueError):
     """Errore con posizione nel sorgente usabile dalla diagnostica Flow."""
 
@@ -492,6 +510,10 @@ def result(inputs=[], outputs=[], action: str | None = None, component: str | No
                     **_exception_location(exc),
                 )
                 valor = Failure(error=exc, tb=traceback.format_exc())
+            except BaseException:
+                _trace_state.reset(trace_token)
+                reset_log_context(log_token)
+                raise
 
             result = Result(
                 input={"args": args, "kwargs": kwargs},

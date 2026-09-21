@@ -202,6 +202,7 @@ class AppDinamica(App):
             payload[name] = "" if value is None else str(value)
         return payload
 
+    @flow.request_boundary
     async def _send_dsl_event(self, event_name, message):
         if not isinstance(event_name, str) or ":" not in event_name:
             return
@@ -227,6 +228,7 @@ class AppDinamica(App):
 
         return True
 
+    @flow.request_boundary
     async def action_save(self):
         focused = self.focused
 
@@ -310,6 +312,7 @@ class AppDinamica(App):
                 )
             )
 
+    @flow.request_boundary
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         w = self.adapter.node_get(event.button.id)
         click = getattr(event.button, "_dsl_click", None)
@@ -342,6 +345,7 @@ class AppDinamica(App):
             message = {"value": message}
         await self._send_dsl_event(click, message)
 
+    @flow.request_boundary
     async def on_click(self, event: Click) -> None:
         widget = event.widget
         source = widget
@@ -367,6 +371,7 @@ class AppDinamica(App):
             str(getattr(source, "_dsl_value", "")),
         )
 
+    @flow.request_boundary
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         node = self.adapter.node_get(event.input.id)
         if node is None:
@@ -375,6 +380,7 @@ class AppDinamica(App):
         if 'submit' in attributes:
             await self._send_dsl_event(attributes['submit'], str(event.value))
     
+    @flow.request_boundary
     async def on_input_changed(self, event: Input.Changed) -> None:
         node = self.adapter.node_get(event.input.id)
         if node is None:
@@ -383,6 +389,7 @@ class AppDinamica(App):
         if 'change' in attributes:
             await self._send_dsl_event(attributes['change'], str(event.value))
 
+    @flow.request_boundary
     async def on_select_changed(self, event: Select.Changed) -> None:
         w = self.adapter.node_get(event.select.id)
 
