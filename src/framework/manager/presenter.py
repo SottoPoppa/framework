@@ -28,8 +28,8 @@ class Manager(manager.Port):
                 async def run_presentation(current=presentation):
                     self.logger.info(
                         "Avvio presentation adapter",
-                        adapter=type(current).__name__,
-                        name=getattr(current, "name", None),
+                        adapter=getattr(current, "name", None) or type(current).__name__,
+                        type=type(current).__name__,
                     )
                     result = await current.start(session)
                     self.logger.info(

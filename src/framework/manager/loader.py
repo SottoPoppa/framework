@@ -334,13 +334,15 @@ class Loader:
         if not interface or not adapter_cls:
             raise RuntimeError(f"Adapter non valido: {resource.name}")
         obj = self._build(adapter_cls, config)
+        adapter_name = config.get("name") or parts[-1]
+        obj.name = adapter_name
         self._register_adapter_capabilities(parts[2], obj)
         if save:
             self.container.add_port(interface, obj)
         self.logger.info(
             "Adapter costruito",
-            adapter=adapter_cls.__name__,
-            name=config.get("name"),
+            adapter=adapter_name,
+            type=adapter_cls.__name__,
         )
         return obj
 
@@ -480,6 +482,7 @@ class Loader:
         )
         self.logger.info(
             "Contratto aggiornato",
+            resource=source_path,
             path=source_path,
             exports=sorted(hashes),
         )

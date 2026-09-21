@@ -126,7 +126,7 @@ class Manager(manager.Port):
             self.logger.warning(
                 "Messenger: nessun provider trovato",
                 receiver=destination,
-                adapter=adapter,
+                    requested_adapter=adapter,
             )
             return flow.error("Nessun provider di messaggistica trovato")
 

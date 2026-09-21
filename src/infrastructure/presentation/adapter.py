@@ -117,7 +117,11 @@ class Adapter(presentation.Port, ABC):
         """Crea la sessione, prepara le route e avvia il runtime concreto."""
         logger = getattr(self, "logger", None)
         if logger:
-            logger.info("Adapter.start: inizio", adapter=type(self).__name__)
+            logger.info(
+                "Adapter.start: inizio",
+                adapter=getattr(self, "name", None) or type(self).__name__,
+                type=type(self).__name__,
+            )
         session_result = await self.defender.session_create()
         self.session = flow.output(session_result)
         if logger:

@@ -115,7 +115,7 @@ class Application:
                         task=task.get_name(),
                     )
 
-        self._logger.info("Framework completamente attivo. In ascolto")
+        self._logger.info("Framework runtime avviato. In ascolto")
         await self._stop_event.wait()
 
     async def shutdown(self):

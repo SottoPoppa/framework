@@ -11,6 +11,7 @@ from textual.binding import Binding
 from textual.widgets import (
     Button, Input, Select, TextArea, Static, Tab, RichLog,
 )
+from textual.containers import Horizontal
 from textual.screen import Screen, ModalScreen
 from textual.events import Click
 from infrastructure.presentation.tui.widgets import (
@@ -31,12 +32,21 @@ from framework.manager.authenticator import Manager as Authenticator
 
 
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_LOG_LEVEL = re.compile(r"\b(DEBUG|INFO|WARNING|ERROR|CRITICAL)\b")
+
+
+def _entry_level(entry: str) -> str | None:
+    match = _LOG_LEVEL.search(_ANSI_ESCAPE.sub("", entry))
+    return match.group(1) if match else None
 
 
 class LogScreen(ModalScreen):
     """Visualizza le righe raccolte dal logger locale del TUI."""
 
-    BINDINGS = [Binding("escape", "close", "Chiudi", show=False)]
+    BINDINGS = [
+        Binding("escape", "close", "Chiudi", show=False),
+        Binding("ctrl+c", "copy_log", "Copia log", show=False),
+    ]
     DEFAULT_CSS = """
     LogScreen {
         align: center middle;
@@ -48,32 +58,104 @@ class LogScreen(ModalScreen):
         border: round $accent;
         background: $surface;
     }
+
+    LogScreen #log-toolbar {
+        width: 90%;
+        height: auto;
+        padding: 0 1;
+        layout: horizontal;
+    }
+
+    LogScreen #log-filter {
+        width: 24;
+    }
+
+    LogScreen #copy-hint {
+        width: auto;
+        margin-left: 1;
+        color: $text-muted;
+        display: none;
+    }
+
+    LogScreen #copy-hint.visible {
+        display: block;
+    }
     """
 
     def __init__(self, log_buffer: LogBuffer, **kwargs):
         super().__init__(**kwargs)
         self.log_buffer = log_buffer
+        self._rendered_snapshot = None
+        self._rendered_level = None
 
     def compose(self) -> ComposeResult:
-        yield RichLog(id="runtime-log", highlight=True, markup=False)
+        yield Horizontal(
+            Select(
+                [("Tutti", "ALL"), ("Debug", "DEBUG"), ("Info", "INFO"),
+                 ("Warning", "WARNING"), ("Error", "ERROR"),
+                 ("Critical", "CRITICAL")],
+                value="ALL",
+                id="log-filter",
+            ),
+            Static("Ctrl+C copia log", id="copy-hint"),
+            id="log-toolbar",
+        )
+        log_widget = RichLog(id="runtime-log", highlight=True, markup=False)
+        log_widget.can_focus = True
+        yield log_widget
 
     def on_mount(self) -> None:
         self._refresh_log()
         self.set_interval(1.0, self._refresh_log)
 
+    def _set_copy_hint(self, visible: bool) -> None:
+        hint = self.query_one("#copy-hint", Static)
+        hint.set_class(visible, "visible")
+
+    def on_focus(self, event) -> None:
+        if isinstance(event.widget, RichLog):
+            self._set_copy_hint(True)
+
+    def on_blur(self, event) -> None:
+        if isinstance(event.widget, RichLog):
+            self._set_copy_hint(False)
+
     def _refresh_log(self) -> None:
         log_widget = self.query_one("#runtime-log", RichLog)
+        selected_level = self.query_one("#log-filter", Select).value
+        snapshot = self.log_buffer.snapshot()
+        if snapshot == self._rendered_snapshot and selected_level == self._rendered_level:
+            return
+
         scroll_position = log_widget.scroll_y
         follow_tail = scroll_position >= log_widget.max_scroll_y
 
         log_widget.clear()
-        for entry in self.log_buffer.snapshot():
+        for entry in snapshot:
+            if selected_level != "ALL" and _entry_level(entry) != selected_level:
+                continue
             for line in entry.splitlines():
                 log_widget.write(_ANSI_ESCAPE.sub("", line), scroll_end=False)
+        self._rendered_snapshot = snapshot
+        self._rendered_level = selected_level
         if follow_tail:
             log_widget.scroll_end(animate=False)
         else:
             log_widget.scroll_to(y=scroll_position, animate=False)
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id == "log-filter":
+            self._refresh_log()
+
+    def action_copy_log(self) -> None:
+        selected_level = self.query_one("#log-filter", Select).value
+        entries = []
+        for entry in self.log_buffer.snapshot():
+            if selected_level != "ALL" and _entry_level(entry) != selected_level:
+                continue
+            entries.append(_ANSI_ESCAPE.sub("", entry))
+        self.app.copy_to_clipboard("\n".join(entries))
+        self.notify("Log copiato negli appunti")
 
     async def action_close(self) -> None:
         await self.dismiss()

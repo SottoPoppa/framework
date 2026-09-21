@@ -1032,7 +1032,12 @@ class Adapter(presentation.Port):
                             content = await self.loader.resource(file_path)
                             await self.executor.load_file(None, file_path, content)
                         except Exception as e:
-                            logger.error("Errore caricamento file", exception=e, path=file_path)
+                            logger.error(
+                                "Errore caricamento file",
+                                exception=e,
+                                resource=file_path,
+                                path=file_path,
+                            )
                     
                     #print(f"Emitting {event_name} for {file_path} (SID: {sid})")
                     try:

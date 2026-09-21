@@ -91,7 +91,11 @@ class Infrastructure:
     def resource(self, path: str | Path) -> str:
         """Legge un file risorsa dal file-system in modo asincrono/trasparente."""
         path_str = str(path)
-        self.logger.debug("Caricamento risorsa", path=path_str)
+        self.logger.debug(
+            "Caricamento risorsa",
+            resource=path_str,
+            path=path_str,
+        )
         
         match path_str:
             case p if p.endswith(".toml"):
@@ -117,6 +121,7 @@ class Infrastructure:
                 content = self.get_resource(path_str)
                 self.logger.debug(
                     "Risorsa XML caricata",
+                    resource=path_str,
                     path=path_str,
                     size=len(content),
                 )

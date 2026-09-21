@@ -114,11 +114,20 @@ class Framework:
             module = sys.modules[name]
             if extra:
                 module.__dict__.update(extra)
-            self.logger.debug("Modulo già caricato riutilizzato", module=name, path=path)
+            self.logger.debug(
+                "Modulo già caricato riutilizzato",
+                module=name,
+                path=path,
+            )
             return module
 
         file_path = Path(path)
-        self.logger.info("Caricamento modulo", module=name, path=str(file_path), force=force)
+        self.logger.info(
+            "Caricamento modulo",
+            module=name,
+            path=str(file_path),
+            force=force,
+        )
         spec = importlib.util.spec_from_file_location(name, file_path)
         if spec is None or spec.loader is None:
             self.logger.error("Impossibile creare ModuleSpec", path=path)
@@ -138,7 +147,12 @@ class Framework:
             spec.loader.exec_module(module)
         except Exception as exc:
             sys.modules.pop(name, None)
-            self.logger.error("Errore durante il caricamento del modulo", exception=exc, module=name, path=path)
+            self.logger.error(
+                "Errore durante il caricamento del modulo",
+                exception=exc,
+                module=name,
+                path=path,
+            )
             raise
 
         self.logger.info("Modulo caricato", module=name, path=path)
@@ -150,7 +164,11 @@ class Framework:
         resource.module = module
         self.components[resource.name] = resource
 
-        self.logger.info("Risorsa registrata", resource=resource.name, path=resource.path)
+        self.logger.info(
+            "Risorsa registrata",
+            resource=resource.name,
+            path=resource.path,
+        )
 
         contract_mod = sys.modules.get("framework.service.contract")
         contract = getattr(contract_mod, "Contract", None) if contract_mod else globals().get("Contract")
@@ -169,7 +187,11 @@ class Framework:
             resource.name, resource.path, resource.extend, force=True
         )
         resource.module = module
-        self.logger.info("Risorsa ricaricata", resource=resource.name, path=resource.path)
+        self.logger.info(
+            "Risorsa ricaricata",
+            resource=resource.name,
+            path=resource.path,
+        )
         return resource
 
     async def load_core(self, services: dict, ports: dict, extra_by_name: dict = None):
@@ -262,7 +284,11 @@ class Framework:
             if isinstance(config_or_path, dict)
             else str(config_or_path)
         )
-        self.logger.info("Caricamento configurazione per installazione", path=config_file)
+        self.logger.info(
+            "Caricamento configurazione per installazione",
+            resource=config_file,
+            path=config_file,
+        )
         return {"config_file": config_file}
 
     def _read_install_config(

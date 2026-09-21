@@ -109,7 +109,7 @@ def _trace_metadata() -> dict[str, Any]:
             if not node.rsplit(".", 1)[-1].startswith("_")
         ]
         metadata["stage"] = logical_nodes[-1] if logical_nodes else chain_nodes[-1]
-        metadata["path"] = " > ".join(logical_nodes or chain_nodes)
+        metadata["chain"] = " > ".join(logical_nodes or chain_nodes)
     for key in ("session_id", "actor"):
         if key in state:
             metadata[key] = state[key]

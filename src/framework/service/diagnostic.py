@@ -272,10 +272,6 @@ def _format_entry(
     if metadata:
         items = list(metadata.items())
         items = [
-            ("chain", value) if key == "path" else (key, value)
-            for key, value in items
-        ]
-        items = [
             ("stage", value) if key == "stage" else (key, value)
             for key, value in items
         ]
