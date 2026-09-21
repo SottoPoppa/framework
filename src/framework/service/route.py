@@ -1,8 +1,10 @@
 import itertools
 import re
 from urllib.parse import urlparse, parse_qs, urljoin
+from framework.service.diagnostic import get_logger
 
 ROUTE_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"}
+logger = get_logger("route")
 
 
 def normalize_path(path):
@@ -213,9 +215,9 @@ def resolve_route(risorse, request_url, request_method, base_url=None,**kargs):
                         'url_details': url_payload
                     }
 
-            print(f"[-] No route matched for: {request_method} {parsed.path}")
+            logger.warning("Nessuna route corrispondente", method=request_method, path=parsed.path)
             return None
 
         except Exception as e:
-            print(f"[!] Resolve Error: {e}")
+            logger.error("Errore nella risoluzione della route", exception=e)
             return None

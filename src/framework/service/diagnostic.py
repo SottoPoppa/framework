@@ -10,7 +10,8 @@ from typing import Dict, Any, List, Optional
 from contextlib import contextmanager
 import time
 import contextvars
-import threading
+from collections import deque
+from threading import Lock
 
 
 # =====================================================================
@@ -178,7 +179,6 @@ def save_diagnostic_report(report: Dict[str, Any], output_dir: str = ".diagnosti
 
 COLOR_RESET = "\033[0m"
 DIM = "\033[2m"
-BOLD = "\033[1m"
 
 LEVEL_COLORS = {
     "DEBUG":    "\033[37m",
@@ -210,23 +210,6 @@ _COMPONENT_PALETTE = [
 _COMPONENT_WIDTH = 12
 
 _log_indent: contextvars.ContextVar[int] = contextvars.ContextVar("log_indent", default=0)
-_log_file_path: Optional[str] = None
-_log_file_component: Optional[str] = None
-_log_file_console = True
-_log_file_lock = threading.Lock()
-
-
-def configure_log_file(
-    path: Optional[str] = None,
-    *,
-    component: Optional[str] = None,
-    console: bool = True,
-) -> None:
-    """Configura il file diagnostico e, opzionalmente, la sua destinazione console."""
-    global _log_file_path, _log_file_component, _log_file_console
-    _log_file_path = path
-    _log_file_component = component
-    _log_file_console = console
 
 
 def _component_color(name: str) -> str:
@@ -238,9 +221,28 @@ def _indent_str(indent: int) -> str:
     return "│ " * indent
 
 
-def _strip_ansi(value: str) -> str:
-    """Rimuove i codici colore dal testo destinato a file e viewer."""
-    return re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", value)
+def _format_exception_lines(
+    exception: BaseException,
+    indent: int,
+    level: str,
+    header: str = "Traceback:",
+) -> list[str]:
+    report = create_diagnostic_report((type(exception), exception, exception.__traceback__))
+    color = LEVEL_COLORS.get(level.upper(), "")
+    padding = f"{' ' * 12} {' ' * 8} {' ' * _COMPONENT_WIDTH} "
+    lines = [
+        f"{color}{padding}{_indent_str(indent)}└─ {header}{COLOR_RESET}"
+    ]
+    lines.extend(
+        f"{color}{padding}{_indent_str(indent + 1)}{line}{COLOR_RESET}"
+        for line in report["traceback_formatted"].splitlines()
+    )
+    if level.upper() in ("ERROR", "CRITICAL"):
+        filepath = save_diagnostic_report(report)
+        lines.append(
+            f"{color}{padding}{_indent_str(indent)}└─ 📝 Report salvato: {filepath}{COLOR_RESET}"
+        )
+    return lines
 
 
 def _format_entry(
@@ -285,17 +287,43 @@ def _format_entry(
             )
 
     if exception is not None:
-        report = create_diagnostic_report((type(exception), exception, exception.__traceback__))
-        meta_tree = _indent_str(indent + 1)
-        pad = f"{' ' * 12} {' ' * 8} {' ' * _COMPONENT_WIDTH} "
-        lines.append(f"{lcolor}{pad}{meta_tree}└─ Traceback:{COLOR_RESET}")
-        for tb_line in report["traceback_formatted"].splitlines():
-            lines.append(f"{lcolor}{pad}{_indent_str(indent + 2)}{tb_line}{COLOR_RESET}")
-        if lvl in ("ERROR", "CRITICAL"):
-            filepath = save_diagnostic_report(report)
-            lines.append(f"{lcolor}{pad}{meta_tree}└─ 📝 Report salvato: {filepath}{COLOR_RESET}")
+        lines.extend(_format_exception_lines(exception, indent + 1, lvl))
 
     return "\n".join(lines)
+
+
+class LogBuffer:
+    """Buffer bounded condivisibile dai visualizzatori dell'applicazione."""
+
+    def __init__(self, max_entries: int = 200):
+        self._entries = deque(maxlen=max_entries)
+        self._lock = Lock()
+
+    def append(self, entry: str) -> None:
+        with self._lock:
+            self._entries.append(entry)
+
+    def snapshot(self) -> list[str]:
+        with self._lock:
+            return list(self._entries)
+
+
+_default_log_sink: contextvars.ContextVar[LogBuffer | None] = contextvars.ContextVar(
+    "default_log_sink",
+    default=None,
+)
+
+
+def set_default_log_sink(sink: LogBuffer | None) -> None:
+    """Imposta il sink applicativo usato dai logger senza sink esplicito."""
+    _default_log_sink.set(sink)
+
+
+def _emit_entry(entry: str, sink: LogBuffer | None = None) -> None:
+    print(entry)
+    active_sink = sink if sink is not None else _default_log_sink.get()
+    if active_sink is not None:
+        active_sink.append(entry)
 
 
 def log(level: str, message: str, component: Optional[str] = None,
@@ -303,18 +331,7 @@ def log(level: str, message: str, component: Optional[str] = None,
     """Log immediato: stampa subito a schermo (comportamento storico)."""
     indent = _log_indent.get()
     entry = _format_entry(level, message, component, indent, metadata, exception)
-    file_enabled = (
-        _log_file_path is not None
-        and (_log_file_component is None or _log_file_component == component)
-    )
-    if not (file_enabled and not _log_file_console):
-        print(entry)
-
-    if file_enabled:
-        with _log_file_lock:
-            os.makedirs(os.path.dirname(_log_file_path) or ".", exist_ok=True)
-            with open(_log_file_path, "a", encoding="utf-8") as logfile:
-                logfile.write(_strip_ansi(entry) + "\n")
+    _emit_entry(entry)
 
 
 @contextmanager
@@ -351,9 +368,10 @@ class LogScope:
         da TUTTO il dettaglio bufferizzato, incluso l'eventuale traceback.
     """
 
-    def __init__(self, title: str, component: Optional[str] = None):
+    def __init__(self, title: str, component: Optional[str] = None, sink: LogBuffer | None = None):
         self.title = title
         self.component = component
+        self.sink = sink
         self._buffer: List[str] = []
         self._failed = False
         self._start = 0.0
@@ -410,27 +428,40 @@ class LogScope:
 
         header_level = "ERROR" if failed else "INFO"
         indent = _log_indent.get()
-        print(_format_entry(header_level, f"{icon} {self.title}{summary_txt}", self.component, indent, {}, None))
+        _emit_entry(
+            _format_entry(
+                header_level,
+                f"{icon} {self.title}{summary_txt}",
+                self.component,
+                indent,
+                {},
+                None,
+            ),
+            self.sink,
+        )
 
         if failed:
             for entry in self._buffer:
-                print(entry)
+                _emit_entry(entry, self.sink)
             if exc_type is not None:
-                report = create_diagnostic_report((exc_type, exc_val, exc_tb))
-                pad_indent = indent + 1
-                lcolor = LEVEL_COLORS["ERROR"]
-                print(f"{lcolor}{_indent_str(pad_indent)}└─ Traceback (non gestito nel blocco):{COLOR_RESET}")
-                for tb_line in report["traceback_formatted"].splitlines():
-                    print(f"{lcolor}{_indent_str(pad_indent + 1)}{tb_line}{COLOR_RESET}")
-                filepath = save_diagnostic_report(report)
-                print(f"{lcolor}{_indent_str(pad_indent)}└─ 📝 Report salvato: {filepath}{COLOR_RESET}")
+                for line in _format_exception_lines(
+                    exc_val,
+                    indent + 1,
+                    "ERROR",
+                    header="Traceback (non gestito nel blocco):",
+                ):
+                    _emit_entry(line, self.sink)
 
         return False  # non sopprime mai l'eccezione originale
 
 
-def scope(title: str, component: Optional[str] = None) -> LogScope:
+def scope(
+    title: str,
+    component: Optional[str] = None,
+    sink: LogBuffer | None = None,
+) -> LogScope:
     """Apre un blocco di log 'silenzioso se va tutto bene'."""
-    return LogScope(title, component=component)
+    return LogScope(title, component=component, sink=sink)
 
 
 # =====================================================================
@@ -441,27 +472,33 @@ class ComponentLogger:
     """Logger 'legato' a un nome di componente, per non doverlo ripetere
     ad ogni chiamata e per garantire lo stesso tag/colore ovunque."""
 
-    def __init__(self, component: str):
+    def __init__(self, component: str, sink: LogBuffer | None = None):
         self.component = component
+        self.sink = sink
+
+    def _log(self, level: str, message: str, exception=None, **metadata):
+        indent = _log_indent.get()
+        entry = _format_entry(level, message, self.component, indent, metadata, exception)
+        _emit_entry(entry, self.sink)
 
     def debug(self, message, **metadata):
-        log("DEBUG", message, component=self.component, **metadata)
+        self._log("DEBUG", message, **metadata)
 
     def info(self, message, **metadata):
-        log("INFO", message, component=self.component, **metadata)
+        self._log("INFO", message, **metadata)
 
     def warning(self, message, **metadata):
-        log("WARNING", message, component=self.component, **metadata)
+        self._log("WARNING", message, **metadata)
 
     def error(self, message, exception=None, **metadata):
-        log("ERROR", message, component=self.component, exception=exception, **metadata)
+        self._log("ERROR", message, exception=exception, **metadata)
 
     def critical(self, message, exception=None, **metadata):
-        log("CRITICAL", message, component=self.component, exception=exception, **metadata)
+        self._log("CRITICAL", message, exception=exception, **metadata)
 
     def scope(self, title: str) -> LogScope:
-        return scope(title, component=self.component)
+        return scope(title, component=self.component, sink=self.sink)
 
 
-def get_logger(component: str) -> ComponentLogger:
-    return ComponentLogger(component)
+def get_logger(component: str, sink: LogBuffer | None = None) -> ComponentLogger:
+    return ComponentLogger(component, sink=sink)

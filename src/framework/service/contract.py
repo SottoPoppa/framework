@@ -6,6 +6,7 @@ from framework.service.diagnostic import get_logger
 
 logger = get_logger("contract")
 
+
 class Contract:
     VERSION = 2
     """Gestione dei contratti (*.contract.json / *.json) associati a un

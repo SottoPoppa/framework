@@ -22,7 +22,6 @@ _FILTER_ALIASES: dict[str, str] = {
 # il tag colorato [tester], senza doverlo ripetere ad ogni chiamata.
 _logger = diagnostic.get_logger("tester")
 
-
 def resolve_filter(raw: str | None) -> Optional[str]:
     """Ritorna il prefisso di percorso su cui filtrare, o None (tutto).
 

@@ -16,12 +16,15 @@ import secrets
 import framework.port.presentation as presentation
 import framework.core.flow as flow
 import framework.service.route as route
+from framework.service.diagnostic import get_logger
 from framework.service.route import split_url
 from framework.manager.defender import Manager as Defender
 from framework.manager.messenger import Manager as Messenger
 from framework.manager.authenticator import Manager as Authenticator
 from framework.manager.storekeeper import Manager as Storekeeper
 from framework.manager.loader import Loader
+
+logger = get_logger("presentation.web")
 
 try:
     from starlette.applications import Starlette
@@ -1029,7 +1032,7 @@ class Adapter(presentation.Port):
                             content = await self.loader.resource(file_path)
                             await self.executor.load_file(None, file_path, content)
                         except Exception as e:
-                            print(f"Errore caricamento file {file_path}: {e}")
+                            logger.error("Errore caricamento file", exception=e, path=file_path)
                     
                     #print(f"Emitting {event_name} for {file_path} (SID: {sid})")
                     try:
@@ -1044,7 +1047,7 @@ class Adapter(presentation.Port):
                             payload=event_payload,
                         )
                     except Exception as e:
-                         print(f"Errore durante l'emissione dell'evento: {e}")
+                        logger.error("Errore durante l'emissione dell'evento", exception=e)
                              
         except WebSocketDisconnect:
             pass
@@ -1061,7 +1064,7 @@ class Adapter(presentation.Port):
             try:
                 full_ctx = self.executor.interpreter.runner.context(session_id) or {}
             except Exception as e:
-                print(f"Errore recupero contesto per rebuild: {e}")
+                logger.error("Errore recupero contesto per rebuild", exception=e, session_id=session_id)
                 
         # Uniamo i due per sicurezza, dando priorità al context appena passato
         

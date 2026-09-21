@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from graphlib import TopologicalSorter
 from pathlib import Path
 from typing import Any, Optional, Type, TypedDict, get_args, get_type_hints
+from framework.service.diagnostic import LogBuffer, get_logger, set_default_log_sink
 
 @dataclass
 class Resource:
@@ -35,12 +36,14 @@ class Framework:
     """Kernel per importazione dinamica, estrazione dipendenze e contratti."""
 
     def __init__(self):
+        self.log_buffer = LogBuffer()
+        set_default_log_sink(self.log_buffer)
         self.logger_resource = Resource(
             name="framework.service.diagnostic",
             path="src/framework/service/diagnostic.py",
             module=importlib.import_module("framework.service.diagnostic"),
         )
-        self.logger = self.logger_resource.module.get_logger("framework")
+        self.logger = get_logger("framework")
         self.components: dict[str, Resource] = {}
         self.strict: bool = False
         self.infrastructure = None
@@ -64,6 +67,9 @@ class Framework:
         self.loader = loader_module.Loader(self, self.infrastructure)
         self.logger.info("Bootstrap del framework completato", components=len(cores))
         return await self.loader.bootstrap(config_toml_path)
+
+    def get_logger(self, component: str):
+        return get_logger(component)
 
 
 

@@ -18,6 +18,7 @@ from typing import Any, Optional, Type, TypedDict, get_args, get_type_hints
 from jinja2 import BaseLoader, Environment
 import framework.core.flow as flow
 import framework.service.scheme as scheme
+from framework.service.diagnostic import LogBuffer
 from framework.core.application import Application
 
 # ============================================================
@@ -598,6 +599,7 @@ class Loader:
         self.container.put(container_cls, self.container, singleton=True)
         self.container.put(type(self.framework), self.framework, singleton=True)
         self.container.put(type(self.infrastructure), self.infrastructure, singleton=True)
+        self.container.put(LogBuffer, self.framework.log_buffer, singleton=True)
         #self.container.put(type(self.application), self.application, singleton=True)
         return context
 

@@ -8,6 +8,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import framework.port.persistence as persistence
 import framework.core.flow as flow
+from framework.service.diagnostic import get_logger
 from framework.manager.messenger import Manager as Messenger
 
 
@@ -61,6 +62,7 @@ class Adapter(persistence.Port):
 
     def __init__(self, messenger: Messenger, **constants):
         self.messenger = messenger
+        self.logger = get_logger("persistence.filesystem")
         self.config = constants
         self.name = constants.get('name')
         self.path = constants.get('path', os.getcwd()+"/")
@@ -78,7 +80,7 @@ class Adapter(persistence.Port):
         self.stop_watcher()
 
     def _start_watcher(self, session, main_loop):
-        print(f"👀 Avvio del watcher su '{self.path}'...")
+        self.logger.info("Avvio del watcher", path=self.path)
         event_handler = FileWatcherHandler(adapter=self, session=session, loop=main_loop)
         self.observer = Observer()
         self.observer.schedule(event_handler, path=self.path, recursive=True)
@@ -98,7 +100,7 @@ class Adapter(persistence.Port):
             try:
                 self.observer.stop()
                 self.observer.join()
-                print("👋 Watcher interrotto correttamente.")
+                self.logger.info("Watcher interrotto correttamente")
             except Exception:
                 pass
 

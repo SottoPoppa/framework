@@ -1,8 +1,8 @@
 import asyncio
-from pathlib import Path
+import re
 import framework.core.flow as flow
 import framework.service.dom as dom
-from framework.service.diagnostic import get_logger
+from framework.service.diagnostic import LogBuffer, get_logger
 import xml.etree.ElementTree as ET
 from typing import Dict, Any
 
@@ -30,8 +30,11 @@ from framework.manager.loader import Loader
 from framework.manager.authenticator import Manager as Authenticator
 
 
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
+
 class LogScreen(ModalScreen):
-    """Visualizza le ultime righe del log diagnostico dell'applicazione."""
+    """Visualizza le righe raccolte dal logger locale del TUI."""
 
     BINDINGS = [Binding("escape", "close", "Chiudi", show=False)]
     DEFAULT_CSS = """
@@ -46,7 +49,10 @@ class LogScreen(ModalScreen):
         background: $surface;
     }
     """
-    LOG_PATH = Path("/tmp/framework-tui.log")
+
+    def __init__(self, log_buffer: LogBuffer, **kwargs):
+        super().__init__(**kwargs)
+        self.log_buffer = log_buffer
 
     def compose(self) -> ComposeResult:
         yield RichLog(id="runtime-log", highlight=True, markup=False)
@@ -59,14 +65,11 @@ class LogScreen(ModalScreen):
         log_widget = self.query_one("#runtime-log", RichLog)
         scroll_position = log_widget.scroll_y
         follow_tail = scroll_position >= log_widget.max_scroll_y
-        try:
-            lines = self.LOG_PATH.read_text(encoding="utf-8").splitlines()[-200:]
-        except OSError as error:
-            lines = [f"Impossibile leggere il log: {error}"]
 
         log_widget.clear()
-        for line in lines:
-            log_widget.write(line, scroll_end=False)
+        for entry in self.log_buffer.snapshot():
+            for line in entry.splitlines():
+                log_widget.write(_ANSI_ESCAPE.sub("", line), scroll_end=False)
         if follow_tail:
             log_widget.scroll_end(animate=False)
         else:
@@ -193,7 +196,7 @@ class AppDinamica(App):
     async def action_show_log(self) -> None:
         if isinstance(self.screen, LogScreen):
             return
-        await self.push_screen(LogScreen())
+        await self.push_screen(LogScreen(self.adapter.log_buffer))
 
     async def on_mount(self) -> None:
         self.adapter.logger.debug(
@@ -321,7 +324,15 @@ class Adapter(PresentationAdapter):
 
     tags = tags
 
-    def __init__(self, loader: Loader, defender: Defender, messenger: Messenger, authenticator: Authenticator, **constants):
+    def __init__(
+        self,
+        loader: Loader,
+        defender: Defender,
+        messenger: Messenger,
+        authenticator: Authenticator,
+        log_buffer: LogBuffer,
+        **constants,
+    ):
         """
         Inizializza l'adapter Textual.
 
@@ -333,6 +344,7 @@ class Adapter(PresentationAdapter):
             **constants: Configurazione da pyproject.toml (adapter.registry)
         """
         super().__init__(loader, defender, messenger, authenticator, **constants)
+        self.log_buffer = log_buffer
         self.logger = get_logger("tui")
         self.active_screens: Dict[str, Screen] = {}
         self.widgets = self.nodes  # alias compatibile per il runtime Textual

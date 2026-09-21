@@ -10,10 +10,6 @@ sys.path.insert(1, cwd + '/src')
 
 import framework.core.framework as framework
 import framework.core.flow as flow
-from framework.service.diagnostic import configure_log_file, get_logger
-
-
-main_logger = get_logger("main")
 
 
 
@@ -36,11 +32,10 @@ async def main2(config):
 
 
 async def main(config):
-    if config.get("dev") or config.get("debug"):
-        configure_log_file("/tmp/framework-tui.log", console=False)
-        main_logger.info("Avvio CLI", config=config)
-
     framework_instance = framework.Framework()
+    main_logger = framework_instance.get_logger("main")
+    if config.get("dev") or config.get("debug"):
+        main_logger.info("Avvio CLI", config=config)
 
     if config.get('setup'):
         setup_core_dependencies()

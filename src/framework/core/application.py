@@ -11,7 +11,7 @@ class Application:
 
     def __init__(self, loader: Any, managers: list, session: Any = None):
         self._loader = loader
-        self._logger = get_logger("application")
+        self._logger = loader.framework.get_logger("application")
         self._managers = managers
         self._stop_event = asyncio.Event()
         self._running_tasks: list[asyncio.Task] = []

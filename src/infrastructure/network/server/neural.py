@@ -3,6 +3,9 @@ import torch.nn as nn
 import os
 
 import framework.port.network as network
+from framework.service.diagnostic import get_logger
+
+logger = get_logger("network.neural")
 
 class Adapter(network.Port, nn.Module):
     def __init__(self, **kwargs):
@@ -97,7 +100,7 @@ class Adapter(network.Port, nn.Module):
             history.append(avg_loss)
 
             if verbose:
-                print(f"[Epoch {epoch+1}/{epochs}] loss={avg_loss:.6f}")
+                logger.info("Training epoch", epoch=epoch + 1, epochs=epochs, loss=avg_loss)
 
         return history
 
@@ -117,7 +120,7 @@ class Adapter(network.Port, nn.Module):
             checkpoint["leak_rate"] = self.leak_rate
 
         torch.save(checkpoint, path)
-        print(f"[SAVE] modello salvato in {path}")
+        logger.info("Modello salvato", path=path)
 
 
     def load(self, path: str, device="cpu"):
@@ -138,4 +141,4 @@ class Adapter(network.Port, nn.Module):
             self.threshold = checkpoint.get("threshold", self.threshold)
             self.leak_rate = checkpoint.get("leak_rate", self.leak_rate)
 
-        print(f"[LOAD] pesi aggiornati da {path}")
+        logger.info("Pesi aggiornati", path=path)

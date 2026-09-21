@@ -16,7 +16,7 @@ class Manager(manager.Port):
         self.presentations = presentations
         self.loader = loader
         self.framework = framework
-        self.logger = get_logger("presenter")
+        self.logger = framework.get_logger("presenter")
         #self.executor = constants.get('executor')
 
     @flow.result(inputs=(), outputs=())
