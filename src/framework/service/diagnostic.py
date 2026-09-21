@@ -159,20 +159,6 @@ def create_diagnostic_report(exc_info: tuple = None) -> Dict[str, Any]:
     return report
 
 
-def save_diagnostic_report(report: Dict[str, Any], output_dir: str = ".diagnostics") -> str:
-    """Salva il report diagnostico su file."""
-    os.makedirs(output_dir, exist_ok=True)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    filename = f"diagnostic_{timestamp}.json"
-    filepath = os.path.join(output_dir, filename)
-
-    with open(filepath, 'w') as f:
-        json.dump(report, f, cls=DiagnosticEncoder, indent=2)
-
-    return filepath
-
-
 # =====================================================================
 # --- Rendering dei log ---
 # =====================================================================
@@ -237,11 +223,6 @@ def _format_exception_lines(
         f"{color}{padding}{_indent_str(indent + 1)}{line}{COLOR_RESET}"
         for line in report["traceback_formatted"].splitlines()
     )
-    if level.upper() in ("ERROR", "CRITICAL"):
-        filepath = save_diagnostic_report(report)
-        lines.append(
-            f"{color}{padding}{_indent_str(indent)}└─ 📝 Report salvato: {filepath}{COLOR_RESET}"
-        )
     return lines
 
 
