@@ -51,7 +51,6 @@ class Manager(manager.Port):
     async def _load_repository(self, repository_name: str):
         """Carica e mette in cache il repository DSL richiesto."""
         if repository_name not in self.maked:
-            self.logger.debug("Storekeeper: caricamento repository", repository=repository_name)
             path = f'src/application/repository/{repository_name}.dsl'
             code = await self.defender.loader.resource(path)
             await self.defender.interpreter.load_file(path, code)
@@ -62,9 +61,6 @@ class Manager(manager.Port):
             self.maked[repository_name] = Repository(
                 **self.repositories[repository_name]['repository']
             )
-            self.logger.debug("Storekeeper: repository caricato", repository=repository_name)
-        else:
-            self.logger.debug("Storekeeper: repository trovato in cache", repository=repository_name)
         repository = self.maked.get(repository_name)
         if repository is None:
             self.logger.warning("Storekeeper: repository non trovato", repository=repository_name)
@@ -180,11 +176,6 @@ class Manager(manager.Port):
     @flow.result()
     async def preparation(self, session, storekeeper):
         repository_name = storekeeper.get('repository')
-        self.logger.debug(
-            "Storekeeper: preparazione avviata",
-            operation=storekeeper.get("operation"),
-            repository=repository_name,
-        )
         if not repository_name:
             return flow.error("Nome del repository non specificato.")
 
@@ -200,11 +191,6 @@ class Manager(manager.Port):
     
     @flow.result()
     async def _execute(self, operation, session, constants):
-        self.logger.debug(
-            "Storekeeper: operazione avviata",
-            operation=operation,
-            repository=constants.get("repository"),
-        )
         state = await self.preparation(session, constants | {'operation': operation})
         if not flow.check(state):
             self.logger.warning(

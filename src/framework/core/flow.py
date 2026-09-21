@@ -9,7 +9,11 @@ import contextvars
 import uuid
 from typing import Any, Callable, Dict, Generic, Iterable, List, Tuple, TypeVar
 
-from framework.service.diagnostic import get_logger
+from framework.service.diagnostic import (
+    get_logger,
+    reset_log_context,
+    set_log_context,
+)
 from framework.service.trace import (
     exception_location as _exception_location,
     failure_location as _failure_location,
@@ -94,11 +98,22 @@ def _trace_metadata() -> dict[str, Any]:
     state = _trace_state.get()
     if state is None:
         return {}
-    return {
-        key: state[key]
-        for key in ("trace_id", "path", "session_id", "actor")
-        if key in state
-    }
+    metadata = {}
+    if "trace_id" in state:
+        metadata["trace_id"] = state["trace_id"]
+    if "path" in state:
+        chain_nodes = state["path"].split(" > ")
+        logical_nodes = [
+            node
+            for node in chain_nodes
+            if not node.rsplit(".", 1)[-1].startswith("_")
+        ]
+        metadata["stage"] = logical_nodes[-1] if logical_nodes else chain_nodes[-1]
+        metadata["path"] = " > ".join(logical_nodes or chain_nodes)
+    for key in ("session_id", "actor"):
+        if key in state:
+            metadata[key] = state[key]
+    return metadata
 
 
 def _dev_log(
@@ -461,6 +476,7 @@ def result(inputs=[], outputs=[], action: str | None = None, component: str | No
             txs: list[Result] = []
             operation = action or getattr(func, "__qualname__", repr(func))
             trace_token = _enter_trace(operation, args, kwargs)
+            log_token = set_log_context(_trace_metadata())
             try:
                 out = func(*args, **kwargs)
                 if inspect.isawaitable(out):
@@ -497,6 +513,7 @@ def result(inputs=[], outputs=[], action: str | None = None, component: str | No
                 **(_failure_location(valor) if isinstance(valor, Failure) else {}),
             )
             _trace_state.reset(trace_token)
+            reset_log_context(log_token)
             return result
         return wrapper
     return decorator

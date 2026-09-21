@@ -94,7 +94,6 @@ class Manager(manager.Port):
         :return: True se la sessione è stata terminata, False se l'utente non esiste.
         """
 
-        self.logger.debug("Authenticator: invalidazione avviata")
         if not await self._authorized("sign_out"):
             self.logger.warning("Authenticator: invalidazione negata dalla policy")
             return flow.error("Authentication policy denied sign_out")
@@ -121,7 +120,6 @@ class Manager(manager.Port):
         :param constants: Deve includere 'identifier', 'ip' e credenziali.
         :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
         """
-        self.logger.debug("Authenticator: rigenerazione avviata", providers=len(self.authentications))
         if not await self._authorized("sign_aid"):
             self.logger.warning("Authenticator: rigenerazione negata dalla policy")
             return flow.error("Authentication policy denied sign_aid")
@@ -145,7 +143,6 @@ class Manager(manager.Port):
         :param constants: Deve includere 'identifier', 'ip' e credenziali.
         :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
         """
-        self.logger.debug("Authenticator: autenticazione avviata", providers=len(self.authentications))
         if not await self._authorized("sign_in"):
             self.logger.warning("Authenticator: autenticazione negata dalla policy")
             return flow.error("Authentication policy denied sign_in")
@@ -170,7 +167,6 @@ class Manager(manager.Port):
         :param constants: Deve includere 'identifier', 'ip' e credenziali.
         :return: Dizionario di sessione aggiornato se la registrazione ha successo, altrimenti None.
         """
-        self.logger.debug("Authenticator: attivazione avviata", providers=len(self.authentications))
         if not await self._authorized("sign_up"):
             self.logger.warning("Authenticator: attivazione negata dalla policy")
             return flow.error("Authentication policy denied sign_up")

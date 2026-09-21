@@ -80,13 +80,6 @@ class Manager(manager.Port):
         destination = constants.get("receiver")
         adapter = constants.get("adapter")
 
-        self.logger.debug(
-            "Messenger: dispatch avviato",
-            domain=domain,
-            receiver=destination,
-            adapter=adapter,
-        )
-
         if adapter == "dsl":
             if not destination or not self.defender or destination not in self.defender.controllers:
                 self.logger.warning(
@@ -129,14 +122,6 @@ class Manager(manager.Port):
             return flow.success(result)
 
         matched = self._matching_providers(destination, adapter)
-        provider_names = [provider.config.get("name") or provider.adapter for provider in matched]
-        self.logger.debug(
-            "Messenger: provider selezionati",
-            receiver=destination,
-            adapter=adapter,
-            providers=provider_names,
-        )
-
         if destination and not matched:
             self.logger.warning(
                 "Messenger: nessun provider trovato",
@@ -158,12 +143,6 @@ class Manager(manager.Port):
                 )
                 continue
 
-            self.logger.debug(
-                "Messenger: invio al provider",
-                provider=provider_name,
-                receiver=destination,
-                domain=domain,
-            )
             result = await provider.post(session, **constants | {'domain': domain})
             if flow.is_result(result) and not flow.check(result):
                 self.logger.error(
@@ -209,13 +188,6 @@ class Manager(manager.Port):
         domain = constants.get("domain")
         destination = constants.get("receiver")
         matched = self._matching_providers(destination)
-        self.logger.debug(
-            "Messenger: ricezione avviata",
-            domain=domain,
-            receiver=destination,
-            providers=[provider.config.get("name") or provider.adapter for provider in matched],
-        )
-
         if destination and not matched:
             self.logger.warning(
                 "Messenger: nessun provider disponibile per la ricezione",

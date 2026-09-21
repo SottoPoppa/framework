@@ -196,8 +196,20 @@ _COMPONENT_PALETTE = [
 _COMPONENT_WIDTH = 12
 
 _log_indent: contextvars.ContextVar[int] = contextvars.ContextVar("log_indent", default=0)
+_log_context: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
+    "log_context",
+    default={},
+)
 
 
+def set_log_context(metadata: dict[str, Any]):
+    """Imposta il contesto di correlazione per la task corrente."""
+    return _log_context.set(dict(metadata))
+
+
+def reset_log_context(token) -> None:
+    """Ripristina il contesto di correlazione precedente."""
+    _log_context.reset(token)
 def _component_color(name: str) -> str:
     idx = sum(ord(c) for c in name) % len(_COMPONENT_PALETTE)
     return _COMPONENT_PALETTE[idx]
@@ -259,6 +271,14 @@ def _format_entry(
 
     if metadata:
         items = list(metadata.items())
+        items = [
+            ("chain", value) if key == "path" else (key, value)
+            for key, value in items
+        ]
+        items = [
+            ("stage", value) if key == "stage" else (key, value)
+            for key, value in items
+        ]
         for idx, (key, value) in enumerate(items):
             branch = "└─" if idx == len(items) - 1 else "├─"
             meta_tree = _indent_str(indent + 1)
@@ -459,7 +479,9 @@ class ComponentLogger:
 
     def _log(self, level: str, message: str, exception=None, **metadata):
         indent = _log_indent.get()
-        entry = _format_entry(level, message, self.component, indent, metadata, exception)
+        context = _log_context.get()
+        entry_metadata = {**context, **metadata}
+        entry = _format_entry(level, message, self.component, indent, entry_metadata, exception)
         _emit_entry(entry, self.sink)
 
     def debug(self, message, **metadata):

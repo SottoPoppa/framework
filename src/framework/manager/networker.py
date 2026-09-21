@@ -59,17 +59,11 @@ class Manager(manager.Port):
                 best = provider
                 best_score = score
 
-        self.logger.debug(
-            "Networker: provider selezionato",
-            requirements=requirements,
-            provider=self._provider_name(best) if best is not None else None,
-        )
         return best
 
     @flow.result(inputs='intent')
     async def provision(self, session, intent: dict):
         requirements = intent.get('requirements', {})
-        self.logger.debug("Networker: provision avviato", requirements=requirements)
         provider = self._select_provider(requirements)
         if provider is None:
             self.logger.warning(
@@ -86,7 +80,6 @@ class Manager(manager.Port):
 
     @flow.result(inputs=('application', 'requirements'))
     async def route(self, session, application: dict, requirements: dict):
-        self.logger.debug("Networker: route avviato", requirements=requirements)
         provider = self._select_provider(requirements)
         if provider is None:
             self.logger.warning(
@@ -103,7 +96,6 @@ class Manager(manager.Port):
 
     @flow.result()
     async def compute(self, session):
-        self.logger.debug("Networker: compute avviato", providers=len(self.networks))
         results = []
         for provider in self.networks:
             result = await provider.compute()
@@ -113,7 +105,6 @@ class Manager(manager.Port):
 
     @flow.result()
     async def monitor(self, session):
-        self.logger.debug("Networker: monitor avviato", providers=len(self.networks))
         statuses = []
         for provider in self.networks:
             if hasattr(provider, 'monitor'):
@@ -123,7 +114,6 @@ class Manager(manager.Port):
 
     @flow.result()
     async def status(self, session):
-        self.logger.debug("Networker: status avviato", providers=len(self.networks))
         network_status = {}
         for provider in self.networks:
             if hasattr(provider, 'status'):

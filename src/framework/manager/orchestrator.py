@@ -21,12 +21,9 @@ class Manager(manager.Port):
     # ── INTERPRETER ────────────────────────────────────────────────────────────────
 
     async def stop(self, session):
-        self.logger.info("Orchestrator: arresto")
         await self.interpreter.stop()
-        self.logger.info("Orchestrator: arresto completato")
     
     async def start(self, session):
-        self.logger.info("Orchestrator: avvio")
         
         '''await self.interpreter.start()
         codice_dsl = """
@@ -84,17 +81,14 @@ class Manager(manager.Port):
             print(f"Errore durante l'esecuzione: {e}")'''
 
     async def load_file(self, session, name, source):
-        self.logger.debug("Orchestrator: caricamento DSL", name=name)
         return await self.interpreter.load_file(name, source)
 
     async def open_session(self, session, env=None):
         env = env or {}
-        self.logger.debug("Orchestrator: apertura sessione")
         return self.interpreter.open_session(env=env, sid=session)
 
     async def run(self, session, file, env=None):
         env = env or {}
-        self.logger.debug("Orchestrator: esecuzione DSL", file=file)
         return await session.run(file, env)
         
     # ── PROVIDER ────────────────────────────────────────────────────────────────
@@ -139,7 +133,6 @@ class Manager(manager.Port):
         """Attende il primo task completato e restituisce il suo risultato."""
         operations = constants.get('operations', [])
         errors = []
-        self.logger.debug("Orchestrator: first_completed avviato", operations=len(operations))
         #await self.messenger.post(domain='debug',message="⏳ Attesa della prima operazione completata...")
 
         while operations:
@@ -153,7 +146,6 @@ class Manager(manager.Port):
                         transaction = await constants['success'](transaction=transaction,profile=operation.get_name())
                     for task in unfinished:
                         task.cancel()
-                    self.logger.debug("Orchestrator: first_completed completato")
                     return flow.success(flow.output(transaction))
 
                 if flow.is_result(transaction):
@@ -171,7 +163,6 @@ class Manager(manager.Port):
     @flow.result()
     async def all_completed(self, session, **constants) -> Dict[str, Any]:
         tasks: List[asyncio.Future] = constants.get('tasks', [])
-        self.logger.debug("Orchestrator: all_completed avviato", tasks=len(tasks))
     
         # Lista per raccogliere i dettagli degli errori da ogni task
         detailed_errors = []
@@ -204,7 +195,6 @@ class Manager(manager.Port):
             self.logger.warning("Orchestrator: all_completed fallito", tasks=len(tasks))
             return flow.error(detailed_errors)
         
-        self.logger.debug("Orchestrator: all_completed completato", tasks=len(tasks))
         return flow.success({"results": results})
 
     @flow.result()
@@ -212,7 +202,6 @@ class Manager(manager.Port):
         """Esegue i task in sequenza, aspettando il completamento di ciascuno prima di passare al successivo."""
         tasks = constants.get('tasks', [])
         results = []
-        self.logger.debug("Orchestrator: chain_completed avviato", tasks=len(tasks))
 
         #await self.messenger.post(domain='debug',message="🔄 Avvio esecuzione sequenziale delle operazioni...")
 
@@ -226,7 +215,6 @@ class Manager(manager.Port):
                     #await messenger.post(domain='debug', message=f"❌ Errore nel task {task}: {e}")
                     pass
 
-            self.logger.debug("Orchestrator: chain_completed completato", tasks=len(results))
             return flow.success({"state": True, "result": results, "error": None})
 
         except Exception as e:
@@ -239,7 +227,6 @@ class Manager(manager.Port):
     async def together_completed(self, session, **constants) -> Dict[str, Any]:
         """Esegue tutti i task contemporaneamente senza attendere il completamento di tutti."""
         tasks = constants.get('tasks', [])
-        self.logger.debug("Orchestrator: together_completed avviato", tasks=len(tasks))
 
         #await messenger.post(domain='debug', message="🚀 Avvio esecuzione simultanea delle operazioni...")
 
@@ -248,7 +235,6 @@ class Manager(manager.Port):
                 asyncio.create_task(task)
 
             #await messenger.post(domain='debug', message="✅ Tutti i task sono stati avviati in background.")
-            self.logger.debug("Orchestrator: together_completed completato", tasks=len(tasks))
             return flow.success({"state": True, "result": "Tasks avviati in background", "error": None})
 
         except Exception as e:
