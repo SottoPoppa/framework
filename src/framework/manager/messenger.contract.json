@@ -9,7 +9,7 @@
   "hashes": {
     "Manager": {
       "receive": {
-        "production": "d1a12db66f61aa5b9226e22d68d9795802e76076c8d5c02df4e9bfdbf141a320",
+        "production": "71beac274a0781297fe3002448cf20b9084582e5f5a5737eecf143d985cdf2f9",
         "test": "d1a12db66f61aa5b9226e22d68d9795802e76076c8d5c02df4e9bfdbf141a320"
       },
       "send": {

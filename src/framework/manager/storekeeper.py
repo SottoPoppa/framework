@@ -3,6 +3,7 @@ import asyncio
 import framework.port.persistence as persistence
 import framework.port.manager as manager
 import framework.core.flow as flow
+from framework.service.diagnostic import get_logger
 from framework.service.factory import Repository
 
 from framework.manager.messenger import Manager as Messenger
@@ -26,25 +27,31 @@ class Manager(manager.Port):
         self.repositories = constants.get("repositories", {})
         self.maked = constants.get("maked", {})
         self.messenger = messenger
+        self.logger = get_logger("storekeeper")
 
     @flow.result()
     async def startup(self, session):
+        self.logger.info("Storekeeper: avvio", providers=len(self.persistences))
         await self.messenger.send(session, message="Storekeeper avviato.", receiver="console", domain="info")
         for provider in self.persistences:
             start = getattr(provider, 'start', None)
             if callable(start):
                 await start(session)
+        self.logger.info("Storekeeper: avvio completato")
         return flow.success(None)
 
     @flow.result()
     async def shutdown(self, session):
+        self.logger.info("Storekeeper: arresto")
         await self.messenger.send(session, message="Storekeeper arrestato.", receiver="console", domain="info")
+        self.logger.info("Storekeeper: arresto completato")
         return flow.success(None)
 
     @flow.result()
     async def _load_repository(self, repository_name: str):
         """Carica e mette in cache il repository DSL richiesto."""
         if repository_name not in self.maked:
+            self.logger.debug("Storekeeper: caricamento repository", repository=repository_name)
             path = f'src/application/repository/{repository_name}.dsl'
             code = await self.defender.loader.resource(path)
             await self.defender.interpreter.load_file(path, code)
@@ -55,8 +62,12 @@ class Manager(manager.Port):
             self.maked[repository_name] = Repository(
                 **self.repositories[repository_name]['repository']
             )
+            self.logger.debug("Storekeeper: repository caricato", repository=repository_name)
+        else:
+            self.logger.debug("Storekeeper: repository trovato in cache", repository=repository_name)
         repository = self.maked.get(repository_name)
         if repository is None:
+            self.logger.warning("Storekeeper: repository non trovato", repository=repository_name)
             return flow.error(
                 f"Repository '{repository_name}' non trovato o dati non disponibili."
             )
@@ -116,12 +127,22 @@ class Manager(manager.Port):
             resource=resource,
             request=storekeeper,
         ):
+            self.logger.warning(
+                "Storekeeper: operazione negata dalla policy",
+                operation=operation,
+                repository=resource,
+            )
             return flow.error("Persistence policy denied the operation")
         if self.defender and security:
             providers = self.defender.authorized_adapters(
                 session, "persistence", policy, self.persistences
             )
             if not providers:
+                self.logger.warning(
+                    "Storekeeper: nessun provider autorizzato",
+                    operation=operation,
+                    repository=resource,
+                )
                 return flow.error("Nessun persistence provider autorizzato dalla policy di sicurezza")
         for provider in providers:
             provider_profile = str(provider.config.get('name', '')).casefold()
@@ -144,6 +165,11 @@ class Manager(manager.Port):
                     f"{provider}: {error}"
                 )
         if not tasks:
+            self.logger.warning(
+                "Storekeeper: nessun provider compatibile",
+                operation=operation,
+                repository=resource,
+            )
             return flow.error(
                 f"Nessun provider compatibile per il repository "
                 f"'{storekeeper.get('repository')}'. "
@@ -154,6 +180,11 @@ class Manager(manager.Port):
     @flow.result()
     async def preparation(self, session, storekeeper):
         repository_name = storekeeper.get('repository')
+        self.logger.debug(
+            "Storekeeper: preparazione avviata",
+            operation=storekeeper.get("operation"),
+            repository=repository_name,
+        )
         if not repository_name:
             return flow.error("Nome del repository non specificato.")
 
@@ -169,16 +200,33 @@ class Manager(manager.Port):
     
     @flow.result()
     async def _execute(self, operation, session, constants):
+        self.logger.debug(
+            "Storekeeper: operazione avviata",
+            operation=operation,
+            repository=constants.get("repository"),
+        )
         state = await self.preparation(session, constants | {'operation': operation})
         if not flow.check(state):
+            self.logger.warning(
+                "Storekeeper: preparazione fallita",
+                operation=operation,
+                repository=constants.get("repository"),
+            )
             return state
 
         repository, operations = flow.output(state)
-        return await self.orchestrator.first_completed(
+        result = await self.orchestrator.first_completed(
             session,
             operations=operations,
             success=repository.results,
         )
+        self.logger.debug(
+            "Storekeeper: operazione completata",
+            operation=operation,
+            repository=constants.get("repository"),
+            success=flow.check(result),
+        )
+        return result
 
     # overview/view/get
     @flow.result()

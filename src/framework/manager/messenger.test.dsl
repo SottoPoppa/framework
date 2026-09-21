@@ -43,5 +43,20 @@ tuple:test_suite := (
         };
         "assert": @received.is_success == true & @received.output.value.message == @expected.message & @received.output.value.domain == @expected.domain;
         "note": "receive legge dal provider mock il messaggio inviato da send";
+    },
+    {
+        "action": exports.messenger.send;
+        "inputs": {
+            "args": (session);
+            "kwargs": {
+                "message": "pong";
+                "adapter": "mock";
+                "receiver": "missing";
+                "domain": "info"
+            }
+        };
+        "outputs": none;
+        "assert": @received.is_success == false & @received.errors != none;
+        "note": "send segnala un destinatario senza provider disponibile";
     }
 );

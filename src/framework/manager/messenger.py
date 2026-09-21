@@ -4,6 +4,7 @@ import framework.port.message as message
 import framework.port.manager as manager
 import framework.core.flow as flow
 import framework.core.framework as framework_module
+from framework.service.diagnostic import get_logger
 
 from framework.manager.defender import Manager as Defender
 
@@ -19,6 +20,11 @@ class Manager(manager.Port):
         self.defender = defender
         self.providers = messages
         self.framework = framework
+        self.logger = (
+            framework.get_logger("messenger")
+            if framework is not None and hasattr(framework, "get_logger")
+            else get_logger("messenger")
+        )
 
     def _matching_providers(self, receiver: str | None, adapter: str | None = None) -> list:
         """
@@ -74,12 +80,29 @@ class Manager(manager.Port):
         destination = constants.get("receiver")
         adapter = constants.get("adapter")
 
+        self.logger.debug(
+            "Messenger: dispatch avviato",
+            domain=domain,
+            receiver=destination,
+            adapter=adapter,
+        )
+
         if adapter == "dsl":
             if not destination or not self.defender or destination not in self.defender.controllers:
+                self.logger.warning(
+                    "Messenger: controller DSL non trovato",
+                    receiver=destination,
+                    domain=domain,
+                )
                 return flow.error("Controller DSL non trovato")
             request = dict(constants)
             request.update({"adapter": "dsl", "provider": "dsl", "receiver": destination})
             if not await self.defender.authorized("message", action="publish", request=request):
+                self.logger.warning(
+                    "Messenger: pubblicazione DSL non autorizzata",
+                    receiver=destination,
+                    domain=domain,
+                )
                 return flow.error("Messaggio DSL non autorizzato")
             if destination not in session.user_session.executions:
                 started = await session.run(destination)
@@ -92,22 +115,72 @@ class Manager(manager.Port):
                 constants.get("message"),
             )
             if flow.is_result(result) and not flow.check(result):
+                self.logger.error(
+                    "Messenger: pubblicazione DSL fallita",
+                    receiver=destination,
+                    domain=domain,
+                )
                 return result
+            self.logger.debug(
+                "Messenger: pubblicazione DSL completata",
+                receiver=destination,
+                domain=domain,
+            )
             return flow.success(result)
 
         matched = self._matching_providers(destination, adapter)
-
-        message_text = constants.get('message')
+        provider_names = [provider.config.get("name") or provider.adapter for provider in matched]
+        self.logger.debug(
+            "Messenger: provider selezionati",
+            receiver=destination,
+            adapter=adapter,
+            providers=provider_names,
+        )
 
         if destination and not matched:
+            self.logger.warning(
+                "Messenger: nessun provider trovato",
+                receiver=destination,
+                adapter=adapter,
+            )
             return flow.error("Nessun provider di messaggistica trovato")
 
         failure = None
         for provider in matched:
-            if await self._authorized_provider("publish", provider, destination, constants):
-                result = await provider.post(session, **constants | {'domain': domain})
-                if flow.is_result(result) and not flow.check(result) and failure is None:
+            provider_name = provider.config.get("name") or provider.adapter
+            authorized = await self._authorized_provider("publish", provider, destination, constants)
+            if not authorized:
+                self.logger.warning(
+                    "Messenger: provider non autorizzato",
+                    provider=provider_name,
+                    receiver=destination,
+                    domain=domain,
+                )
+                continue
+
+            self.logger.debug(
+                "Messenger: invio al provider",
+                provider=provider_name,
+                receiver=destination,
+                domain=domain,
+            )
+            result = await provider.post(session, **constants | {'domain': domain})
+            if flow.is_result(result) and not flow.check(result):
+                self.logger.error(
+                    "Messenger: invio al provider fallito",
+                    provider=provider_name,
+                    receiver=destination,
+                    domain=domain,
+                )
+                if failure is None:
                     failure = result
+            else:
+                self.logger.debug(
+                    "Messenger: invio al provider completato",
+                    provider=provider_name,
+                    receiver=destination,
+                    domain=domain,
+                )
         return failure or flow.success()
 
     @flow.result(inputs=('messenger',), outputs=())
@@ -136,21 +209,45 @@ class Manager(manager.Port):
         domain = constants.get("domain")
         destination = constants.get("receiver")
         matched = self._matching_providers(destination)
+        self.logger.debug(
+            "Messenger: ricezione avviata",
+            domain=domain,
+            receiver=destination,
+            providers=[provider.config.get("name") or provider.adapter for provider in matched],
+        )
 
         if destination and not matched:
+            self.logger.warning(
+                "Messenger: nessun provider disponibile per la ricezione",
+                receiver=destination,
+                domain=domain,
+            )
             return None
 
-        authorized = [
-            provider
-            for provider in matched
-            if await self._authorized_provider("subscribe", provider, destination, constants)
-        ]
+        authorized = []
+        for provider in matched:
+            provider_name = provider.config.get("name") or provider.adapter
+            if await self._authorized_provider("subscribe", provider, destination, constants):
+                authorized.append(provider)
+                continue
+            self.logger.warning(
+                "Messenger: sottoscrizione al provider non autorizzata",
+                provider=provider_name,
+                receiver=destination,
+                domain=domain,
+            )
+
         tasks = [
             asyncio.create_task(provider.read(session, **constants | {'domain': domain}))
             for provider in authorized
         ]
 
         if not tasks:
+            self.logger.debug(
+                "Messenger: nessun provider autorizzato per la ricezione",
+                receiver=destination,
+                domain=domain,
+            )
             return None
 
         try:
@@ -160,6 +257,12 @@ class Manager(manager.Port):
             )
 
             result = done.pop().result()
+
+            self.logger.debug(
+                "Messenger: ricezione completata",
+                receiver=destination,
+                domain=domain,
+            )
 
             for task in pending:
                 task.cancel()

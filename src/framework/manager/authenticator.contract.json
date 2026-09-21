@@ -23,27 +23,27 @@
   "hashes": {
     "Manager": {
       "activate": {
-        "production": "7e9afaf69be19b574fbaeb99004ce1dd029ef9d0557bd4b9eb5d4377b3313690",
+        "production": "06ee3290435873135c87cfa32b8ee0dc9961fd4c98d84392bb99b691248f4921",
         "test": "7e9afaf69be19b574fbaeb99004ce1dd029ef9d0557bd4b9eb5d4377b3313690"
       },
       "authenticate": {
-        "production": "cba8c62a81c6d800660adb3cf32f7963650c74fe043524b481f843d947a61feb",
+        "production": "01596d78844856be49785f811918f2ea1af21559f40dd2b7355e8bafd7b9e881",
         "test": "cba8c62a81c6d800660adb3cf32f7963650c74fe043524b481f843d947a61feb"
       },
       "invalidate": {
-        "production": "9a3561d2fa85346bff30c1e83e180f5a0055905d77f9bbd20b2ec8d58e58c345",
+        "production": "e53b06eb63c5292fbea731e8bc1b8b30b58a196a7ab864aade942d7cdfad5ca0",
         "test": "9a3561d2fa85346bff30c1e83e180f5a0055905d77f9bbd20b2ec8d58e58c345"
       },
       "regenerate": {
-        "production": "b2ce4a2838ce69538c87c750604140ed1ce55174a85c2d841fdf8e61de23eccf",
+        "production": "98c8834001e8ebddb31a56d6753476ad55db7a4042ee65be82a8db31fb47f41b",
         "test": "b2ce4a2838ce69538c87c750604140ed1ce55174a85c2d841fdf8e61de23eccf"
       },
       "shutdown": {
-        "production": "6ea432442825b6d1502427dad03d7a30a8c1cb26f2c873b5249dbb9f5bcdf176",
+        "production": "176d8e32d89a7d650c54edc12fb9e5f8be08d59bf689fe04df011eead274b665",
         "test": "6ea432442825b6d1502427dad03d7a30a8c1cb26f2c873b5249dbb9f5bcdf176"
       },
       "startup": {
-        "production": "e991371e29df2dc64233d6f51e396d1840583bc2914d06fd526c1931f0fbbf30",
+        "production": "bced058ae4422ad71c5bd508a2f7501417f19b91250ddcd8e244f4bbdc3ce1c1",
         "test": "e991371e29df2dc64233d6f51e396d1840583bc2914d06fd526c1931f0fbbf30"
       }
     }

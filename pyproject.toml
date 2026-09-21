@@ -37,9 +37,9 @@ persistence = "persistence.dsl"
 #persistence = "log"
 #name = "console"
 
-#[[message.bus]]
-#name = "broker"
-#implementation = "bus"
+[[message.bus]]
+name = "broker"
+implementation = "bus"
 
 #[[message.copilot]]
 #name = "copilot"
