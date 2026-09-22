@@ -4,6 +4,7 @@ from typing import Any
 
 from .context import ExecutionContext
 from .model import Call, ExecutionSpec, Literal, Ref
+from .session import SessionView
 
 
 class ExecutionFailed(Exception):
@@ -118,6 +119,19 @@ class Executor:
             # Valuta ricorsivamente gli argomenti
             args = [await self._eval(a, context) for a in x.arguments]
             kwargs = {k: await self._eval(v, context) for k, v in x.keywords.items()}
+
+            # Il DSL vede solo SessionView; i confini del framework ricevono
+            # il riferimento runtime senza renderlo serializzabile nel DSL.
+            runtime_session = self._get_from_context(context, "_runtime_session")
+            if runtime_session is not None:
+                args = [
+                    runtime_session if isinstance(value, SessionView) else value
+                    for value in args
+                ]
+                kwargs = {
+                    key: runtime_session if isinstance(value, SessionView) else value
+                    for key, value in kwargs.items()
+                }
 
             # BLOCCO CHIAVE: Se almeno uno degli argomenti è un LazyValue o un Ref(lazy=True),
             # l'intera operazione non può essere calcolata ora. Viene impacchettata in un LazyValue!

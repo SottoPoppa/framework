@@ -1,6 +1,28 @@
 import asyncio
+import json
 from enum import Enum
 from typing import Any
+
+
+def _json_value(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {str(key): _json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_value(item) for item in value]
+    raise TypeError(f"Valore non serializzabile nella sessione: {type(value).__name__}")
+
+
+def public_value(value: Any) -> Any:
+    """Converte valori DSL in payload pubblicabili senza riferimenti runtime."""
+    if isinstance(value, SessionView):
+        return value.to_dict()
+    if isinstance(value, dict):
+        return {str(key): public_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [public_value(item) for item in value]
+    return _json_value(value)
 
 class NodeState(str, Enum):
     PENDING='pending'; RUNNING='running'; SUCCESS='success'; FAILED='failed'; SKIPPED='skipped'
@@ -31,8 +53,9 @@ class UserSession:
 
     def publish_result(self, dag_name: str, node_name: str, value: Any) -> Any:
         """Pubblica l'ultimo payload riuscito di un nodo nella sessione utente."""
-        self.results.setdefault(dag_name, {})[node_name] = value
-        return value
+        safe_value = _json_value(value)
+        self.results.setdefault(dag_name, {})[node_name] = safe_value
+        return safe_value
 
     def get_result(self, dag_name: str, node_name: str, default: Any = None) -> Any:
         """Recupera un risultato DAG senza appiattirlo nel contesto locale."""
@@ -45,3 +68,51 @@ class UserSession:
         dag_results.pop(node_name, None)
         if not dag_results:
             self.results.pop(dag_name, None)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Restituisce la proiezione persistibile, senza esecuzioni DAG."""
+        return _json_value({
+            "id": self.id,
+            "context": self.context.data,
+            "results": self.results,
+        })
+
+    def to_json(self) -> str:
+        """Serializza la proiezione persistibile in JSON deterministico."""
+        return json.dumps(self.to_dict(), sort_keys=True)
+
+
+class SessionView:
+    """Vista JSON-safe della UserSession esposta alle espressioni DSL."""
+
+    def __init__(self, data: dict[str, Any]):
+        self._data = _json_value(data)
+
+    def get(self, path: str, default: Any = None) -> Any:
+        current: Any = self._data
+        for part in path.split("."):
+            if isinstance(current, dict) and part in current:
+                current = current[part]
+            elif isinstance(current, list) and part.isdigit() and int(part) < len(current):
+                current = current[int(part)]
+            else:
+                return default
+        return current
+
+    def __getitem__(self, key: str) -> Any:
+        value = self.get(key)
+        if value is None and key not in self.to_dict():
+            raise KeyError(key)
+        return value
+
+    def to_dict(self) -> dict[str, Any]:
+        return _json_value(self._data)
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), sort_keys=True)
+
+    def __getattr__(self, name: str) -> Any:
+        value = self.get(name)
+        if value is None and name not in self.to_dict():
+            raise AttributeError(name)
+        return value

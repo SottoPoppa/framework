@@ -186,6 +186,14 @@ La forma `@` identifica un valore di contesto runtime. Per i risultati
 cross-controller è obbligatoria: evita che un nome remoto venga interpretato
 come variabile locale.
 
+Nel contesto DSL `@session` è una snapshot JSON-safe (`SessionView`). Non
+contiene e non deve contenere `Session`, `SessionHandle`, Runner, Manager,
+Adapter, task asincroni o primitive di sincronizzazione. La `Session` del DAG
+resta privata al Runner. Quando una chiamata DSL attraversa un Manager o una
+Port che richiede l'argomento `session`, il framework reinietta internamente
+il riferimento runtime senza esporlo al DSL o alla serializzazione della
+`UserSession`.
+
 ### Esempio
 
 ```dsl

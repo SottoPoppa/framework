@@ -14,7 +14,7 @@ from .runner import DagRunner
 from .compiler import Compiler
 from .parser import Parser
 from .data import Registry
-from .session import UserSession
+from .session import SessionView, UserSession, public_value
 from framework.service.introspection import Reflection
 
 
@@ -135,6 +135,7 @@ class SessionHandle:
             ExecutionContext(self.env),
         )
         self.sid = self.user_session.id
+        self.view = SessionView(self.user_session.to_dict())
 
     @property
     def context(self):
@@ -144,6 +145,10 @@ class SessionHandle:
     def results(self):
         """Risultati pubblicati dai DAG della sessione, separati dai contesti locali."""
         return self.user_session.results
+
+    @property
+    def dsl_view(self):
+        return self.view
 
     def _register_functions(self, env: dict):
         """Registra automaticamente tutte le callable nel FunctionRegistry."""
@@ -158,6 +163,10 @@ class SessionHandle:
         if dag_name not in self.runner.dags:
             raise KeyError(f"DAG non registrato: {dag_name}")
         merged_env = {**self.env, **(env or {})}
+        merged_env.pop("session", None)
+        self.view = SessionView(self.user_session.to_dict())
+        merged_env["session"] = self.view
+        merged_env["_runtime_session"] = self
         self.env.update(env or {})
         self._register_functions(merged_env)
 
@@ -168,7 +177,7 @@ class SessionHandle:
             session = await self.runner.create_session(
                 dag_name,
                 initial_context=merged_env,
-                context=self.user_session.context,
+                context=ExecutionContext(),
                 user_session=self.user_session,
                 resolve_context=False,
             )
@@ -185,7 +194,12 @@ class SessionHandle:
 
         if session.errors:
             return flow.error(dict(session.errors))
-        return flow.success(dict(session.context.data))
+        public_context = {
+            key: value
+            for key, value in session.context.data.items()
+            if not key.startswith("_")
+        }
+        return flow.success(public_value(public_context))
 
     async def emit(
         self,

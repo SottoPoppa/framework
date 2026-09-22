@@ -8,7 +8,9 @@ any:user_session := imports.session.UserSession("sid", imports.context.Execution
 exports: {
     'mark': session_instance.mark;
     'publish_result': user_session.publish_result;
-    'get_result': user_session.get_result
+    'get_result': user_session.get_result;
+    'to_dict': user_session.to_dict;
+    'to_json': user_session.to_json
 };
 
 tuple:test_suite := (
@@ -32,5 +34,19 @@ tuple:test_suite := (
         "outputs": "src/application/controller/kanban.dsl";
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "UserSession.get_result recupera un risultato pubblicato tramite dot-notation"
+    },
+    {
+        "action": exports.to_dict;
+        "inputs": ();
+        "outputs": {"id": "sid"; "context": {}; "results": {"terminal": {"selected": "src/application/controller/kanban.dsl"}}};
+        "assert": @received.is_success == true & @received.output.value == @expected;
+        "note": "UserSession.to_dict espone solo dati JSON-safe e non le esecuzioni DAG"
+    },
+    {
+        "action": exports.to_json;
+        "inputs": ();
+        "outputs": "{\"context\": {}, \"id\": \"sid\", \"results\": {\"terminal\": {\"selected\": \"src/application/controller/kanban.dsl\"}}}";
+        "assert": @received.is_success == true & @received.output.value == @expected;
+        "note": "UserSession.to_json serializza la proiezione persistibile della sessione"
     }
 );

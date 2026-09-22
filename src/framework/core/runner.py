@@ -230,7 +230,8 @@ class DagRunner:
                     s.results[n] = value
                     s.context.set(n, value)
                     if s.user_session is not None:
-                        s.user_session.publish_result(s.dag_name, n, value)
+                        public_value = flow.output(value) if flow.is_result(value) else value
+                        s.user_session.publish_result(s.dag_name, n, public_value)
                     s.mark(n, NodeState.SUCCESS)
 
                     # ---> FIX 2: Usa il metodo dag.successors(n) se 'successors' è un metodo <---

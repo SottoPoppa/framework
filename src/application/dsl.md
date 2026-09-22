@@ -126,7 +126,9 @@ Ogni controller mantiene il proprio contesto locale. I risultati pubblicati da
 un controller non vengono copiati automaticamente nel contesto di un altro
 controller e non sono esposti tramite un namespace globale `shared`.
 
-La sessione utente è il punto esplicito di coordinamento tra DAG:
+La sessione utente è il punto esplicito di coordinamento tra DAG. Nel DSL viene
+esposta solo una snapshot JSON-safe della sessione; la sessione runtime del DAG
+non entra mai nel contesto DSL:
 
 ```dsl
 // Valore locale al controller corrente
@@ -144,3 +146,9 @@ La forma canonica per un risultato remoto è quindi
 riuscito pubblicato dal nodo. Un risultato non ancora prodotto deve essere
 gestito dal controller chiamante come valore assente; i risultati vengono
 rimossi quando il nodo viene invalidato o la sessione viene chiusa.
+
+Quando una funzione di Manager o Port riceve un argomento `session`, il
+framework reinietta internamente il riferimento runtime corretto. Il DSL può
+quindi continuare a usare le API dichiarative esistenti senza ricevere o
+serializzare `Session`, `SessionHandle`, Runner, adapter o primitive di
+sincronizzazione.
