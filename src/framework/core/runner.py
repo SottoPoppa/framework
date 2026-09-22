@@ -39,6 +39,7 @@ class DagRunner:
         *,
         initial_context: dict[str, Any] | None = None,
         context: ExecutionContext | None = None,
+        user_session=None,
         resolve_context: bool = True,
     ) -> Session:
         dag = self.dags[dag_name]
@@ -48,20 +49,13 @@ class DagRunner:
         raw_ctx.update(initial_context or {})
 
         execution_context = context or ExecutionContext()
-        session = Session(dag.name, sid, execution_context)
+        session = Session(dag.name, sid, execution_context, user_session=user_session)
         self.sessions[sid] = session
 
         if resolve_context:
-            # Struttura il contesto in namespace separati per evitare ambiguità
-            # - shared: variabili da altri controller DSL (esplicite tramite shared.*)
-            # - session: l'oggetto sessione per accesso metadati
-            # - local: spazio locale (vuoto all'inizio, riempito dal DSL)
-            shared_context = {}
             for key, expr in raw_ctx.items():
                 resolved_val = await self.executor.execute(expr, execution_context)
-                shared_context[key] = resolved_val
-            
-            execution_context.set('shared', shared_context)
+                execution_context.set(key, resolved_val)
 
         for node_name in dag.nodes:
             session.mark(node_name, NodeState.PENDING)
@@ -127,6 +121,10 @@ class DagRunner:
                     value = flow.output(value)
                 session.results[node_name] = value
                 session.context.set(node_name, value)
+                if session.user_session is not None:
+                    session.user_session.publish_result(
+                        session.dag_name, node_name, value
+                    )
                 flow._dev_log(
                     "dag.source.received node=%s payload_type=%s",
                     node_name,
@@ -231,6 +229,8 @@ class DagRunner:
                     # Salvataggio del risultato nel contesto e nella mappa della sessione
                     s.results[n] = value
                     s.context.set(n, value)
+                    if s.user_session is not None:
+                        s.user_session.publish_result(s.dag_name, n, value)
                     s.mark(n, NodeState.SUCCESS)
 
                     # ---> FIX 2: Usa il metodo dag.successors(n) se 'successors' è un metodo <---
@@ -312,6 +312,8 @@ class DagRunner:
                 continue
             visited.add(current)
             session.results.pop(current, None)
+            if session.user_session is not None:
+                session.user_session.clear_result(session.dag_name, current)
             session.errors.pop(current, None)
             session.mark(current, NodeState.PENDING)
             pending.extend(dag.successors.get(current, ()))

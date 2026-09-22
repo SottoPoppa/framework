@@ -140,6 +140,11 @@ class SessionHandle:
     def context(self):
         return self.user_session.context
 
+    @property
+    def results(self):
+        """Risultati pubblicati dai DAG della sessione, separati dai contesti locali."""
+        return self.user_session.results
+
     def _register_functions(self, env: dict):
         """Registra automaticamente tutte le callable nel FunctionRegistry."""
         if self.runner.registry:
@@ -164,6 +169,7 @@ class SessionHandle:
                 dag_name,
                 initial_context=merged_env,
                 context=self.user_session.context,
+                user_session=self.user_session,
                 resolve_context=False,
             )
             self.user_session.executions[dag_name] = session
@@ -222,6 +228,7 @@ class SessionHandle:
         for session in tuple(self.user_session.executions.values()):
             self.runner.close_session(session)
         self.user_session.executions.clear()
+        self.user_session.results.clear()
         self._closed = True
 
 

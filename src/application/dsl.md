@@ -119,3 +119,28 @@ If you need to explicitly reference a specific runtime context variable instead 
 ```dsl
 fetch() -> database.load(@current_user_id);
 ```
+
+### Sessione e risultati tra controller
+
+Ogni controller mantiene il proprio contesto locale. I risultati pubblicati da
+un controller non vengono copiati automaticamente nel contesto di un altro
+controller e non sono esposti tramite un namespace globale `shared`.
+
+La sessione utente è il punto esplicito di coordinamento tra DAG:
+
+```dsl
+// Valore locale al controller corrente
+dependencies
+
+// Metadati della sessione
+@session.sid
+
+// Risultato pubblicato dal controller terminal
+@session.results.terminal.selected
+```
+
+La forma canonica per un risultato remoto è quindi
+`@session.results.<controller>.<node>`. Il valore rappresenta l'ultimo payload
+riuscito pubblicato dal nodo. Un risultato non ancora prodotto deve essere
+gestito dal controller chiamante come valore assente; i risultati vengono
+rimossi quando il nodo viene invalidato o la sessione viene chiusa.

@@ -161,16 +161,32 @@ Questi pattern sono stati trovati nel codice esistente durante una review e sono
 
 ## 📦 DSL Cross-Controller Access Pattern
 
-Quando un controller DSL accede a variabili definite da un altro controller, il framework struttura il contesto in **tre namespace separati** per evitare ambiguità:
+Ogni controller DSL mantiene il proprio contesto locale. I risultati di un
+controller non vengono copiati nel contesto di un altro controller e non sono
+esposti tramite un namespace globale `shared`.
+
+La `UserSession` è il punto esplicito di coordinamento tra DAG e pubblica gli
+ultimi payload riusciti dei nodi eseguiti. Un risultato remoto si legge usando
+la forma canonica:
+
+```text
+@session.results.<controller>.<node>
+```
 
 ### Namespace Disponibili
 
-- **`shared.X`** — Variabili da altri controller DSL (risultati di esecuzioni precedenti)
-- **`session.context.X`** — Metadati della sessione (accesso all'oggetto UserSession)
-- **`local_X`** — Variabili locali (dichiarate in questo controller, naming convention)
-- **`X`** — Solo se dichiarate localmente senza prefisso
+- **`X`** — Nodo o variabile locale dichiarato nel controller corrente.
+- **`@payload.X`** — Campo del payload dell'evento corrente.
+- **`@session.X`** — Metadati e stato della sessione utente, per esempio
+  `@session.sid`.
+- **`@session.results.<controller>.<node>`** — Ultimo payload riuscito
+  pubblicato da un nodo di un altro controller.
 
-### Esempi
+La forma `@` identifica un valore di contesto runtime. Per i risultati
+cross-controller è obbligatoria: evita che un nome remoto venga interpretato
+come variabile locale.
+
+### Esempio
 
 ```dsl
 % terminal.dsl %
@@ -181,43 +197,37 @@ Quando un controller DSL accede a variabili definite da un altro controller, il 
 
 % chat.dsl %
 {
-    % ✅ Accedi a variabili da terminal.dsl (esplicito!)
-    file_selected -> shared.terminal.selected;
-    
-    % ✅ Accedi alla sessione (esplicito!)
-    user_id -> session.context.user.id;
-    
-    % ✅ Variabile locale (naming convention)
+    // Risultato pubblicato da terminal.dsl
+    file_selected -> @session.results.terminal.selected;
+
+    // Metadato della sessione
+    session_id -> @session.sid;
+
+    // Variabile locale
     local_file_deps -> file_dependencies(file_selected);
-    
-    % ✅ Usa la locale
-    send(...) -> messenger.send(session, message: str(local_file_deps));
+
+    send(...) -> messenger.send(
+        session,
+        message: str(local_file_deps)
+    );
 }
 ```
 
 ### ❌ PROIBITO
 
 ```dsl
-% Accesso ambiguo — NON FUNZIONA!
+// Accesso remoto ambiguo: non usare il nome del controller senza namespace.
 dependencies -> file_dependencies(terminal.selected);
-% NameError: Ambiguous variable 'terminal.selected'
-% Use: shared.terminal.selected (for cross-controller)
+
+// Namespace rimosso: non usare shared per i risultati tra controller.
+dependencies -> file_dependencies(shared.terminal.selected);
 ```
 
-### Perché
-
-Il framework **appiattisce il contesto in namespace separati** nel runner (`runner.py`, linea 54):
-
-```python
-# Tutte le variabili condivise vanno in shared.
-execution_context.set('shared', shared_context)
-```
-
-**Benefici**:
-- ✅ Impossibile confondere variabili locali e globali
-- ✅ Dipendenze cross-DSL esplicite e tracciabili
-- ✅ Debugging facile (vedi subito da dove viene una variabile)
-- ✅ No shadowing accidentale di variabili
+Se il controller o il nodo remoto non è stato ancora eseguito, il risultato è
+assente e il controller chiamante deve gestire esplicitamente quel caso. I
+risultati appartengono alla sessione utente, non al contesto globale del
+processo, e vengono rimossi quando il nodo viene invalidato o la sessione
+viene chiusa.
 
 ---
 
