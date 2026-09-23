@@ -77,42 +77,34 @@ type:user_schema := {
     "age":  { "type": "int", "default": 18 };
 };
 
-any:source := resource("src/application/policy/presentation/demo.dsl");
+any:source := "test data";
 ```
 
 La forma non tipizzata `name := value` non è supportata in modo affidabile dal
 grammar attuale. Il valore nullo del DSL è `none` (non `null` e non `None`).
+`resource()` non è un built-in generale: viene iniettato nell'ambiente dei
+test DSL dal Tester.
 
 ## 🔌 Built-in Functions
-The DSL natively provides several built-in utilities:
-- `print(val)`: Prints to the server console.
-- `random(min, max)`: Returns a random integer.
-- `keys(dict)`, `values(dict)`: Dictionary extractors.
-- `union(dict1, dict2)`: Merges two dictionaries.
-- `format("Hello {0}", name)`: String formatting.
-- `get(dict, "key.sub")`, `put(dict, "key", "val")`: Deep dictionary traversals.
-- `foreach(iterable, function)`: Iterates over a list.
-- `resource(path)`: Carica un file dal file-system come **stringa** (testo puro). Utile per template, config, DSL, codice sorgente.
-- `import(module_path)`: Importa un **modulo Python** e lo rende disponibile nel contesto DSL. Esempio: `import("framework.manager.tester")` carica il modulo e puoi accedere alle sue funzioni.
+Il registry core `framework.core.library.BUILTINS` espone `map_records`,
+`tag_variants`, `keys`, `values`, `union`, `print`, `pass`, `int`, `str`,
+`bool`, `random`, `format`, `result`, `file_dependencies`, `prefix_match` e
+`tuple_filter_tuple`. `get()`, `put()` e `foreach()` non sono registrati come
+built-in.
 
-### Differenza tra `resource()` e `import()`
+### Funzioni iniettate nei test
 
-```dsl
-// resource() → carica il file come STRINGA
-any:my_source := resource("src/framework/manager/tester.py");
-// my_source è il codice sorgente (testo)
+Nei file `.test.dsl`, il Tester aggiunge `resource(path)` per leggere un file
+come testo e registra anche `import(module_path)`. Quest'ultimo percorso è
+come testo e registra anche `import(module_path)`. L'import accetta il nome
+assoluto di un modulo Python e delega da `Loader.import_module()` a
+`Framework.import_module()`, che usa `importlib.import_module()`. Per i metodi
+che richiedono stato usa fixture già iniettate oppure un test Python dedicato.
 
-// import() → carica il MODULO PYTHON
-any:my_module := import("framework.manager.tester");
-// my_module è il modulo importato, puoi usare my_module.resolve_filter, etc.
-```
-
-Nei test `.test.dsl`, `import()` è adatto a esporre funzioni e metodi già
-disponibili. Non va usato come se fosse un costruttore generale di oggetti
-Python: la costruzione di istanze e la modifica imperativa dei loro attributi
-non sono garantite dal runner DSL. Per testare un metodo che richiede stato
-interno, usare una fixture già iniettata dal runner oppure un test Python
-dedicato.
+Durante i test, `@received` contiene il `flow.Result` restituito da
+`interpreter.call()`: usa `@received.is_success`, `@received.output.value` in
+caso di successo e `@received.output.error` in caso di errore. Gli argomenti
+originali restano in `@received.input` e possono contenere dati sensibili.
 
 ## 🌐 Context Variables (`@`)
 If you need to explicitly reference a specific runtime context variable instead of relying on standard resolution, you can prefix it with `@`.
@@ -135,10 +127,10 @@ non entra mai nel contesto DSL:
 dependencies
 
 // Metadati della sessione
-@session.sid
+@session.id
 
 // Risultato pubblicato dal controller terminal
-@session.results.terminal.selected
+@session.results.terminal.select
 ```
 
 La forma canonica per un risultato remoto è quindi

@@ -8,6 +8,7 @@ import framework.core.interpreter as interpreter
 import framework.core.library as library
 import framework.port.manager as manager
 import framework.core.flow as flow
+from framework.core.model import Deferred
 import framework.manager.loader as loader_module
 
 
@@ -285,7 +286,10 @@ class Manager(manager.Port):
             if flow.is_result(run_result) and not run_result.is_success:
                 error = flow.output(run_result)
                 raise error if isinstance(error, Exception) else RuntimeError(str(error))
-            ctx = flow.output(run_result) if flow.is_result(run_result) else run_result
+            execution = session.user_session.execution(path)
+            if execution is None:
+                raise RuntimeError(f"L'esecuzione DSL {path} non ha prodotto un contesto runtime")
+            ctx = execution.context.flatten()
         except Exception as e:
             s.error(
                 f"Il file DSL {path} non è stato eseguito correttamente (errore di parsing o runtime)",
@@ -363,7 +367,7 @@ class Manager(manager.Port):
                 )
                 continue
 
-            if not callable(assert_fn):
+            if not callable(assert_fn) and not isinstance(assert_fn, Deferred):
                 self._record_setup_error(
                     results, s, i, test_note, target,
                     f"'assert' non è una funzione valida (valore risolto: {assert_fn!r})."

@@ -97,34 +97,33 @@ Il framework ha già il meccanismo per impedire che codice non verificato arrivi
 ### Contratto Flow per Manager e Adapter
 
 I metodi pubblici che attraversano un confine tra Manager, Port e Adapter devono
-restituire sempre un risultato Flow. Il formato comune è:
+restituire un `flow.Result`. Non trattarlo come un dizionario con chiavi
+`success`, `outputs` o `errors`:
 
 ```python
-{
-    "success": True | False,
-    "outputs": valore | None,
-    "errors": [],
-    "action": "nome_metodo",
-    "component": "modulo.python",
-    "history": []
-}
+result.is_success          # bool
+result.output              # Success oppure Failure
+result.output.value        # payload in caso di successo
+result.output.error        # errore in caso di fallimento
+result.transactions        # risultati Flow dei confini interni
 ```
 
 Regole operative:
 
 1. Usa `@flow.result()` sui metodi pubblici dei Manager e sulle API pubbliche degli Adapter.
 2. Se un Port definisce una mappa `_method_decorators`, applicala automaticamente in `__init_subclass__` agli override degli Adapter concreti.
-3. Usa `flow.output(result)` per estrarre il valore contenuto in `outputs`; non accedere direttamente al valore come se il risultato fosse già il payload.
-4. Propaga un risultato fallito senza trasformarlo in un valore normale: `if not result.get("success"): return result`.
+3. Usa `flow.output(result)` per estrarre il payload o il valore d'errore; `flow.unwrap(result)` estrae il payload oppure solleva l'errore.
+4. Controlla l'esito con la proprietà `result.is_success`. Propaga un Flow fallito senza convertirlo in un valore normale.
 5. Non decorare automaticamente ogni helper privato o funzione pura. Gli helper asincroni interni vanno decorati solo se rappresentano davvero un confine di pipeline.
 6. Non annidare risultati Flow. Se un metodo decorato riceve o restituisce già un Flow, deve mantenerne il contenuto e aggiungere soltanto la traccia.
-7. Per aggiungere provenienza usa `flow.trace(...)`, che aggiorna `action`, `component`, `pipeline`, `node` e `history` senza creare un secondo risultato.
+7. I metadati disponibili includono `action`, `component`, `execution_time_ms`, `input` e `transactions`; non presumere campi `pipeline`, `node` o `history` sul `Result`.
+8. `Result.input` conserva gli argomenti e le keyword argument della chiamata. Non esporre il risultato completo senza filtrare eventuali sessioni, credenziali e dati sensibili.
 
 Esempio di chiamata corretta:
 
 ```python
 result = await manager.operation(session, **constants)
-if not result["success"]:
+if not result.is_success:
     return result
 value = flow.output(result)
 ```
@@ -178,7 +177,7 @@ la forma canonica:
 - **`X`** — Nodo o variabile locale dichiarato nel controller corrente.
 - **`@payload.X`** — Campo del payload dell'evento corrente.
 - **`@session.X`** — Metadati e stato della sessione utente, per esempio
-  `@session.sid`.
+    `@session.id`.
 - **`@session.results.<controller>.<node>`** — Ultimo payload riuscito
   pubblicato da un nodo di un altro controller.
 
@@ -221,10 +220,10 @@ risultati identici, senza ereditare alcuna esecuzione DAG.
 % chat.dsl %
 {
     // Risultato pubblicato da terminal.dsl
-    file_selected -> @session.results.terminal.selected;
+    file_selected -> @session.results.terminal.select;
 
     // Metadato della sessione
-    session_id -> @session.sid;
+    session_id -> @session.id;
 
     // Variabile locale
     local_file_deps -> file_dependencies(file_selected);
@@ -240,10 +239,10 @@ risultati identici, senza ereditare alcuna esecuzione DAG.
 
 ```dsl
 // Accesso remoto ambiguo: non usare il nome del controller senza namespace.
-dependencies -> file_dependencies(terminal.selected);
+dependencies -> file_dependencies(terminal.select);
 
 // Namespace rimosso: non usare shared per i risultati tra controller.
-dependencies -> file_dependencies(shared.terminal.selected);
+dependencies -> file_dependencies(shared.terminal.select);
 ```
 
 Se il controller o il nodo remoto non è stato ancora eseguito, il risultato è
@@ -370,14 +369,13 @@ Dettaglio operativo:
    applica il mapping provider → modello canonico e normalizza il dato usando
    lo schema indicato da `model`. Errori di normalizzazione diventano un
    `flow.error(...)`.
-7. Il risultato restituito resta un Flow: prima di usarne il payload, il
-    chiamante deve verificare `result["success"]` e chiamare
-    `flow.output(result)`. Non passare direttamente il dizionario Flow a una
-    risposta HTTP o a un renderer.
-8. Il campo `transactions` conserva i Flow dei confini interni attraversati
-    dalla chiamata. La raccolta vale per DSL, framework e infrastructure e
-    consente di ricostruire l'albero della transazione. Gli input non vengono
-    memorizzati automaticamente per evitare di registrare segreti o token.
+7. Il risultato restituito è un Flow: prima di usarne il payload, il chiamante
+    deve verificare `result.is_success` e chiamare `flow.output(result)` oppure
+    `flow.unwrap(result)`. Non passare il `Result` completo a una risposta HTTP
+    o a un renderer.
+8. `result.transactions` conserva i Flow dei confini interni attraversati.
+    `result.input` conserva gli argomenti della chiamata: filtra i dati sensibili
+    prima di esporre o serializzare il risultato.
 
 ---
 
@@ -486,8 +484,8 @@ Gli alias reactive cercano esclusivamente `src/application/controller/<alias>.ds
 [project]
 name = "my_app"
 
-[project.policy]
-presentation = "web.toml"  # → src/application/policy/presentation/web.toml
+[manager.presenter]
+presentation = "presentation.dsl"  # → src/application/policy/presentation/presentation.dsl
 
 [manager.defender]
 key = "SECRET_KEY"
@@ -507,10 +505,12 @@ Ogni blocco (`persistence`, `presentation`, `message`, `manager`, ...) attiva un
 
 ## 🌐 Routing e Policy
 
-Route e regole di accesso vivono in `src/application/policy/presentation/web.toml`.
+Le route sono dichiarate in `src/application/policy/presentation/routes.dsl`,
+incluso da `presentation.dsl`. Le regole di accesso e la configurazione della
+Port di presentazione sono espresse in DSL, non in `web.toml`.
 
-1. **Aggiungere una rotta:** entry `[[store.data.routes]]`. Il path `view` è relativo a `src/application/view/page/` — non includere il prefisso `page/` (usa `view = "portfolio.xml"`, non `view = "page/portfolio.xml"`).
-2. **Definire una policy:** entry `[[policies]]`, con condizioni valutate su `input.path` / `input.principal`.
+1. **Aggiungere una rotta:** aggiungi una dichiarazione `route:NOME := {...}` in `routes.dsl`. Il `view` è relativo a `src/application/view/page/` (per esempio `view:"portfolio.xml"`).
+2. **Definire una policy:** usa le dichiarazioni `policy:` e le mappe `rules:` di `presentation.dsl`, seguendo la sintassi DSL esistente.
 
 ---
 
@@ -526,7 +526,7 @@ Assicurati sempre che il virtual environment sia attivo prima di eseguire comand
 | `python3 public/main.py --install` | Installa solo le dipendenze degli adapter attivi (senza editable install) |
 | `python3 public/main.py --test [FILTRO]` | Esegue i test, opzionalmente filtrati (`managers`, `ports`, `services`, `infrastructure/message`, ecc.) |
 | `python3 public/main.py --test-integration [FILTRO]` | Esegue gli scenari `*.integration.test.dsl` vicino al caso d'uso testato |
-| `python3 public/main.py --verify` | Verifica tutti i contract in modalità strict senza costruire né avviare l'applicazione |
+| `python3 public/main.py --verify` | Verifica i contract in strict e termina senza avviare l'applicazione |
 | `python3 public/main.py --dev` | Modalità dev: disattiva il controllo strict dei contract |
 | `python3 public/main.py --skip-verify` | Bypassa il controllo "codice testato" — solo per emergenze umane, mai come default in un workflow LLM |
 
@@ -539,11 +539,11 @@ I flag principali selezionano percorsi distinti nel launcher:
 - **Installazione adapter** — `python3 public/main.py --install`: salta l'editable install e installa solo le dipendenze dichiarate dagli adapter attivi. Non esegue il bootstrap completo e non avvia l'applicazione.
 - **Test DSL** — `python3 public/main.py --test [FILTRO]`: esegue il bootstrap necessario al tester con strict disattivato, esegue i file `.test.dsl` selezionati e può rigenerare i contract certificati. Restituisce exit code `0` se la suite passa e `1` se un test o un file non viene eseguito.
 - **Integration test DSL** — `python3 public/main.py --test-integration [FILTRO]`: esegue i file `*.integration.test.dsl` sul runtime già bootstrap-ato. Gli scenari usano manager, adapter e sessione applicativa reali, ma non aggiornano i contract dei componenti.
-- **Verifica contract** — `python3 public/main.py --verify`: carica i componenti in strict senza costruire container, adapter o `Application`. Restituisce `0` solo se tutti gli export dichiarati sono presenti e gli hash corrispondono; restituisce `1` in caso di contract stale, export mancanti o errore di discovery.
+- **Flag `--verify`** — prepara il kernel, verifica i contract in strict tramite `Framework.verify_contracts()` e termina senza costruire o avviare l'applicazione. Restituisce `0` se la verifica passa e `1` per contract stale o errori di discovery.
 - **Modalità sviluppo** — `python3 public/main.py --dev`: esegue il normale bootstrap con verifica strict disattivata. Non deve essere usata come sostituto dei test o della verifica dei contract.
 - **Bypass emergenziale** — `python3 public/main.py --skip-verify`: esegue il normale bootstrap ignorando il controllo strict dei contract. È riservato a interventi manuali temporanei e non deve essere usato per risolvere test falliti.
 
-`--setup`, `--install`, `--test` e `--verify` sono modalità operative alternative all'avvio normale. Per la CI usare almeno `--test` e il controllo del working tree sui contract; usare anche `--verify` quando si vuole controllare esplicitamente il boot strict senza avviare servizi.
+`--setup`, `--install`, `--test` e `--verify` selezionano percorsi distinti. `--verify` non si combina con `--setup`, `--install`, `--test`, `--test-integration`, `--dev` o `--skip-verify`. Per la CI eseguire i test DSL, controllare le modifiche ai contract nel working tree e poi usare `--verify` per la verifica strict senza startup.
 
 ### Contract e API dichiarata
 
@@ -613,13 +613,12 @@ Un file `.test.dsl` ha tre sezioni:
 ```dsl
 // Sezione 1: IMPORTS — Carica i moduli/risorse di cui il test ha bisogno
 imports: {
-    'module_name': import("framework.manager.some_manager"),
     'helper_data': resource("src/path/to/file.json")
 };
 
 // Sezione 2: EXPORTS — Dichiara l'API pubblica da certificare
 exports: {
-    'component': imports.module_name.Component
+    'messenger': test.managers.messenger
 };
 
 // Sezione 3: TEST SUITE — Definisce i test veri
@@ -630,6 +629,12 @@ tuple:test_suite := (
 );
 ```
 
+`resource()` e `import()` vengono aggiunti dal Tester nell'ambiente dei test,
+non sono built-in generali del DSL. `import(module_path)` accetta il nome
+assoluto di un modulo Python e delega da `Loader.import_module()` a
+`Framework.import_module()`, che usa `importlib.import_module()`. Per i metodi
+che richiedono stato usa fixture già iniettate o un test Python dedicato.
+
 ### Anatomia di un Test Case
 
 ```dsl
@@ -637,7 +642,7 @@ tuple:test_suite := (
     "action":   exports.component.method,      // Metodo dell'API da testare
     "inputs":   "arg" or ("arg1", "arg2") or {"key": "value"},  // Input(i)
     "outputs":  "expected_result",             // Output atteso
-    "assert":   @received.outputs == @expected, // Condizione sul payload
+    "assert":   @received.is_success == true & @received.output.value == @expected, // Condizione sul payload
     "note":     "Descrizione leggibile del test"  // Documentazione
 }
 ```
@@ -652,16 +657,15 @@ tuple:test_suite := (
   - Una tupla di tuple per funzioni che prendono liste di tuple: `(("a", 1), ("b", 2))`
 - **`"outputs"`**: Il payload atteso. Il framework lo assegnerà a `@expected`.
 - **`"assert"`**: Qualunque espressione DSL che ritorni `true`/`false`. I valori testati sono disponibili come:
-    - `@received` — il risultato Flow completo, con `success`, `outputs`, `errors`, `transactions` e, in `--dev`, `replay`
-    - `@received.outputs` — il payload restituito dalla funzione
-    - `@received.success` — l'esito booleano della chiamata
-    - `@received.errors` — gli errori della chiamata
+    - `@received` — il `flow.Result` completo
+    - `@received.is_success` — l'esito booleano della chiamata
+    - `@received.output.value` — il payload quando la chiamata ha successo
+    - `@received.output.error` — l'errore quando la chiamata fallisce
     - `@received.transactions` — i risultati Flow delle chiamate interne
-    - `@received.replay` — gli input catturati in modalità `--dev`
+    - `@received.input` — argomenti e keyword argument conservati nel risultato; possono contenere dati sensibili
     - `@expected` — il valore dichiarato in `"outputs"`
-        - Per il payload: `@received.outputs == @expected`
-        - Per un esito riuscito: `@received.success == true & @received.outputs == @expected`
-        - Per un errore: `@received.success == false & @received.errors != none`
+        - Per il payload: `@received.is_success == true & @received.output.value == @expected`
+        - Per un errore: `@received.is_success == false & @received.output.error != none`
 - **`"note"`**: Descrizione breve e leggibile del test, mostrata nei log quando passa o fallisce. **Obbligatoria.**
 
 ### Pattern Consigliati
@@ -672,7 +676,7 @@ tuple:test_suite := (
     "action": exports.resolve_filter;
     "inputs": "managers";
     "outputs": "src/framework/manager";
-    "assert": @received.outputs == @expected;
+    "assert": @received.is_success == true & @received.output.value == @expected;
     "note": "resolve_filter('managers') ritorna il percorso corretto";
 }
 ```
@@ -683,7 +687,7 @@ tuple:test_suite := (
     "action": exports.union;
     "inputs": ({"a": 1}, {"b": 2});
     "outputs": {"a": 1, "b": 2};
-    "assert": @received.outputs == @expected;
+    "assert": @received.is_success == true & @received.output.value == @expected;
     "note": "union() unisce due dizionari correttamente";
 }
 ```
@@ -694,7 +698,7 @@ tuple:test_suite := (
     "action": exports.validate_user;
     "inputs": {"name": "Alice", "age": 25};
     "outputs": true;
-    "assert": @received.success == true & @received.outputs == @expected;
+    "assert": @received.is_success == true & @received.output.value == @expected;
     "note": "validate_user accetta utente valido";
 }
 ```
@@ -705,7 +709,7 @@ tuple:test_suite := (
     "action": exports.get_item;
     "inputs": ("items", "missing_key");
     "outputs": none;
-    "assert": @received.outputs == @expected;
+    "assert": @received.is_success == true & @received.output.value == @expected;
     "note": "get_item ritorna null per chiave mancante (no crash)";
 }
 ```
@@ -716,7 +720,7 @@ tuple:test_suite := (
     "action": exports.is_admin;
     "inputs": {"role": "user"};
     "outputs": false;
-    "assert": @received.success == true & @received.outputs == @expected & @received.outputs != true;
+    "assert": @received.is_success == true & @received.output.value == @expected & @received.output.value != true;
     "note": "is_admin ritorna false per utente non-admin";
 }
 ```
@@ -737,15 +741,15 @@ tuple:test_suite := (
 
 2. **Test che verificano logica del framework, non del componente:**
    ```dsl
-   // ❌ SBAGLIATO — state il verificando che import() funziona nel DSL
+    // ❌ SBAGLIATO — il modulo non è un'azione chiamabile
    {
        "action": imports.module_name;  // Non è una funzione!
        "inputs": ();
        "outputs": true;
-    "assert": @received.success == true & @received.outputs != none;
+    "assert": @received.is_success == true & @received.output.value != none;
    }
    ```
-   **Soluzione:** Testa una **funzione** del modulo importato, non il modulo stesso.
+    **Soluzione:** Testa una callable fornita da una fixture o da `test.managers`. L'import dinamico resta da evitare finché il Loader non viene corretto.
 
 3. **Note generiche o assenti:**
    ```dsl
@@ -754,7 +758,7 @@ tuple:test_suite := (
        "action": exports.foo;
        "inputs": "bar";
        "outputs": "baz";
-    "assert": @received.outputs == @expected;
+    "assert": @received.is_success == true & @received.output.value == @expected;
        "note": "test";  // Troppo vago
    }
    ```
@@ -774,7 +778,7 @@ tuple:test_suite := (
        "action": exports.my_function;
        "inputs": "test_input";
        "outputs": "test_output";
-    "assert": @received.outputs == @expected;
+    "assert": @received.is_success == true & @received.output.value == @expected;
        "note": "Verificare che my_function è disponibile e non crasha";
    }
    ```
@@ -800,7 +804,7 @@ tuple:test_suite := (
 
 Prima di dichiarare un file `.test.dsl` finito, verifica:
 
-- ✅ **Sezione `imports`**: Carica tutti i moduli/risorse necessari con `import()` (moduli Python) o `resource()` (file).
+- ✅ **Sezione `imports`**: Usa `resource()` per i file di supporto e `import()` per moduli Python con nome assoluto; usa fixture iniettate per oggetti che richiedono stato.
 - ✅ **Sezione `exports`**: Dichiara tutta l'API pubblica da certificare; può contenere funzioni, classi o istanze.
 - ✅ **Metodi esportati**: Ogni metodo raggiunto da un export oggetto è usato da almeno un test passato.
 - ✅ **Almeno 2-3 test per funzione testata**: Nominal case + edge case + negation/error.
@@ -829,23 +833,14 @@ python3 public/main.py --test
 
 Quando l'intera suite passa, `Contract.record_tested()` rigenera il file `.contract.json` accanto al componente. Il boot strict verifica esclusivamente gli export dichiarati nel contract e confronta gli hash `test` e `production`.
 
-### Verifica strict senza avvio dell'applicazione
+### Verifica strict senza startup
 
-Il comando:
-
-```bash
-python3 public/main.py --verify
-```
-
-carica schemi, servizi core, manager e adapter configurati in modalità strict e verifica i contract tramite `Contract.verify_module`. Non costruisce il container, non istanzia gli adapter, non crea `Application` e non avvia servizi di rete.
-
-Il comando restituisce:
-
-- exit code `0` se tutti i contract sono coerenti e gli export dichiarati risultano testati;
-- exit code `1` se un contract contiene export mancanti, hash non aggiornati o componenti non certificati;
-- exit code `1` anche in caso di errore durante la discovery o il caricamento dei moduli.
-
-`--verify` non sostituisce `--test`: il primo controlla la coerenza tra codice e contract, mentre il secondo esegue le suite DSL e può rigenerare i contract. In CI è consigliato eseguire prima `--test`, verificare che il working tree non contenga contract modificati e poi usare `--verify` come controllo strict finale.
+`python3 public/main.py --verify` prepara il kernel, carica i componenti
+configurati e verifica i contract in strict senza costruire il container o
+avviare `Application`. Restituisce `0` se tutti i contract passano e `1` se un
+contract è stale o la discovery fallisce. `--test` resta il comando separato
+per eseguire le suite DSL; i contract stale attuali sono riportati in
+`report.md`.
 
 ---
 

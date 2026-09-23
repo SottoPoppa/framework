@@ -12,10 +12,10 @@ OmniPort uses a Jinja2-compatible syntax for layout inheritance and blocks:
 
 ## 🧩 Custom Components
 
-OmniPort allows you to create reusable UI components by defining XML files in `src/application/view/components/`.
+OmniPort allows you to create reusable UI components by defining XML files in `src/application/view/component/`.
 
 ### Creating a Component
-Create an XML file, for example `src/application/view/components/Card.xml`:
+Create an XML file, for example `src/application/view/component/Card.xml`:
 ```xml
 <Column class="p-6 bg-white rounded-xl shadow-xl border border-gray-100">
     <Text type="h3" font="bold" color="#111">{{ component.attributes.title }}</Text>
@@ -40,6 +40,12 @@ Inside a component template, you have access to:
 - `component.attributes`: A dictionary of all attributes passed to the tag.
 - `component.id`: The unique ID generated for this component instance.
 - `{{ inner | safe }}`: Injects the nested XML children of the tag. **Required** for components that wrap other elements.
+
+## Session Data
+
+Do not render the complete `session` object into a page. It can contain
+authentication state and other private data. Render only explicitly selected,
+non-sensitive fields that the page needs.
 
 ## ⚡ Reactive WebSockets (bind)
 

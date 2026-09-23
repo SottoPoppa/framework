@@ -304,6 +304,12 @@ Il runtime sa come farlo.
 Il Context conserva i dati e i risultati.
 ```
 
+Per i risultati usa il contratto runtime effettivo: `Result.is_success` è una
+proprietà, `Result.output` contiene `Success.value` o `Failure.error`,
+`flow.output()` estrae payload o errore e `flow.unwrap()` solleva l'errore.
+Non presumere chiavi `success`/`outputs`/`errors`. `Result.input` conserva gli
+argomenti della chiamata e va filtrato prima di esporre il risultato.
+
 ---
 
 ## 12. Scrivi codice comprensibile attraverso il flusso dei dati

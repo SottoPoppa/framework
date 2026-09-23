@@ -49,14 +49,17 @@ class Framework:
         self.infrastructure = None
         self.loader = None
 
-    async def bootstrap(self, config_toml_path: Any = "pyproject.toml"):
-        """Inizializza il kernel e delega il bootstrap operativo al Loader."""
+    async def _prepare_loader(self) -> Any:
+        """Prepara il kernel e il Loader senza costruire l'applicazione."""
+        if self.loader is not None:
+            return self.loader
+
         cores = [
             Resource(name="framework.core.flow", path="src/framework/core/flow.py"),
             Resource(name="framework.core.infrastructure", path="src/framework/core/infrastructure.py"),
         ]
 
-        self.logger.info("Bootstrap del framework avviato", components=len(cores))
+        self.logger.info("Preparazione del kernel", components=len(cores))
         for core in cores:
             await self.add(core)
 
@@ -65,8 +68,23 @@ class Framework:
 
         loader_module = importlib.import_module("framework.manager.loader")
         self.loader = loader_module.Loader(self, self.infrastructure)
-        self.logger.info("Bootstrap del framework completato", components=len(cores))
-        return await self.loader.bootstrap(config_toml_path)
+        self.logger.info("Kernel pronto", components=len(cores))
+        return self.loader
+
+    async def bootstrap(self, config_toml_path: Any = "pyproject.toml"):
+        """Inizializza il kernel e delega il bootstrap operativo al Loader."""
+        loader = await self._prepare_loader()
+        return await loader.bootstrap(config_toml_path)
+
+    async def verify_contracts(self, config_toml_path: Any = "pyproject.toml") -> bool:
+        """Verifica i contract in strict senza costruire o avviare l'applicazione."""
+        self.strict = True
+        try:
+            loader = await self._prepare_loader()
+            return await loader.verify_contracts(config_toml_path)
+        except Exception as exc:
+            self.logger.error("Verifica contract fallita", exception=exc)
+            return False
 
     def get_logger(self, component: str):
         return get_logger(component)
@@ -105,6 +123,16 @@ class Framework:
             elif isinstance(node, ast.ImportFrom) and node.module:
                 result.add(node.module)
         return list(result)
+
+    def import_module(self, module_path: str):
+        """Importa un modulo Python tramite il kernel del framework."""
+        if not isinstance(module_path, str) or not module_path.strip():
+            raise ValueError("Il percorso del modulo non può essere vuoto")
+        if module_path.startswith("."):
+            raise ValueError("È richiesto il nome assoluto del modulo")
+        module = importlib.import_module(module_path)
+        self.logger.debug("Modulo importato", module=module_path)
+        return module
 
     async def load_module(
         self, name: str, path: str, extra: dict = None, force: bool = False

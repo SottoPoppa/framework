@@ -6,6 +6,8 @@ Un framework Python ad architettura esagonale (ports & adapters), pensato per es
 
 > "Smetti di scrivere codice per una sola piattaforma. Definisci l'intento, scegli il Port."
 
+Revisione statica del codice e limiti dell'analisi: [report.md](report.md).
+
 ---
 
 ## Cos'è
@@ -44,7 +46,7 @@ Il tutto orchestrato da un unico file di configurazione dichiarativa (`pyproject
 
 ### 6. Autorizzazione centralizzata invece che sparsa nel codice
 **Problema tipico:** regole di accesso (`if user.role == 'admin'`) sparse in ogni controller, difficili da auditare.
-**Come lo risolvi:** `policy/presentation/web.toml` centralizza route (`[[store.data.routes]]`) e regole `[[policies]]` valutate su `input.path` / `input.principal` — un unico posto dove capire chi può accedere a cosa.
+**Come lo risolvi:** le policy dichiarative in `src/application/policy/presentation/` descrivono route, regole di accesso e configurazione globale della Port. Per esempio, `routes.dsl` dichiara le route e `presentation.dsl` contiene policy e capabilities; non è un file `web.toml` con tabelle `[[store.data.routes]]`.
 
 ### 7. Passaggio di consegne da AI a sviluppatore umano
 **Problema tipico:** un MVP generato da AI arriva a un team umano che deve prenderlo in carico, ma è un "muro di codice" illeggibile e non si sa cosa è stato davvero testato.
@@ -59,33 +61,31 @@ Il tutto orchestrato da un unico file di configurazione dichiarativa (`pyproject
 ├── public/
 │   └── main.py              # entry point CLI
 ├── src/
-│   ├── framework/
+│   ├── application/              # dominio e configurazione applicativa
+│   │   ├── controller/           # DAG dichiarativi (.dsl)
+│   │   ├── model/                # modelli JSON
+│   │   ├── policy/               # policy DSL
+│   │   ├── repository/           # repository DSL
+│   │   └── view/
+│   │       ├── page/
+│   │       ├── layout/
+│   │       ├── component/
+│   │       └── template/
+│   ├── framework/                # runtime e astrazioni del framework
+│   │   ├── core/
 │   │   ├── manager/
-│   │   │   └── loader.py    # kernel: Framework, Loader, Handle, Application
-│   │   ├── port/             # interfacce (inversione di controllo)
-│   │   ├── scheme/           # schemi JSON del core
-│   │   └── service/          # container DI, contract, introspection
-│   ├── infrastructure/
-│   │   ├── persistence/      # filesystem, redis, ecc.
-│   │   ├── presentation/     # web (starlette), console/tui
-│   │   ├── authentication/
-│   │   ├── authorization/
-│   │   ├── encryption/
-│   │   ├── message/           # bus, pub/sub
-│   │   ├── sensation/          # input da sensori/hardware
-│   │   ├── actuation/          # azioni sul mondo reale/simulato
-│   │   └── inference/          # ML/AI
-│   └── application/            # ← unica zona pensata per modifiche continue
-│       ├── model/               # entità (JSON schema)
-│       ├── action/               # logica di dominio (.dsl)
-│       ├── view/
-│       │   ├── page/               # pagine
-│       │   ├── layout/             # layout condivisi
-│       │   └── component/          # componenti riutilizzabili (.xml)
-│       ├── policy/                # regole di business e routing (.toml)
-│       ├── repository/            # pattern repository
-│       └── locales/               # i18n
-└── pyproject.toml               # configurazione dichiarativa del progetto
+│   │   ├── port/
+│   │   ├── scheme/
+│   │   └── service/
+│   └── infrastructure/           # adapter concreti
+│       ├── actuation/
+│       ├── authentication/
+│       ├── message/
+│       ├── network/
+│       ├── persistence/
+│       ├── presentation/
+│       └── sensation/
+└── pyproject.toml                # configurazione dichiarativa del progetto
 ```
 
 **Pattern architetturale:** Hexagonal Architecture (Ports & Adapters) basata sul classico **MVC — Model / View / Controller**, con controller DSL caricati dinamicamente.
@@ -101,7 +101,7 @@ Il tutto orchestrato da un unico file di configurazione dichiarativa (`pyproject
 ## Installazione
 
 ### Requisiti
-- Python ≥ 3.8 (per il supporto nativo TOML serve 3.11+, altrimenti viene usato `tomli` come fallback)
+- Python `>=3.11,<3.12`, come dichiarato in `pyproject.toml`.
 
 ### 1. Clona la repository
 ```bash
@@ -348,45 +348,51 @@ nello schema JSON.
 
 ## Risultati Flow
 
-I metodi pubblici dei Manager e le API degli Adapter usano un contratto comune
-basato su `framework.service.flow`. Una chiamata restituisce un dizionario con
-esito, payload ed eventuali errori:
+I confini pubblici tra Manager, Port e Adapter usano `framework.core.flow`.
+`flow.Result` è un contenitore immutabile: `result.is_success` è una proprietà
+boolean, mentre `result.output` contiene un oggetto `Success` o `Failure`.
+Il valore riuscito è in `result.output.value`; l'errore è in
+`result.output.error`.
 
 ```python
+import framework.core.flow as flow
+
 result = await manager.operation(session, **constants)
 
-if result["success"]:
-	value = flow.output(result)
+if result.is_success:
+    value = flow.output(result)
 else:
-	errors = result["errors"]
+    error = flow.output(result)
 ```
 
-Il payload non va letto direttamente dal risultato: usa sempre
-`flow.output(result)`. I metodi pubblici sono normalmente marcati con
-`@flow.result()`. I Port possono applicare automaticamente lo stesso
-decorator agli Adapter concreti tramite `__init_subclass__`.
+`flow.output(result)` restituisce il payload in caso di successo o il valore
+d'errore in caso di fallimento, senza sollevarlo. `flow.unwrap(result)` estrae
+il payload oppure solleva l'errore. I metodi pubblici sono normalmente marcati
+con `@flow.result()`; i Port possono applicare automaticamente il decorator
+agli Adapter concreti tramite `__init_subclass__`.
 
-Il risultato può includere metadati di tracciamento come `action`, `component`,
-`pipeline`, `node` e `history`. Il campo `transactions` contiene i risultati
-Flow dei confini chiamati internamente. La catena attraversa DSL, framework e
-infrastructure, permettendo di ricostruire la chiamata senza perdere il
-risultato completo di ogni passaggio.
+Il risultato espone metadati quali `action`, `component`, `execution_time_ms`,
+`input` e `transactions`. `transactions` è una tupla dei risultati Flow dei
+confini chiamati internamente; `steps` offre la mappa degli output riusciti
+indicizzati per azione. Il flusso attraversa DSL, framework e infrastructure.
+
+**Attenzione ai dati:** `@flow.result()` conserva sempre gli argomenti e le
+keyword argument della chiamata in `result.input`, anche fuori da `--dev`.
+Non esporre né serializzare l'intero risultato o le sue transazioni senza
+filtrare prima sessioni, credenziali e altri dati sensibili.
 
 Nel DSL e nell'interprete, le chiamate restituiscono il risultato Flow
-completo. Il payload va estratto esplicitamente:
+completo. In Python il payload si estrae con `flow.output()`; in un test DSL
+si accede ai campi dell'oggetto risultato:
 
 ```python
 result = await interpreter.call(action)
 payload = flow.output(result)
-transactions = result["transactions"]
+transactions = result.transactions
 ```
 
-Anche `SessionHandle.run()` restituisce un Flow. I risultati dei nodi DAG sono
-disponibili sia nella mappa `flow.output(run_result)` sia nelle transazioni del
-risultato. In modalità `--dev`, ogni risultato Flow include anche `replay` con
-azione, componente, argomenti e keyword argument necessari a ripetere la
-chiamata. Fuori da `--dev` gli input non vengono registrati, così password,
-token e altri dati sensibili non finiscono nella cronologia.
+Anche `SessionHandle.run()` restituisce un Flow; la mappa degli output dei nodi
+DAG è disponibile tramite `flow.output(run_result)`.
 
 ### Test DSL
 
@@ -394,25 +400,26 @@ Durante un test, `@received` contiene il risultato Flow completo restituito da
 `interpreter.call()`, non solo il payload. I campi principali sono:
 
 ```dsl
-@received.success
-@received.outputs
-@received.errors
+@received.is_success
+@received.output.value
+@received.output.error
 @received.transactions
-@received.replay
+@received.input
 ```
 
-`@expected` contiene sempre il valore dichiarato in `outputs`. Per verificare
-il payload si usa quindi `@received.outputs`; per verificare anche l'esito:
+`@received.output` è un oggetto `Success` o `Failure`; usa `value` solo quando
+`is_success` è vero e `error` quando è falso. `@expected` contiene il valore
+dichiarato in `outputs`. Per verificare payload ed esito:
 
 ```dsl
 "outputs": {"name": "Alice"};
-"assert": @received.success == true & @received.outputs.name == @expected.name;
+"assert": @received.is_success == true & @received.output.value.name == @expected.name;
 ```
 
-Gli errori possono essere verificati senza estrarre il payload:
+Un esito fallito si verifica attraverso `Failure.error`:
 
 ```dsl
-"assert": @received.success == false & @received.errors != none;
+"assert": @received.is_success == false & @received.output.error != none;
 ```
 
 Una suite con zero test non è considerata valida. Il comando di test deve

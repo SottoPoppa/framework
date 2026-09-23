@@ -37,6 +37,31 @@ async def main(config):
     if config.get("dev") or config.get("debug"):
         main_logger.info("Avvio CLI", config=config)
 
+    if config.get("verify"):
+        conflicting_modes = []
+        if config.get("setup"):
+            conflicting_modes.append("--setup")
+        if config.get("install"):
+            conflicting_modes.append("--install")
+        if config.get("test") is not None:
+            conflicting_modes.append("--test")
+        if config.get("test_integration") is not None:
+            conflicting_modes.append("--test-integration")
+        if config.get("dev"):
+            conflicting_modes.append("--dev")
+        if config.get("skip_verify"):
+            conflicting_modes.append("--skip-verify")
+        if conflicting_modes:
+            main_logger.error(
+                "--verify non può essere combinato con altre modalità operative",
+                flags=conflicting_modes,
+            )
+            return False
+        main_logger.info("Verifica strict dei contract: inizio")
+        verified = await framework_instance.verify_contracts(config)
+        main_logger.info("Verifica strict dei contract: completata", success=verified)
+        return verified
+
     if config.get('setup'):
         setup_core_dependencies()
         return await framework_instance.install(config)

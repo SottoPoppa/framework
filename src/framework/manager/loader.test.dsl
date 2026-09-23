@@ -11,7 +11,7 @@ any:loader := imports.module.Loader(framework, infrastructure);
 exports: {
     'imports': framework.imports;
     'component': framework.component;
-    'import_module': infrastructure.import_module;
+    'import_module': loader.import_module;
     'load_module': framework.load_module
 };
 

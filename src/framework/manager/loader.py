@@ -708,5 +708,5 @@ class Loader:
         return True
 
     async def import_module(self, module_path: str):
-        """Importa un modulo Python dinamicamente tramite l'infrastruttura."""
-        return await self.infrastructure.import_module(module_path)
+        """Importa un modulo Python tramite il kernel del framework."""
+        return self.framework.import_module(module_path)
