@@ -22,13 +22,32 @@ from .ast import (
     TupleNode,
     Var,
 )
-from .model import Call, DagDefinition, ExecutionSpec, Literal, NodeDefinition, Ref, TriggerDefinition
+from .model import (
+    Call,
+    DagDefinition,
+    ExecutionSpec,
+    Literal,
+    NodeDefinition,
+    Ref,
+    Source,
+    TriggerDefinition,
+    located,
+)
 
 
 @dataclass
 class Compiler:
 
+    source_name: str | None = None
+
+    def _source(self, node: Any) -> Source | None:
+        meta = getattr(node, "meta", None)
+        if meta is None or getattr(meta, "line", None) is None:
+            return Source(self.source_name) if self.source_name else None
+        return Source(self.source_name, meta.line, meta.column)
+
     def compile(self, program: Program, *, name: str = "main") -> DagDefinition:
+        self.source_name = name
         context: dict[str, Any] = {}
         custom_types: set[str] = set()
         typed_declarations: list[tuple[str, str]] = []
@@ -234,15 +253,16 @@ class Compiler:
         return None
 
     def _expr(self, v: Any) -> Any:
-        """Converte un nodo AST in una struttura dati esecutiva (Ref, Call, Literal, dict, list).
-        Mantiene intatte le espressioni sospese (@lazy) senza valutarle.
-        """
-        # 1. Riferimenti a Variabili (Eager vs Lazy)
+        """Converte un nodo AST in modello esecutivo (Ref, Call, Literal, dict, list)."""
+        return located(self._build(v), self._source(v))
+
+    def _build(self, v: Any) -> Any:
+        # 1. Riferimenti a Variabili (contesto runtime vs nome locale)
         if isinstance(v, ContextVar):
-            return Ref(v.name, lazy=True)
+            return Ref(v.name, deferrable=True)
 
         if isinstance(v, Var):
-            return Ref(v.name, lazy=False)
+            return Ref(v.name)
 
         # 2. Valori Letterali
         if isinstance(v, (StringLiteral, NumberLiteral, BoolLiteral)):
@@ -340,13 +360,14 @@ class Compiler:
         return Literal(v)
 
     def _refs(self, x: Any) -> set[str]:
-        """Trova ricorsivamente tutti i nomi di variabili/node usati nei Ref.
-        Ignora i Ref con lazy=True per non creare dipendenze d'esecuzione rigide nel DAG.
+        """Nomi dei Ref usati in un'espressione.
+
+        I Ref differibili (``@nome``) sono esclusi: non devono creare
+        dipendenze rigide fra i nodi del DAG.
         """
-        # --- MODIFICA 2: Filtra i Ref Lazy ---
         if isinstance(x, Ref):
-            if x.lazy:
-                return set()  # Le variabili @ non bloccano l'esecuzione del nodo!
+            if x.deferrable:
+                return set()
             return {x.path.split(".")[0]}
 
         if isinstance(x, Call):

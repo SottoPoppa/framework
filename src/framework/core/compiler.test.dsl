@@ -7,7 +7,7 @@ any:parser_instance := imports.parser.Parser();
 any:compiler_instance := imports.compiler.Compiler();
 any:source_program := parser_instance.parse("int:value := 10;");
 any:nested_program := parser_instance.parse("{editor: {application(entry: false) -> result();}}");
-any:source_node_program := parser_instance.parse("copilot_source(entry: true, source: true, on_event: 'render_response') -> messenger.receive(session, receiver: 'copilot', domain: 'general');");
+any:source_node_program := parser_instance.parse("copilot_source(entry: true, source: true, on_event: 'render_response') -> messenger.receive(receiver: 'copilot', domain: 'general');");
 exports: {
     'compile': compiler_instance.compile
 };

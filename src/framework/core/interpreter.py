@@ -1,223 +1,132 @@
+"""Interprete DSL: facade sottile sopra programma, scope e runner.
+
+Tre responsabilità, niente di più:
+
+* ``load`` — testo DSL → programma compilato (dato puro);
+* ``open_session`` — apre o riprende una sessione utente;
+* ``evaluate`` — valuta un'espressione o riprende un ``Deferred``.
+"""
+
+from __future__ import annotations
+
+import copy
 import inspect
-from typing import Any, Dict
 import uuid
-import random as _random
-from collections.abc import Mapping
-from lark.exceptions import UnexpectedInput
+from typing import Any
 
 import framework.core.flow as flow
 
-from .context import ExecutionContext
-from .execution import Executor
-from .model import Call, Literal, Ref
-from .runner import DagRunner
-from .compiler import Compiler
-from .parser import Parser
 from .data import Registry
-from .session import SessionView, UserSession, public_value
-from framework.service.introspection import Reflection
+from .evaluation import Evaluator
+from .library import BUILTINS, flatten_records
+from .model import Call, Deferred, ExecutionSpec, Literal, Ref
+from .program import DSLSourceError, Program, ProgramLoader
+from .runner import DagRunner
+from .scope import Scope
+from .session import UserSession, UserSessionData, pure_mapping, pure_value
 
+__all__ = [
+    "DSLSourceError",
+    "Interpreter",
+    "Program",
+    "SessionHandle",
+    "flatten_records",
+]
 
-class DSLSourceError(ValueError):
-    """Errore DSL con posizione e fase utili ai client di tooling."""
-
-    def __init__(self, source: str, phase: str, message: str, error=None):
-        self.source = source
-        self.phase = phase
-        self.line = getattr(error, "line", None)
-        self.column = getattr(error, "column", None)
-        location = ""
-        if self.line is not None:
-            location = f":{self.line}"
-            if self.column is not None:
-                location += f":{self.column}"
-        super().__init__(f"Errore {phase} in '{source}'{location}: {message}")
-
-def map_records(records: Any, builder: Any, *args, **kwargs) -> list:
-    if not isinstance(records, (list, tuple)) or not callable(builder):
-        return []
-    return [builder(record, *args, **kwargs)
-            for record in records if isinstance(record, Mapping)]
-
-
-def variants(tags: Any) -> list:
-    if not isinstance(tags, Mapping):
-        return []
-    records = []
-    for key, values in tags.items():
-        values = list(values.keys()) if isinstance(values, Mapping) else values
-        if not isinstance(values, (list, tuple, set)):
-            continue
-        records.extend({"key": key, "value": value} for value in values)
-    return records
-
-
-def tag_variants(tags: Any) -> list:
-    return [
-        {
-            "inputs": (
-                None,
-                record["key"],
-                {} if record["value"] == record["key"] else {"type": record["value"]},
-                ["fixture"],
-            ),
-            "note": f"Composizione {record['key']}:{record['value']}",
-        }
-        for record in variants(tags)
-    ]
-
-
-def prefix_match(field: str, prefix: str):
-    return lambda record: (
-        (
-            str(record).startswith(str(prefix))
-            if isinstance(record, str) and field == "relative_path"
-            else isinstance(record, Mapping)
-            and str(record.get(field, "")).startswith(str(prefix))
-        )
-    )
-
-
-def tuple_filter_tuple(records: Any, predicate: Any) -> tuple:
-    if not isinstance(records, (list, tuple)) or not callable(predicate):
-        return ()
-    return tuple(record for record in records if predicate(record))
-
-
-DSL_FUNCTIONS: Dict[str, Any] = {
-    "map_records": map_records,
-    "tag_variants": tag_variants,
-    "keys": lambda value: list(value.keys()) if isinstance(value, Mapping) else [],
-    "values": lambda value: list(value.values()) if isinstance(value, Mapping) else [],
-    "union": lambda left, right: {**left, **right},
-    "print": lambda *values: (print(*values), values)[1],
-    "pass": lambda *values: values,
-    "int": int,
-    "str": str,
-    "bool": bool,
-    "random": lambda minimum, maximum: _random.randint(int(minimum), int(maximum)),
-    "format": lambda template, *values: str(template).format(*values),
-    "result": lambda value=None: value,
-    "file_dependencies": Reflection.file_dependencies,
-    "prefix_match": prefix_match,
-    "tuple_filter_tuple": tuple_filter_tuple,
-}
-
-
-def flatten_records(records):
-    if isinstance(records, dict):
-        return [records]
-    if isinstance(records, (list, tuple)):
-        res = []
-        for r in records:
-            res.extend(flatten_records(r))
-        return res
-    return [records] if records else []
+_EXPRESSION_TYPES = (Call, Deferred, ExecutionSpec, Literal, Ref)
 
 
 class SessionHandle:
+    """Handle runtime di una sessione utente: esegue DAG ed emette eventi."""
 
     def __init__(
         self,
         runner: DagRunner,
-        sid: str = None,
-        env: dict = None,
+        sid: str | None = None,
+        env: dict | None = None,
         context_preparer=None,
         user_session: UserSession | None = None,
+        registry: Registry | None = None,
     ):
         self.runner = runner
-        self.sid = sid or uuid.uuid4().hex
         self.env = dict(env or {})
+        self.registry = registry or runner.registry
         self._context_preparer = context_preparer
         self._closed = False
         self.user_session = user_session or UserSession(
-            self.sid,
-            ExecutionContext(self.env),
+            sid or uuid.uuid4().hex,
+            Scope(pure_mapping(self.env)),
         )
         self.sid = self.user_session.id
-        self.view = SessionView(self.user_session.to_dict())
 
     @property
-    def context(self):
+    def context(self) -> Scope:
         return self.user_session.context
 
     @property
-    def results(self):
+    def results(self) -> dict[str, dict[str, Any]]:
         """Risultati pubblicati dai DAG della sessione, separati dai contesti locali."""
         return self.user_session.results
 
-    @property
-    def dsl_view(self):
-        return self.view
-
-    def _register_functions(self, env: dict):
-        """Registra automaticamente tutte le callable nel FunctionRegistry."""
-        if self.runner.registry:
-            for k, v in env.items():
-                if callable(v):
-                    self.runner.registry.register(k, v)
-
-    async def run(self, dag_name: str, env: dict = None):
+    async def run(self, dag_name: str, env: dict | None = None):
+        """Esegue un DAG e restituisce il Context DSL come risultato puro."""
         if self._closed:
             raise RuntimeError("La sessione è stata chiusa")
         if dag_name not in self.runner.dags:
             raise KeyError(f"DAG non registrato: {dag_name}")
-        merged_env = {**self.env, **(env or {})}
-        merged_env.pop("session", None)
-        self.view = SessionView(self.user_session.to_dict())
-        merged_env["session"] = self.view
-        merged_env["_runtime_session"] = self
+
         self.env.update(env or {})
-        self._register_functions(merged_env)
+        bindings = pure_mapping(self.env)
+        bindings["session"] = self.user_session.to_dict()
+        self.registry.register_dict(self.env)
 
-        session = self.user_session.executions.get(dag_name)
-
-        if session is None:
-            # Crea la sessione ed esegue la risoluzione asincrona del contesto
+        session = self.user_session.execution(dag_name)
+        created = session is None
+        if created:
             session = await self.runner.create_session(
                 dag_name,
-                initial_context=merged_env,
-                context=ExecutionContext(),
+                initial_context=bindings,
+                context=Scope(parent=self.user_session.context),
                 user_session=self.user_session,
+                runtime_session=self,
                 resolve_context=False,
             )
-            self.user_session.executions[dag_name] = session
-            if self._context_preparer:
-                await self._context_preparer(dag_name, session, merged_env)
-        else:
-            # Aggiorna il contesto esistente con i nuovi valori dell'env
-            for k, v in merged_env.items():
-                session.context.set(k, v)
+            self.user_session.register_execution(dag_name, session)
 
-        # Esegue l'orchestrazione dei Task del DAG
+        setattr(session, "registry", self.registry)
+        if created:
+            if self._context_preparer:
+                await self._context_preparer(dag_name, session, bindings)
+        else:
+            for key, value in bindings.items():
+                session.context.set(key, value)
+
         await self.runner.run(dag_name, session=session)
 
         if session.errors:
-            return flow.error(dict(session.errors))
-        public_context = {
-            key: value
-            for key, value in session.context.data.items()
-            if not key.startswith("_")
-        }
-        return flow.success(public_value(public_context))
+            return flow.error({name: str(error) for name, error in session.errors.items()})
+        return flow.success(self._visible_context(session))
 
-    async def emit(
-        self,
-        node_or_controller: str,
-        payload_or_node: Any = None,
-        payload: Any = None,
-    ):
+    def _visible_context(self, session) -> dict[str, Any]:
+        visible = {}
+        for key, value in session.context.data.items():
+            if key.startswith("_"):
+                continue
+            if flow.is_result(value) and flow.check(value):
+                value = flow.output(value)
+            visible[key] = value
+        return pure_mapping(visible)
+
+    async def emit(self, target: str, node_or_payload: Any = None, payload: Any = None):
+        """Emette un evento su un nodo, opzionalmente qualificato dal controller."""
         if self._closed:
             raise RuntimeError("La sessione è stata chiusa")
+
         if payload is not None:
-            node = payload_or_node
-            event_payload = payload
+            node, event_payload = node_or_payload, payload
+            session = self.user_session.execution(target)
         else:
-            node = node_or_controller
-            event_payload = payload_or_node
-        if payload is not None:
-            session = self.user_session.executions.get(node_or_controller)
-        else:
+            node, event_payload = target, node_or_payload
             session = next(
                 (
                     execution
@@ -226,9 +135,15 @@ class SessionHandle:
                 ),
                 None,
             )
+
         if session is None:
             raise RuntimeError("L'esecuzione DAG non è disponibile")
         return await self.runner.emit(session, node, event_payload)
+
+    def report(self, dag_name: str):
+        """Esito puro dell'esecuzione di un DAG della sessione."""
+        session = self.user_session.execution(dag_name)
+        return session.report() if session is not None else None
 
     async def __aenter__(self):
         return self
@@ -240,8 +155,8 @@ class SessionHandle:
         if self._closed:
             return
         for session in tuple(self.user_session.executions.values()):
-            self.runner.close_session(session)
-        self.user_session.executions.clear()
+            await self.runner.close_session(session)
+        self.user_session.clear_executions()
         self.user_session.results.clear()
         self._closed = True
 
@@ -249,76 +164,130 @@ class SessionHandle:
 class Interpreter:
 
     def __init__(self, schemes=None, registry=None):
-        self.parser = Parser()
-        self.compiler = Compiler()
+        self.schemes = schemes
         self.registry = registry or Registry()
-        self.registry.register_dict(DSL_FUNCTIONS)
-        self._runner = DagRunner(
-            registry=self.registry,
-            executor=Executor(self.registry),
-        )
-        self.runner = self._runner
-        self.session_envs = {}
+        self.registry.register_dict(BUILTINS)
+        self.programs = ProgramLoader()
+        self.evaluator = Evaluator(self.registry)
+        self.runner = DagRunner(registry=self.registry, evaluator=self.evaluator)
+        self.session_envs: dict[str, dict] = {}
         self.user_sessions: dict[str, UserSession] = {}
         self._started = False
 
-    async def call(self, fn, args=(), kwargs=None):
-        kwargs = kwargs or {}
+    # ── programmi ────────────────────────────────────────────────────────────
 
-        # Gestione asserzioni/AST custom
+    def parse_only(self, source: str, name: str = "<string>"):
+        """Parsa il DSL senza compilare né registrare il programma."""
+        return self.programs.parse(source, name)
+
+    def load(self, name: str, source: str) -> Program:
+        """Compila e registra un programma DSL; ricompila solo se il testo cambia."""
+        program = self.programs.load(name, source)
+        self.runner.register(program.definition)
+        return program
+
+    async def load_file(self, name: str, code: str):
+        return flow.success(self.load(name, code).definition)
+
+    # ── valutazione ──────────────────────────────────────────────────────────
+
+    async def evaluate(
+        self,
+        expression: Any,
+        bindings: dict | None = None,
+        *,
+        session=None,
+    ) -> Any:
+        """Valuta un'espressione o riprende un ``Deferred`` con i binding dati."""
+        scope = Scope(dict(bindings or {}))
+        if isinstance(expression, Deferred):
+            return await self.evaluator.resume(expression, scope, session=session)
+        return await self.evaluator.evaluate(expression, scope, session=session)
+
+    async def evaluate_named(
+        self,
+        program_name: str,
+        name: str,
+        bindings: dict | None = None,
+        *,
+        session=None,
+    ):
+        """Rivaluta una dichiarazione DSL per nome usando binding JSON."""
+        dag = self.runner.dags.get(program_name)
+        if dag is None:
+            return flow.error(f"Programma DSL non registrato: {program_name}")
+
+        expression = dag.definition.context
+        for part in name.split("."):
+            if not isinstance(expression, dict) or part not in expression:
+                return flow.error(
+                    f"Dichiarazione DSL non trovata: {program_name}.{name}"
+                )
+            expression = expression[part]
+
+        scope_data = copy.deepcopy(dag.definition.context)
+        scope_data.update(pure_mapping(bindings))
+        try:
+            result = await self.evaluator.evaluate(
+                expression,
+                Scope(scope_data),
+                session=session,
+            )
+        except Exception as exc:
+            return flow.error(str(exc))
+        return self._pure_result(result)
+
+    @staticmethod
+    def _pure_result(value: Any):
+        if flow.is_result(value):
+            if not flow.check(value):
+                return flow.error(str(flow.output(value)))
+            value = flow.output(value)
+        try:
+            return flow.success(pure_value(value))
+        except TypeError as exc:
+            return flow.error(str(exc))
+
+    async def call(self, fn, args=(), kwargs=None, *, session=None):
+        """Invoca una callable o valuta un'espressione, normalizzando in Result."""
+        kwargs = dict(kwargs or {})
+
         if hasattr(fn, "tree"):
             fn = fn.tree
 
-        if isinstance(fn, (Call, Literal, Ref)) or (
+        if isinstance(fn, str):
+            registry = getattr(session, "registry", None) or self.registry
+            if callable(registry.lookup(fn)):
+                result = await self.evaluate(
+                    Call(fn, tuple(args), kwargs),
+                    session=session,
+                )
+                return self._pure_result(result)
+            else:
+                return flow.success(fn)
+
+        if isinstance(fn, _EXPRESSION_TYPES) or (
             hasattr(fn, "data") and hasattr(fn, "children")
         ):
-            ctx_dict = dict(kwargs)
-            if "received" in kwargs:
-                ctx_dict["@received"] = kwargs["received"]
-                ctx_dict["received"] = kwargs["received"]
-            if "expected" in kwargs:
-                ctx_dict["@expected"] = kwargs["expected"]
-                ctx_dict["expected"] = kwargs["expected"]
-
-            # Usa il metodo pubblico execute() anziché _eval()
-            res = await self.runner.executor.execute(
-                fn, ExecutionContext(ctx_dict)
-            )
-            return res if flow.is_result(res) else flow.success(res)
+            bindings = dict(kwargs)
+            for alias in ("received", "expected"):
+                if alias in kwargs:
+                    bindings[f"@{alias}"] = kwargs[alias]
+            result = await self.evaluate(fn, bindings, session=session)
+            return result if flow.is_result(result) else flow.success(result)
 
         if callable(fn):
-            res = fn(*args, **kwargs)
-            if inspect.isawaitable(res):
-                res = await res
-            return res if flow.is_result(res) else flow.success(res)
+            result = fn(*args, **kwargs)
+            if inspect.isawaitable(result):
+                result = await result
+            return result if flow.is_result(result) else flow.success(result)
 
         return flow.success(fn)
 
-    def parse_only(self, source: str, name: str = "<string>"):
-        """Parsa il DSL senza registrare o eseguire il programma."""
-        try:
-            return self.parser.parse(source)
-        except UnexpectedInput as error:
-            raise DSLSourceError(
-                name,
-                "parsing DSL",
-                str(error).splitlines()[0],
-                error,
-            ) from error
-
-    async def load_file(self, name: str, code: str):
-        ast_prog = self.parse_only(code, name)
-        try:
-            dag_def = self.compiler.compile(ast_prog, name=name)
-        except Exception as error:
-            if isinstance(error, DSLSourceError):
-                raise
-            raise DSLSourceError(name, "compilazione DSL", str(error)) from error
-        self.runner.register(dag_def)
-        return flow.success(dag_def)
+    # ── contesto DSL ─────────────────────────────────────────────────────────
 
     def _validate_context(self, dag_name: str, session) -> None:
-        """Applica i custom type quando il contesto DSL e' pronto."""
+        """Applica i custom type quando il contesto DSL è pronto."""
         from framework.service import scheme
 
         metadata = getattr(self.runner.dags[dag_name].definition, "metadata", {})
@@ -343,35 +312,36 @@ class Interpreter:
             raise ValueError(f"Contesto non valido secondo gli schemi dichiarati: {errors}")
 
     async def _prepare_context(self, dag_name: str, session, initial_context: dict) -> None:
-        """Valuta il contesto DSL in ordine, prima di avviare il DAG."""
-        dag = self.runner.dags[dag_name]
-        context = session.context
-        values = dict(getattr(dag.definition, "context", {}))
-        values.update(initial_context or {})
+        """Valuta il contesto dichiarato dal DAG prima di avviarlo."""
+        declared = dict(getattr(self.runner.dags[dag_name].definition, "context", {}))
+        declared.update(initial_context or {})
 
-        for key, expression in values.items():
-            value = await self.runner.executor.execute(expression, context)
-            context.set(key, value)
+        for key, expression in declared.items():
+            value = await self.evaluator.evaluate(
+                expression, session.context, session=session
+            )
+            session.context.set(key, value)
 
         self._validate_context(dag_name, session)
+
+    # ── sessioni ─────────────────────────────────────────────────────────────
 
     def session_create(
         self,
         sid: str = None,
         env: dict = None,
         authentication: dict | None = None,
+        state: dict | UserSessionData | None = None,
     ):
+        """Crea una sessione registrandone l'ambiente runtime."""
         sid = sid or uuid.uuid4().hex
         if env is not None:
             self.session_envs[sid] = dict(env)
-            if self.runner.registry:
-                for k, v in self.session_envs[sid].items():
-                    if callable(v):
-                        self.runner.registry.register(k, v)
         return self.open_session(
             env=env,
             sid=sid,
             authentication=authentication,
+            state=state,
         )
 
     def open_session(
@@ -379,31 +349,42 @@ class Interpreter:
         env: dict = None,
         sid: str = None,
         authentication: dict | None = None,
+        state: dict | UserSessionData | None = None,
     ):
+        """Apre una sessione, riprendendo lo stato puro prodotto da `to_dict()`."""
+        restored = None
+        if state is not None:
+            restored = (
+                state
+                if isinstance(state, UserSessionData)
+                else UserSessionData.from_dict(state)
+            )
+            sid = sid or restored.id
         sid = sid or uuid.uuid4().hex
         merged_env = dict(self.session_envs.get(sid, {}))
         if env is not None:
             merged_env.update(env)
             self.session_envs[sid] = merged_env
 
-        if self.runner.registry:
-            for k, v in merged_env.items():
-                if callable(v):
-                    self.runner.registry.register(k, v)
-
         user_session = self.user_sessions.get(sid)
         if user_session is None:
             user_session = UserSession(
                 sid,
-                ExecutionContext(merged_env),
+                Scope(pure_mapping(merged_env)),
                 authentication=authentication,
             )
             self.user_sessions[sid] = user_session
         else:
-            for key, value in merged_env.items():
-                user_session.context.set(key, value)
+            user_session.update_context(merged_env)
             if authentication:
-                user_session.authentication.update(authentication)
+                user_session.authenticate(authentication)
+
+        if restored is not None:
+            user_session.restore(restored)
+
+        # Registry figlio: l'ambiente di una sessione non contamina le altre.
+        registry = self.registry.child()
+        registry.register_dict(merged_env)
 
         return SessionHandle(
             self.runner,
@@ -411,7 +392,10 @@ class Interpreter:
             env=merged_env,
             context_preparer=self._prepare_context,
             user_session=user_session,
+            registry=registry,
         )
+
+    # ── ciclo di vita ────────────────────────────────────────────────────────
 
     async def start(self):
         self._started = True
@@ -420,11 +404,11 @@ class Interpreter:
     async def stop(self):
         for user_session in tuple(self.user_sessions.values()):
             for session in tuple(user_session.executions.values()):
-                self.runner.close_session(session)
-            user_session.executions.clear()
+                await self.runner.close_session(session)
+            user_session.clear_executions()
         self.user_sessions.clear()
         for session in tuple(self.runner.sessions.values()):
-            self.runner.close_session(session)
+            await self.runner.close_session(session)
         self.session_envs.clear()
         self._started = False
 

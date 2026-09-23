@@ -2,14 +2,14 @@ imports: {
     'runner': import("framework.core.runner");
     'model': import("framework.core.model");
     'session': import("framework.core.session");
-    'context': import("framework.core.context")
+    'scope': import("framework.core.scope")
 };
 
 any:runner_instance := imports.runner.DagRunner();
 any:first_node := imports.model.NodeDefinition("first", imports.model.Literal(1));
 any:second_node := imports.model.NodeDefinition("second", imports.model.Literal(2), ("first",), false);
 any:definition := imports.model.DagDefinition.from_nodes("demo", (first_node, second_node));
-any:session := imports.session.Session("demo", "test-session", imports.context.ExecutionContext());
+any:session := imports.session.Session("demo", "test-session", imports.scope.Scope());
 exports: {
     'register': runner_instance.register;
     'create_session': runner_instance.create_session;

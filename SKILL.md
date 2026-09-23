@@ -186,13 +186,28 @@ La forma `@` identifica un valore di contesto runtime. Per i risultati
 cross-controller è obbligatoria: evita che un nome remoto venga interpretato
 come variabile locale.
 
-Nel contesto DSL `@session` è una snapshot JSON-safe (`SessionView`). Non
+Nel contesto DSL `@session` è la proiezione pura della sessione utente
+(`UserSessionData`: `id`, `context`, `authentication`, `results`). Non
 contiene e non deve contenere `Session`, `SessionHandle`, Runner, Manager,
 Adapter, task asincroni o primitive di sincronizzazione. La `Session` del DAG
-resta privata al Runner. Quando una chiamata DSL attraversa un Manager o una
+resta privata al Runner e vive solo in `UserSession.executions`, che non viene
+mai serializzato. Quando una chiamata DSL attraversa un Manager o una
 Port che richiede l'argomento `session`, il framework reinietta internamente
 il riferimento runtime senza esporlo al DSL o alla serializzazione della
 `UserSession`.
+
+Esiste un solo modo di trattare le due cose e non è configurabile:
+
+- `SessionHandle.run(dag)` restituisce sempre il **contesto runtime** del DAG
+  (Manager, callable, espressioni sospese incluse). È il risultato di
+  esecuzione, non uno stato da persistere.
+- `UserSession.to_dict()` / `to_json()` è l'**unica** rappresentazione dello
+  stato: sempre pura, sempre le stesse quattro chiavi, validabile con
+  `framework.service.scheme`.
+
+Quella rappresentazione è portabile: un altro interprete la riprende con
+`Interpreter.open_session(state=payload)` e ottiene contesto, autenticazione e
+risultati identici, senza ereditare alcuna esecuzione DAG.
 
 ### Esempio
 

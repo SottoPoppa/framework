@@ -97,11 +97,11 @@ class Manager(manager.Port):
                     domain=domain,
                 )
                 return flow.error("Messaggio DSL non autorizzato")
-            if destination not in session.user_session.executions:
+            if session.user_session.execution(destination) is None:
                 started = await session.run(destination)
                 if flow.is_result(started) and not flow.check(started):
                     return started
-            execution = session.user_session.executions[destination]
+            execution = session.user_session.execution(destination)
             result = await session.runner.emit(
                 execution,
                 domain,

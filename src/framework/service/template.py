@@ -197,10 +197,9 @@ async def render(
     data = {}
     manager_context = {"manager": managers}
     for controller in controllers or []:
-        runtime_session.context["session"] = runtime_session
         run_result = await runtime_session.run(
             controller,
-            {"session": runtime_session} | manager_context,
+            manager_context,
         )
         data[controller] = flow.output(run_result)
 

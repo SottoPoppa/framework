@@ -5,6 +5,7 @@ from typing import Optional
 
 import framework.service.diagnostic as diagnostic
 import framework.core.interpreter as interpreter
+import framework.core.library as library
 import framework.port.manager as manager
 import framework.core.flow as flow
 import framework.manager.loader as loader_module
@@ -264,7 +265,7 @@ class Manager(manager.Port):
 
         interp.session_create(
             sid=session_id,
-            env=interpreter.DSL_FUNCTIONS | {
+            env=library.BUILTINS | {
                 'resource': self.loader.resource,
                 'import': self.loader.import_module,
                 'test': {

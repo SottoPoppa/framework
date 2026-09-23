@@ -5,7 +5,8 @@ imports: {
 exports: {
     'literal': imports.model.Literal;
     'ref': imports.model.Ref;
-    'call': imports.model.Call
+    'call': imports.model.Call;
+    'deferred': imports.model.Deferred
 };
 
 tuple:test_suite := (
@@ -20,8 +21,8 @@ tuple:test_suite := (
         "action": exports.ref;
         "inputs": "user.name";
         "outputs": "user.name";
-        "assert": @received.is_success == true & @received.output.value.path == @expected & @received.output.value.lazy == false;
-        "note": "Ref conserva il percorso e il flag lazy predefinito";
+        "assert": @received.is_success == true & @received.output.value.path == @expected & @received.output.value.deferrable == false;
+        "note": "Ref conserva il percorso e non è differibile per default";
     },
     {
         "action": exports.call;
@@ -29,5 +30,12 @@ tuple:test_suite := (
         "outputs": "str";
         "assert": @received.is_success == true & @received.output.value.function == @expected & @received.output.value.arguments == (1,);
         "note": "Call descrive funzione, argomenti e keyword"
+    },
+    {
+        "action": exports.deferred;
+        "inputs": imports.model.Ref("action", true);
+        "outputs": "action";
+        "assert": @received.is_success == true & @received.output.value.expression.path == @expected;
+        "note": "Deferred incapsula un'espressione sospesa senza catturare il runtime"
     }
 );

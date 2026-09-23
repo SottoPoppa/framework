@@ -1,10 +1,10 @@
 imports: {
     'session': import("framework.core.session");
-    'context': import("framework.core.context")
+    'scope': import("framework.core.scope")
 };
 
-any:session_instance := imports.session.Session("demo", "sid", imports.context.ExecutionContext());
-any:user_session := imports.session.UserSession("sid", imports.context.ExecutionContext());
+any:session_instance := imports.session.Session("demo", "sid", imports.scope.Scope());
+any:user_session := imports.session.UserSession("sid", imports.scope.Scope());
 exports: {
     'mark': session_instance.mark;
     'publish_result': user_session.publish_result;
@@ -38,14 +38,14 @@ tuple:test_suite := (
     {
         "action": exports.to_dict;
         "inputs": ();
-        "outputs": {"id": "sid"; "context": {}; "results": {"terminal": {"selected": "src/application/controller/kanban.dsl"}}};
+        "outputs": {"id": "sid"; "context": {}; "authentication": {}; "results": {"terminal": {"selected": "src/application/controller/kanban.dsl"}}};
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "UserSession.to_dict espone solo dati JSON-safe e non le esecuzioni DAG"
     },
     {
         "action": exports.to_json;
         "inputs": ();
-        "outputs": "{\"context\": {}, \"id\": \"sid\", \"results\": {\"terminal\": {\"selected\": \"src/application/controller/kanban.dsl\"}}}";
+        "outputs": "{\"authentication\": {}, \"context\": {}, \"id\": \"sid\", \"results\": {\"terminal\": {\"selected\": \"src/application/controller/kanban.dsl\"}}}";
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "UserSession.to_json serializza la proiezione persistibile della sessione"
     }
