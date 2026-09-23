@@ -5,6 +5,7 @@ from urllib.parse import urlparse, parse_qs, urljoin
 
 
 import framework.core.interpreter as interpreter
+import framework.core.model as model
 import framework.service.scheme as scheme
 import framework.core.flow as flow
 import framework.manager.loader as loader
@@ -252,21 +253,27 @@ class Manager(manager.Port):
         allowed = False
         for rule in filted_rules:
             for_target = rule.get('target', {}) | target
-            condition = rule.get('condition')
+            condition = model.decode(rule.get('condition'))
             if callable(condition):
                 tes = condition(**for_target)
                 if inspect.isawaitable(tes):
                     tes = await tes
-                effect = rule.get('effect')
-                if effect == 'allow':
-                    allowed = allowed or bool(tes)
-                elif effect == 'deny':
-                    denied = denied or bool(tes)
             elif isinstance(condition, bool):
-                if rule.get('effect') == 'allow':
-                    allowed = allowed or condition
-                elif rule.get('effect') == 'deny':
-                    denied = denied or condition
+                tes = condition
+            elif isinstance(
+                condition,
+                (model.Call, model.Deferred, model.ExecutionSpec, model.Literal, model.Ref),
+            ):
+                tes = await self.interpreter.evaluate(
+                    condition,
+                    for_target,
+                    session=session,
+                )
             else:
                 continue
+
+            if rule.get('effect') == 'allow':
+                allowed = allowed or bool(tes)
+            elif rule.get('effect') == 'deny':
+                denied = denied or bool(tes)
         return allowed and not denied
