@@ -61,6 +61,11 @@ class Manager(manager.Port):
     def _get_driver(self):
         return self.presentations[-1] if self.presentations else None
 
+    @staticmethod
+    def _runtime_session(session):
+        runtime_session = getattr(session, "runtime_session", None)
+        return runtime_session if runtime_session is not None else session
+
     @flow.result(inputs=(), outputs=())
     async def selector(self, session, **constants):
         driver = self._get_driver()
@@ -70,7 +75,7 @@ class Manager(manager.Port):
     async def render(self, session, node_id, context=None):
         driver = self._get_driver()
         if driver and hasattr(driver, 'rebuild'):
-            return await driver.rebuild(session, node_id, context)
+            return await driver.rebuild(self._runtime_session(session), node_id, context)
         return None
     
     @flow.result(inputs=(), outputs=())
@@ -82,7 +87,7 @@ class Manager(manager.Port):
     async def rebuild(self, session, node_id, context=None):
         driver = self._get_driver()
         if driver and hasattr(driver, 'rebuild'):
-            return await driver.rebuild(session, node_id, context)
+            return await driver.rebuild(self._runtime_session(session), node_id, context)
         return None
 
     @flow.result(inputs=(), outputs=())

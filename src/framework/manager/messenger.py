@@ -112,6 +112,7 @@ class Manager(manager.Port):
                     "Messenger: pubblicazione DSL fallita",
                     receiver=destination,
                     domain=domain,
+                    error=flow.output(result),
                 )
                 return result
             self.logger.debug(

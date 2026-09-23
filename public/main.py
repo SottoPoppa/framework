@@ -26,11 +26,6 @@ def setup_core_dependencies():
         check=True,
     )
 
-async def main2(config):
-    """Compatibilità per i caller esistenti: usa il percorso CLI corrente."""
-    return await main(config)
-
-
 async def main(config):
     framework_instance = framework.Framework()
     main_logger = framework_instance.get_logger("main")
