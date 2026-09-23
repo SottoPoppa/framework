@@ -1,5 +1,5 @@
 imports: {
-    'module': import("infrastructure.message.bus")
+    'module': import("infrastructure.message.bus.bus")
 };
 
 exports: {

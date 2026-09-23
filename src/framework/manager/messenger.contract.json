@@ -9,8 +9,8 @@
   "hashes": {
     "Manager": {
       "receive": {
-        "production": "009b071ca497f304ae09129270e72bfb1d134ab801cee3fce30a2efd36d03835",
-        "test": "d1a12db66f61aa5b9226e22d68d9795802e76076c8d5c02df4e9bfdbf141a320"
+        "production": "754bece588cb01e6c518a06cb7aaf5dffb620fa686ca4808a618262bf06f3b1a",
+        "test": "754bece588cb01e6c518a06cb7aaf5dffb620fa686ca4808a618262bf06f3b1a"
       },
       "send": {
         "production": "12f448d75204cb09772e27cdf2ffadd6794a9c3f26416c31d0bc40ee3bcaa81b",

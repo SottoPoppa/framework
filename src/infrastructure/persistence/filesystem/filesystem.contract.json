@@ -3,31 +3,10 @@
   "exports": {
     "filter": [
       "Adapter.filter"
-    ],
-    "json_document": [
-      "Adapter._json_document"
-    ],
-    "payload_data": [
-      "Adapter._payload_data"
-    ],
-    "resolve_path": [
-      "Adapter._resolve_path"
     ]
   },
   "hashes": {
     "Adapter": {
-      "_json_document": {
-        "production": "3125f122e084db934e0d2fc7fb0c8f4d885505c7ccf522df34894a8f63dce608",
-        "test": "3125f122e084db934e0d2fc7fb0c8f4d885505c7ccf522df34894a8f63dce608"
-      },
-      "_payload_data": {
-        "production": "a69de6615c35053c56123f8dd04eaf5a1fdf8c27b355a15d19065e431d78aa30",
-        "test": "a69de6615c35053c56123f8dd04eaf5a1fdf8c27b355a15d19065e431d78aa30"
-      },
-      "_resolve_path": {
-        "production": "5ae2981284d88ce7ff9c016c56a0f4bd0c8384f19ae4e89748b5e48759f5ce68",
-        "test": "5ae2981284d88ce7ff9c016c56a0f4bd0c8384f19ae4e89748b5e48759f5ce68"
-      },
       "filter": {
         "production": "2c74ebf41db20853795548371da7baa3167682e683f2087fea8e56c20d4ab24e",
         "test": "2c74ebf41db20853795548371da7baa3167682e683f2087fea8e56c20d4ab24e"

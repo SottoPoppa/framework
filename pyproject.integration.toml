@@ -10,6 +10,13 @@ presentation = "demo.dsl"
 
 [manager.messenger]
 debug_mode = true
+message = "message.dsl"
+
+[manager.storekeeper]
+persistence = "persistence.dsl"
+
+[manager.authenticator]
+authentication = "authentication.dsl"
 
 [[message.stub]]
 name = "console"
@@ -23,6 +30,7 @@ name = "memory"
 
 [[persistence.filesystem]]
 name = "workfolder"
+implementation = "filesystem"
 path = "/tmp"
 
 [[authentication.stub]]

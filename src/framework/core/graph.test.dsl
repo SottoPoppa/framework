@@ -24,7 +24,7 @@ tuple:test_suite := (
         "action": exports.entries;
         "inputs": ();
         "outputs": ("first",);
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value.0 == @expected;
         "note": "Dag.entries restituisce il nodo di ingresso"
     }
 );

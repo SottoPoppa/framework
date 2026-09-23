@@ -62,6 +62,14 @@ class LocatedError(ValueError):
         }
 
 
+class FlowError(ValueError):
+    """Eccezione per un Failure il cui payload non è un'eccezione Python."""
+
+    def __init__(self, value: Any):
+        self.value = value
+        super().__init__(str(value))
+
+
 def configure_dev_logging(
     enabled: bool = False,
 ) -> None:
@@ -556,7 +564,10 @@ def unwrap(value: Any) -> Any:
     if not is_result(value):
         return value
     if not value.is_success:
-        raise value.output.error
+        error = value.output.error
+        if isinstance(error, BaseException):
+            raise error
+        raise FlowError(error)
     return value.output.value
 
 

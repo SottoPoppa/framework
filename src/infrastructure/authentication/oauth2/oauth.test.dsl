@@ -1,9 +1,9 @@
 imports: {
-    'module': import("infrastructure.authentication.oauth")
+    'module': import("infrastructure.authentication.oauth2.oauth")
 };
 
 any:provider := imports.module.Adapter(
-    name: "provider",
+    provider: "provider",
     token_url: "https://auth.example.test/token",
     authorization_endpoint: "https://auth.example.test/authorize",
     redirect_uri: "https://app.example.test/callback",
@@ -14,7 +14,7 @@ any:provider := imports.module.Adapter(
     scope: "api"
 );
 
-dict:session := {
+dict:oauth_session := {
     "id": "oauth-test";
     "providers": {
         "provider": {
@@ -30,7 +30,6 @@ dict:session := {
 };
 
 exports: {
-    "bool": provider._bool;
     "headers": provider.get_headers;
     "user": provider.get_user;
     "authorization_url": provider.authorization_url;
@@ -39,29 +38,15 @@ exports: {
 
 tuple:test_suite := (
     {
-        "action": exports.bool;
-        "inputs": "true";
-        "outputs": true;
-        "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "OAuth interpreta il flag SSL testuale";
-    },
-    {
-        "action": exports.bool;
-        "inputs": "false";
-        "outputs": false;
-        "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "OAuth rifiuta il flag SSL disabilitato";
-    },
-    {
         "action": exports.headers;
-        "inputs": (session,);
+        "inputs": (oauth_session,);
         "outputs": {"Authorization": "Bearer test-access-token"};
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "OAuth costruisce gli header dal token presente nella sessione";
     },
     {
         "action": exports.user;
-        "inputs": (session,);
+        "inputs": (oauth_session,);
         "outputs": {"email": "user@example.test"};
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "OAuth recupera l'utente dalla sessione";

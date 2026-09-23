@@ -45,7 +45,7 @@ tuple:test_suite := (
     {
         "action": exports.to_json;
         "inputs": ();
-        "outputs": "{\"authentication\": {}, \"context\": {}, \"id\": \"sid\", \"results\": {\"terminal\": {\"selected\": \"src/application/controller/kanban.dsl\"}}}";
+        "outputs": '{"authentication": {}, "context": {}, "id": "sid", "results": {"terminal": {"selected": "src/application/controller/kanban.dsl"}}}';
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "UserSession.to_json serializza la proiezione persistibile della sessione"
     }

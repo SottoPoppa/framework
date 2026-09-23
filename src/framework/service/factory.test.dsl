@@ -1,9 +1,10 @@
 imports: {
     'factory': import("framework.service.factory");
+    'session': import("framework.core.session")
 };
 
 any:repository := imports.factory.Repository(
-    location: {"GITHUB": ["repos/{{ owner }}/{{ name }}"]},
+    location: {"GITHUB": ["repos/{% raw %}{{ owner }}/{{ name }}{% endraw %}"]},
     model: "file"
 );
 
@@ -55,14 +56,14 @@ tuple:test_suite := (
         "action": exports.get_requirements;
         "inputs": "";
         "outputs": [];
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == imports.session.pure_value(@expected);
         "note": "get_requirements gestisce un template vuoto";
     },
     {
         "action": exports.get_requirements;
-        "inputs": "repos/{{ owner }}/{{ name }}";
+        "inputs": "repos/{% raw %}{{ owner }}/{{ name }}{% endraw %}";
         "outputs": ["name", "owner"];
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == imports.session.pure_value(@expected);
         "note": "get_requirements estrae tutte le variabili del template";
     },
     {
@@ -170,7 +171,7 @@ tuple:test_suite := (
                 "accessed_at": none
             }
         ];
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == imports.session.pure_value(@expected);
         "note": "results normalizza una collezione di file secondo lo schema file";
     }
 );

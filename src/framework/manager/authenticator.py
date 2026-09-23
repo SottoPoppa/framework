@@ -66,10 +66,13 @@ class Manager(manager.Port):
 
     @staticmethod
     def _merge_authentication_result(session, authentication, session_result):
-        if not session_result.get('success'):
-            return session_result
+        if flow.is_result(session_result):
+            if not flow.check(session_result):
+                return session_result
+            payload = flow.output(session_result)
+        else:
+            payload = session_result
 
-        payload = flow.output(session_result)
         if not isinstance(payload, dict):
             return flow.error("Authentication provider returned an invalid payload")
 
@@ -99,10 +102,11 @@ class Manager(manager.Port):
             return flow.error("Authentication policy denied sign_out")
         for authentication in self.authentications:
             session_result = await authentication.sign_out(session)
-            if not session_result.get('success'):
+            if flow.is_result(session_result) and not flow.check(session_result):
                 self.logger.warning(
                     "Authenticator: invalidazione provider fallita",
                     provider=type(authentication).__name__,
+                    error=flow.output(session_result),
                 )
                 return session_result
 

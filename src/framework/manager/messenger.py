@@ -100,6 +100,12 @@ class Manager(manager.Port):
             if session.user_session.execution(destination) is None:
                 started = await session.run(destination)
                 if flow.is_result(started) and not flow.check(started):
+                    self.logger.error(
+                        "Messenger: avvio del controller DSL fallito",
+                        receiver=destination,
+                        domain=domain,
+                        error=flow.output(started),
+                    )
                     return started
             execution = session.user_session.execution(destination)
             result = await session.runner.emit(
@@ -123,15 +129,16 @@ class Manager(manager.Port):
             return flow.success(result)
 
         matched = self._matching_providers(destination, adapter)
-        if destination and not matched:
+        if not matched:
             self.logger.warning(
                 "Messenger: nessun provider trovato",
                 receiver=destination,
-                    requested_adapter=adapter,
+                requested_adapter=adapter,
             )
             return flow.error("Nessun provider di messaggistica trovato")
 
         failure = None
+        authorized_count = 0
         for provider in matched:
             provider_name = provider.config.get("name") or provider.adapter
             authorized = await self._authorized_provider("publish", provider, destination, constants)
@@ -144,13 +151,28 @@ class Manager(manager.Port):
                 )
                 continue
 
-            result = await provider.post(session, **constants | {'domain': domain})
+            authorized_count += 1
+            try:
+                result = await provider.post(session, **constants | {'domain': domain})
+            except Exception as exc:
+                self.logger.error(
+                    "Messenger: eccezione durante l'invio al provider",
+                    provider=provider_name,
+                    receiver=destination,
+                    domain=domain,
+                    exception=exc,
+                )
+                if failure is None:
+                    failure = flow.error(exc)
+                continue
+
             if flow.is_result(result) and not flow.check(result):
                 self.logger.error(
                     "Messenger: invio al provider fallito",
                     provider=provider_name,
                     receiver=destination,
                     domain=domain,
+                    error=flow.output(result),
                 )
                 if failure is None:
                     failure = result
@@ -161,6 +183,8 @@ class Manager(manager.Port):
                     receiver=destination,
                     domain=domain,
                 )
+        if authorized_count == 0:
+            return flow.error("Nessun provider di messaggistica autorizzato")
         return failure or flow.success()
 
     @flow.result(inputs=('messenger',), outputs=())
@@ -211,7 +235,9 @@ class Manager(manager.Port):
             )
 
         tasks = [
-            asyncio.create_task(provider.read(session, **constants | {'domain': domain}))
+            asyncio.create_task(
+                provider.read(session, **constants | {'domain': domain})
+            )
             for provider in authorized
         ]
 
@@ -224,29 +250,61 @@ class Manager(manager.Port):
             return None
 
         try:
-            done, pending = await asyncio.wait(
+            done, _pending = await asyncio.wait(
                 tasks,
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
-            result = done.pop().result()
-
-            self.logger.debug(
-                "Messenger: ricezione completata",
-                receiver=destination,
-                domain=domain,
-            )
-
-            for task in pending:
-                task.cancel()
-
+            results = []
+            errors = []
+            for task in tasks:
+                if task not in done:
+                    continue
                 try:
-                    await task
+                    results.append(task.result())
                 except asyncio.CancelledError:
-                    pass
+                    continue
+                except Exception as exc:
+                    errors.append(exc)
+                    self.logger.error(
+                        "Messenger: provider in ricezione terminato con eccezione",
+                        receiver=destination,
+                        domain=domain,
+                        exception=exc,
+                    )
 
-            return result
+            failures = [
+                result for result in results
+                if flow.is_result(result) and not flow.check(result)
+            ]
+            for result in failures:
+                self.logger.error(
+                    "Messenger: provider in ricezione fallito",
+                    receiver=destination,
+                    domain=domain,
+                    error=flow.output(result),
+                )
+            successful = [result for result in results if result not in failures]
+
+            if successful:
+                self.logger.debug(
+                    "Messenger: ricezione completata",
+                    receiver=destination,
+                    domain=domain,
+                )
+                return successful[0]
+            if failures:
+                return failures[0]
+            if errors:
+                return flow.error(errors[0])
+            return None
 
         except Exception as exc:
-            self.framework.logger.error("Errore nel loop di ricezione", exception=exc)
-            return None
+            self.logger.error("Errore nel loop di ricezione", exception=exc)
+            return flow.error(exc)
+        finally:
+            pending = [task for task in tasks if not task.done()]
+            for task in pending:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)

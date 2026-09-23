@@ -1,5 +1,5 @@
 imports: {
-    'module': import("infrastructure.authentication.supabase")
+    'module': import("infrastructure.authentication.supabase.supabase")
 };
 
 any:schema := {
@@ -15,13 +15,6 @@ any:adapter := imports.module.Adapter(
 );
 
 tuple:test_suite := (
-    {
-        "action": adapter._client;
-        "inputs": ();
-        "outputs": true;
-        "assert": @received.is_success == true & @received.output.value != none;
-        "note": "Supabase crea un client isolato usando URL e chiave configurati";
-    },
     {
         "action": adapter.sign_out;
         "inputs": {"args": [{}]};

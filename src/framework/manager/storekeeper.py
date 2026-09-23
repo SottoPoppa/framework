@@ -32,32 +32,133 @@ class Manager(manager.Port):
     @flow.result()
     async def startup(self, session):
         self.logger.info("Storekeeper: avvio", providers=len(self.persistences))
-        await self.messenger.send(session, message="Storekeeper avviato.", receiver="console", domain="info")
+        notification = await self.messenger.send(
+            session,
+            message="Storekeeper avviato.",
+            receiver="console",
+            domain="info",
+        )
+        if flow.is_result(notification) and not flow.check(notification):
+            self.logger.warning(
+                "Storekeeper: notifica di avvio non inviata",
+                error=flow.output(notification),
+            )
+
+        started = []
         for provider in self.persistences:
-            start = getattr(provider, 'start', None)
-            if callable(start):
-                await start(session)
+            start = getattr(provider, "start", None)
+            if not callable(start):
+                continue
+            try:
+                result = await start(session)
+            except Exception as exc:
+                self.logger.error(
+                    "Storekeeper: avvio provider fallito",
+                    provider=type(provider).__name__,
+                    exception=exc,
+                )
+                await self._stop_providers(started, session)
+                return flow.error(exc)
+            if flow.is_result(result) and not flow.check(result):
+                self.logger.error(
+                    "Storekeeper: avvio provider fallito",
+                    provider=type(provider).__name__,
+                    error=flow.output(result),
+                )
+                await self._stop_providers(started, session)
+                return result
+            started.append(provider)
         self.logger.info("Storekeeper: avvio completato")
         return flow.success(None)
 
     @flow.result()
     async def shutdown(self, session):
         self.logger.info("Storekeeper: arresto")
-        await self.messenger.send(session, message="Storekeeper arrestato.", receiver="console", domain="info")
+        notification = await self.messenger.send(
+            session,
+            message="Storekeeper arrestato.",
+            receiver="console",
+            domain="info",
+        )
+        if flow.is_result(notification) and not flow.check(notification):
+            self.logger.warning(
+                "Storekeeper: notifica di arresto non inviata",
+                error=flow.output(notification),
+            )
+        errors = await self._stop_providers(self.persistences, session)
+        if errors:
+            return flow.error(errors)
         self.logger.info("Storekeeper: arresto completato")
         return flow.success(None)
+
+    async def _stop_providers(self, providers, session):
+        errors = []
+        for provider in reversed(providers):
+            stop = getattr(provider, "stop", None)
+            if not callable(stop):
+                continue
+            try:
+                result = await stop(session)
+            except Exception as exc:
+                errors.append(exc)
+                self.logger.error(
+                    "Storekeeper: arresto provider fallito",
+                    provider=type(provider).__name__,
+                    exception=exc,
+                )
+                continue
+            if flow.is_result(result) and not flow.check(result):
+                error = flow.output(result)
+                errors.append(error)
+                self.logger.error(
+                    "Storekeeper: arresto provider fallito",
+                    provider=type(provider).__name__,
+                    error=error,
+                )
+        return errors
 
     @flow.result()
     async def _load_repository(self, repository_name: str):
         """Carica e mette in cache il repository DSL richiesto."""
         if repository_name not in self.maked:
             path = f'src/application/repository/{repository_name}.dsl'
-            code = await self.defender.loader.resource(path)
-            await self.defender.interpreter.load_file(path, code)
+            code_result = await self.defender.loader.resource(path)
+            if flow.is_result(code_result) and not flow.check(code_result):
+                self.logger.error(
+                    "Storekeeper: caricamento del repository fallito",
+                    repository=repository_name,
+                    error=flow.output(code_result),
+                )
+                return code_result
+            code = flow.output(code_result)
+            load_result = await self.defender.interpreter.load_file(path, code)
+            if flow.is_result(load_result) and not flow.check(load_result):
+                self.logger.error(
+                    "Storekeeper: compilazione del repository fallita",
+                    repository=repository_name,
+                    error=flow.output(load_result),
+                )
+                return load_result
             session_result = await self.defender.session_create()
-            async with flow.output(session_result) as repository_session:
+            if flow.is_result(session_result) and not flow.check(session_result):
+                self.logger.error(
+                    "Storekeeper: creazione sessione repository fallita",
+                    repository=repository_name,
+                    error=flow.output(session_result),
+                )
+                return session_result
+            repository_session = flow.output(session_result)
+            async with repository_session:
                 run_result = await repository_session.run(path)
-                self.repositories[repository_name] = flow.output(run_result)
+                if flow.is_result(run_result) and not flow.check(run_result):
+                    self.logger.error(
+                        "Storekeeper: esecuzione repository fallita",
+                        repository=repository_name,
+                        error=flow.output(run_result),
+                    )
+                    return run_result
+                repository_data = flow.output(run_result)
+            self.repositories[repository_name] = repository_data
             self.maked[repository_name] = Repository(
                 **self.repositories[repository_name]['repository']
             )
@@ -89,8 +190,13 @@ class Manager(manager.Port):
                 **storekeeper | {'provider': profile, 'session': session}
             )
         except Exception as error:
+            self.logger.error(
+                "Storekeeper: parametri provider non disponibili",
+                provider=profile,
+                exception=error,
+            )
             return flow.error(
-                f"Errore durante l'ottenimento dei parametri per {profile}: {error}"
+                error
             )
 
         method = getattr(provider, operation, None)
@@ -156,10 +262,13 @@ class Manager(manager.Port):
             except Exception as error:
                 for task in tasks:
                     task.cancel()
-                return flow.error(
-                    f"Errore imprevisto durante la preparazione per il provider "
-                    f"{provider}: {error}"
+                await asyncio.gather(*tasks, return_exceptions=True)
+                self.logger.error(
+                    "Storekeeper: preparazione provider fallita",
+                    provider=type(provider).__name__,
+                    exception=error,
                 )
+                return flow.error(error)
         if not tasks:
             self.logger.warning(
                 "Storekeeper: nessun provider compatibile",

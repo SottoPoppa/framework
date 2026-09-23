@@ -1,7 +1,8 @@
 imports: {
-    'module': import("infrastructure.presentation.starlette");
+    'module': import("infrastructure.presentation.web.starlette");
     'mock': import("unittest.mock");
-    'types': import("types")
+    'types': import("types");
+    'session': import("framework.core.session")
 };
 
 any:adapter := imports.module.Adapter(loader: none, defender: none, presenter: none, messenger: none, authenticator: none, storekeeper: none, manager: {"defender": {"key": "test-key"}});
@@ -22,7 +23,6 @@ exports: {
     'signin': imports.module.Adapter.signin;
     'signup': imports.module.Adapter.signup;
     'signaid': imports.module.Adapter.signaid;
-        "inputs": {"args": (adapter.views)};
     'action': imports.module.Adapter.action;
     'mount_route': imports.module.Adapter.mount_route;
     'shutdown': imports.module.Adapter.shutdown;
@@ -229,7 +229,7 @@ tuple:test_suite := (
         "action": exports.keys;
         "inputs": {"args": (adapter.views)};
         "outputs": ["/health"];
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == imports.session.pure_value(@expected);
         "note": "Starlette conserva la route montata nell'indice delle view";
     },
     {

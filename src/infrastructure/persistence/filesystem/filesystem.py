@@ -3,6 +3,7 @@ import os
 import time
 import asyncio
 import json
+from concurrent.futures import CancelledError as FutureCancelledError
 from pathlib import Path
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -31,7 +32,34 @@ class FileWatcherHandler(FileSystemEventHandler):
         self._last_modified_times[event.src_path] = current_time
 
         coro = self.adapter.handle_watcher_event(self.session, event_type, event.src_path)
-        asyncio.run_coroutine_threadsafe(coro, self.loop)
+        try:
+            future = asyncio.run_coroutine_threadsafe(coro, self.loop)
+        except Exception as exc:
+            coro.close()
+            self.adapter.logger.error(
+                "Impossibile pianificare l'evento del watcher",
+                exception=exc,
+                path=event.src_path,
+            )
+            return
+        future.add_done_callback(self._event_completed)
+
+    def _event_completed(self, future):
+        try:
+            result = future.result()
+        except (asyncio.CancelledError, FutureCancelledError):
+            return
+        except Exception as exc:
+            self.adapter.logger.error(
+                "Gestione evento watcher fallita",
+                exception=exc,
+            )
+            return
+        if flow.is_result(result) and not flow.check(result):
+            self.adapter.logger.error(
+                "Pubblicazione evento watcher fallita",
+                error=flow.output(result),
+            )
 
     def on_modified(self, event):
         if event.is_directory:
@@ -88,7 +116,7 @@ class Adapter(persistence.Port):
 
     @flow.result()
     async def handle_watcher_event(self, session, event_type, filepath):
-        await self.messenger.send(
+        return await self.messenger.send(
             session,
             message=filepath,      
             domain=f"event.{event_type}"
@@ -97,16 +125,21 @@ class Adapter(persistence.Port):
 
     def stop_watcher(self):
         if self.observer:
-            try:
-                self.observer.stop()
-                self.observer.join()
-                self.logger.info("Watcher interrotto correttamente")
-            except Exception:
-                pass
+            self.observer.stop()
+            self.observer.join()
+            self.logger.info("Watcher interrotto correttamente")
 
     def __del__(self):
         if self.observer and self.observer.is_alive():
-            self.stop_watcher()
+            try:
+                self.stop_watcher()
+            except Exception as exc:
+                logger = getattr(self, "logger", None)
+                if logger:
+                    logger.warning(
+                        "Errore durante l'arresto del watcher in finalizzazione",
+                        exception=exc,
+                    )
 
     @flow.result()
     async def request(self, **constants):
@@ -209,7 +242,7 @@ class Adapter(persistence.Port):
         try:
             with open(path, encoding='utf-8') as file:
                 return json.load(file)
-        except (FileNotFoundError, json.JSONDecodeError):
+        except FileNotFoundError:
             return {}
 
     @staticmethod

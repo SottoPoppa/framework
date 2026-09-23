@@ -430,7 +430,17 @@ class Manager(manager.Port):
 
             # ── fase 2: valutazione dell'assert ─────────────────────────
             try:
-                ok = flow.output(await interp.call(assert_fn, (), {"received": received, "expected": expected}))
+                assertion_bindings = {
+                    **ctx,
+                    "received": received,
+                    "expected": expected,
+                }
+                assertion_result = await interp.call(
+                    assert_fn,
+                    (),
+                    assertion_bindings,
+                )
+                ok = self._assertion_value(assertion_result)
             except Exception as e:
                 results["failed"] += 1
                 results["errors"].append({"target": str(target), "error": str(e), "test_note": test_note, "phase": "assert"})
@@ -472,6 +482,29 @@ class Manager(manager.Port):
 
         results["success"] = results["failed"] == 0 and not results["export_errors"]
         return {"success": results["success"], "data": results}
+
+    @staticmethod
+    def _assertion_value(result):
+        if flow.is_result(result):
+            if not flow.check(result):
+                error = flow.output(result)
+                if isinstance(error, BaseException):
+                    raise AssertionError(
+                        f"Assert DSL non riuscito: {error}"
+                    ) from error
+                raise AssertionError(f"Assert DSL non riuscito: {error!r}")
+            value = flow.output(result)
+        else:
+            value = result
+
+        if isinstance(value, Deferred):
+            unresolved = ", ".join(value.parameters) or repr(value.expression)
+            raise AssertionError(f"Assert DSL non risolto: {unresolved}")
+        if not isinstance(value, bool):
+            raise TypeError(
+                f"L'assert DSL deve restituire bool, trovato {type(value).__name__}"
+            )
+        return value
 
     @staticmethod
     def _record_setup_error(results: dict, s: "diagnostic.LogScope", i: int, test_note: str, target, message: str) -> None:

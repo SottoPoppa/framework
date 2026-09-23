@@ -4,7 +4,7 @@ imports: {
 };
 
 any:provider := imports.mock.Adapter(name: "console");
-any:messenger := imports.module.Manager(messages: (provider), defender: none, framework: none);
+any:messenger := imports.module.Manager(messages: [provider], defender: none, framework: none);
 session:session := test.session;
 
 exports: {
@@ -56,7 +56,7 @@ tuple:test_suite := (
             }
         };
         "outputs": none;
-        "assert": @received.is_success == false & @received.errors != none;
+        "assert": @received.is_success == false & @received.output.error != none;
         "note": "send segnala un destinatario senza provider disponibile";
     }
 );

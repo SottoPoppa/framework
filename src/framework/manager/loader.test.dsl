@@ -34,14 +34,14 @@ tuple:test_suite := (
         "action": exports.import_module;
         "inputs": "framework.manager.loader";
         "outputs": true;
-        "assert": @received.is_success == true & @received.output.value.Framework != none;
+        "assert": @received.is_success == true & @received.output.value.Loader != none;
         "note": "import_module risolve un modulo framework reale senza fixture"
     },
     {
         "action": exports.load_module;
-        "inputs": ("framework.service.scheme", "src/framework/service/scheme.py", {"schemes": {"test": {}}});
+        "inputs": ("framework.service.scheme", "src/framework/service/scheme.py", {"contract_test_extra": {"test": {}}});
         "outputs": true;
-        "assert": @received.is_success == true & @received.output.value.schemes.test != none;
+        "assert": @received.is_success == true & @received.output.value.contract_test_extra.test != none;
         "note": "load_module inietta gli extra anche in un modulo già importato"
     }
 );

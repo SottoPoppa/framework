@@ -9,6 +9,16 @@ class Adapter:
     def __init__(self, **constants: Any) -> None:
         self.name = constants.get("name", "stub")
         self.config = constants
+        self.capabilities = constants.get(
+            "capabilities",
+            {
+                "tls": False,
+                "min_tls_version": "TLSv1.2",
+                "csrf": False,
+                "authentication": [],
+                "rate_limiting": False,
+            },
+        )
         self.attributes = dict(constants.get("attributes", {}))
         self.url = constants.get("url", "/")
         self.routes: dict[str, dict[str, Any]] = {}
@@ -32,7 +42,8 @@ class Adapter:
 
     async def rebuild(self, *args: Any):
         self.rebuilt.append(args)
-        return flow.success({"rebuilt": True})
+        session_id = getattr(args[0], "sid", None) if args else None
+        return flow.success({"rebuilt": True, "session_id": session_id})
 
     async def render_view(self, url: str):
         self.url = url

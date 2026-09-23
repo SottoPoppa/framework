@@ -33,7 +33,11 @@ MISSING = _Missing()
 
 def _descend(current: Any, part: str) -> Any:
     if isinstance(current, dict):
-        return current[part] if part in current else MISSING
+        if part in current:
+            return current[part]
+        if type(current) is not dict and not part.startswith("_"):
+            return getattr(current, part, MISSING)
+        return MISSING
     if isinstance(current, (list, tuple)):
         if not part.lstrip("-").isdigit():
             return MISSING

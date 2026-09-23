@@ -91,7 +91,17 @@ async def main(config):
         framework_instance.logger.error("Errore critico durante l'esecuzione", exception=exc)
         return False
     finally:
-        await app.shutdown()
+        try:
+            shutdown_result = await app.shutdown()
+        except Exception as exc:
+            main_logger.error("Shutdown applicazione fallito", exception=exc)
+            return False
+        if flow.is_result(shutdown_result) and not flow.check(shutdown_result):
+            main_logger.error(
+                "Shutdown applicazione fallito",
+                error=flow.output(shutdown_result),
+            )
+            return False
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Avvia il framework con una configurazione specifica.")
@@ -99,8 +109,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config",
         type=str,
-        default="pyproject.toml",
-        help="Percorso del file di configurazione (default: pyproject.toml)"
+        default=None,
+        help="Percorso del file di configurazione"
     )
 
     parser.add_argument("--debug", action="store_true", help="Abilita la modalità debug")
@@ -141,12 +151,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
     args_dict = vars(args)
 
-    '''if (
-        args_dict["test_integration"] is not None
-        and args_dict["config"] == "pyproject.toml"
-        and os.path.exists("pyproject.integration.toml")
-    ):
-        args_dict["config"] = "pyproject.integration.toml"'''
+    if args_dict["config"] is None:
+        args_dict["config"] = "pyproject.toml"
+        if (
+            args_dict["test_integration"] is not None
+            and os.path.exists("pyproject.integration.toml")
+        ):
+            args_dict["config"] = "pyproject.integration.toml"
     
 
     result = asyncio.run(main(args_dict))

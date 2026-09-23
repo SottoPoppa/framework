@@ -147,12 +147,41 @@ class Manager(manager.Port):
             if not filename:
                 continue
             path = f"src/application/policy/{policy}/{filename}"
-            code = await self.loader.resource(path)
-            await self.interpreter.load_file(path, code)
-            #await self.load_file(name, source)
+            code_result = await self.loader.resource(path)
+            if flow.is_result(code_result) and not flow.check(code_result):
+                self.framework.logger.error(
+                    "Caricamento policy fallito",
+                    policy=policy,
+                    error=flow.output(code_result),
+                )
+                return code_result
+            code = flow.output(code_result)
+            load_result = await self.interpreter.load_file(path, code)
+            if flow.is_result(load_result) and not flow.check(load_result):
+                self.framework.logger.error(
+                    "Compilazione policy fallita",
+                    policy=policy,
+                    error=flow.output(load_result),
+                )
+                return load_result
             session_result = await self.session_create()
-            async with flow.output(session_result) as session:
-                run_result = await session.run(path)
+            if flow.is_result(session_result) and not flow.check(session_result):
+                self.framework.logger.error(
+                    "Creazione sessione policy fallita",
+                    policy=policy,
+                    error=flow.output(session_result),
+                )
+                return session_result
+            policy_session = flow.output(session_result)
+            async with policy_session:
+                run_result = await policy_session.run(path)
+                if flow.is_result(run_result) and not flow.check(run_result):
+                    self.framework.logger.error(
+                        "Esecuzione policy fallita",
+                        policy=policy,
+                        error=flow.output(run_result),
+                    )
+                    return run_result
                 policy_data = flow.output(run_result)
             validation = self._validate_policy(policy, policy_data)
             if not validation.is_success:
@@ -166,10 +195,25 @@ class Manager(manager.Port):
 
         controllers_path = Path("src/application/controller")
         for file in controllers_path.glob("*.dsl"):
-            code = await self.loader.resource(file)
+            code_result = await self.loader.resource(file)
+            if flow.is_result(code_result) and not flow.check(code_result):
+                self.framework.logger.error(
+                    "Caricamento controller fallito",
+                    controller=file.stem,
+                    error=flow.output(code_result),
+                )
+                return code_result
+            code = flow.output(code_result)
             controller_name = file.stem
+            load_result = await self.interpreter.load_file(controller_name, code)
+            if flow.is_result(load_result) and not flow.check(load_result):
+                self.framework.logger.error(
+                    "Compilazione controller fallita",
+                    controller=controller_name,
+                    error=flow.output(load_result),
+                )
+                return load_result
             self.controllers.append(controller_name)
-            await self.interpreter.load_file(controller_name, code)
         
         self.framework.logger.info("Controller caricati", controllers=self.controllers)
 

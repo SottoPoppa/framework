@@ -189,7 +189,12 @@ class Session:
     async def wait(self, node):
         await self.event_for(node).wait()
         if node in self.errors:
-            raise self.errors[node]
+            error = self.errors[node]
+            if isinstance(error, BaseException):
+                raise error
+            from framework.core.flow import FlowError
+
+            raise FlowError(error)
         return self.results.get(node)
 
     def mark(self, node, state):

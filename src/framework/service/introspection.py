@@ -189,7 +189,7 @@ class Reflection:
                 return sorted(deps)
 
             for reference in re.findall(
-                r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}",
+                r"\{\{\s*(?:scheme\.)?([A-Za-z_][A-Za-z0-9_]*)\s*\}\}",
                 source,
             ):
                 candidates = (

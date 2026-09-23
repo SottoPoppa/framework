@@ -1,14 +1,18 @@
 imports: {
     'flow': import("framework.core.flow");
-    'operator': import("operator")
+    'operator': import("operator");
+    'session': import("framework.core.session")
 };
+
+any:wrap_result := imports.flow.result();
+any:unwrap_action := wrap_result(imports.flow.unwrap);
 
 exports: {
     'pipe_sync': imports.flow.pipe_sync;
     'is_result': imports.flow.is_result;
     'success': imports.flow.success;
     'check': imports.flow.check;
-    'unwrap': imports.flow.unwrap;
+    'unwrap': unwrap_action;
     'output': imports.flow.output;
     'configure_dev_logging': imports.flow.configure_dev_logging;
     'set_dev_sink': imports.flow.set_dev_sink;
@@ -73,6 +77,13 @@ tuple:test_suite := (
         "note": "unwrap restituisce il valore di un Result riuscito";
     },
     {
+        "action": exports.unwrap;
+        "inputs": {"args": [imports.flow.error("invalid credentials")]};
+        "outputs": none;
+        "assert": @received.is_success == false & @received.output.error.value == "invalid credentials";
+        "note": "unwrap conserva il payload del Failure quando non è un'eccezione Python";
+    },
+    {
         "action": exports.output;
         "inputs": {"args": [imports.flow.error("invalid credentials")]};
         "outputs": "invalid credentials";
@@ -131,36 +142,36 @@ tuple:test_suite := (
     {
         "action": exports.map_items_tuple;
         "inputs": {"a": 1; "b": 2;};
-        "outputs": (("a", 1), ("b", 2));
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "outputs": [["a", 1], ["b", 2]];
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == @expected;
         "note": "map_items_tuple converte una mappa in coppie ordinate"
     },
     {
         "action": exports.map_select_key_tuple;
         "inputs": {"name": {"github": "login";};};
-        "outputs": (("login", "name"),);
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "outputs": [["login", "name"]];
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == @expected;
         "note": "map_select_key_tuple supporta la selezione inversa"
     },
     {
         "action": exports.tuple_map_tuple;
         "inputs": {"args": [(1, 2)]};
-        "outputs": ("1", "2");
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "outputs": ["1", "2"];
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == @expected;
         "note": "tuple_map_tuple trasforma ogni elemento"
     },
     {
         "action": exports.tuple_map_async_tuple;
         "inputs": {"args": [(1, 2)]};
         "outputs": (imports.flow.success(1), imports.flow.success(2));
-        "assert": @received.is_success == true & @received.output.value.0.value == 1 & @received.output.value.1.value == 2;
+        "assert": @received.is_success == true & @received.output.value.0.output.value == 1 & @received.output.value.1.output.value == 2;
         "note": "tuple_map_async_tuple attende callback asincrone o awaitable"
     },
     {
         "action": exports.tuple_filter_tuple;
         "inputs": {"args": [(0, 1, 2)]};
-        "outputs": (1, 2);
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "outputs": [1, 2];
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == @expected;
         "note": "tuple_filter_tuple elimina gli elementi falsy"
     },
     {
@@ -172,23 +183,23 @@ tuple:test_suite := (
     },
     {
         "action": exports.tuple_flatten_tuple;
-        "inputs": {"args": [((1, 2), 3, [4, 5])]};
-        "outputs": (1, 2, 3, 4, 5);
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "inputs": {"args": [((1, 2), 3, [4, 5])]} ;
+        "outputs": [1, 2, 3, 4, 5];
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == @expected;
         "note": "tuple_flatten_tuple appiattisce un livello"
     },
     {
         "action": exports.tuple_unique_tuple;
         "inputs": {"args": [(1, 1, 2, 1)]};
-        "outputs": (1, 2);
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "outputs": [1, 2];
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == @expected;
         "note": "tuple_unique_tuple rimuove duplicati mantenendo l'ordine"
     },
     {
         "action": exports.tuple_group_by_map;
         "inputs": {"args": [(1, 1, 2)]};
-        "outputs": {"1": (1, 1); "2": (2,);};
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "outputs": {"1": [1, 1]; "2": [2];};
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == @expected;
         "note": "tuple_group_by_map raggruppa i valori per chiave"
     },
     {
@@ -201,22 +212,22 @@ tuple:test_suite := (
     {
         "action": exports.tuple_validate_each_tuple;
         "inputs": {"args": [(1, 2)]};
-        "outputs": (1, 2);
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "outputs": [1, 2];
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == @expected;
         "note": "tuple_validate_each_tuple conserva una sequenza valida"
     },
     {
         "action": exports.tuple_zip_tuple;
         "inputs": {"args": [(1, 2)]};
-        "outputs": ((1, "a"), (2, "b"));
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "outputs": [[1, "a"], [2, "b"]];
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == @expected;
         "note": "tuple_zip_tuple esegue lo zip strict su sequenze della stessa lunghezza"
     },
     {
         "action": exports.pipe_fork_async_tuple;
         "inputs": 3;
-        "outputs": ("3", 3);
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "outputs": ["3", 3];
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == @expected;
         "note": "pipe_fork_async_tuple raccoglie i risultati di più rami"
     },
     {
@@ -243,8 +254,8 @@ tuple:test_suite := (
     {
         "action": exports.pipe_foreach_tuple;
         "inputs": {"args": [("a", "b")]};
-        "outputs": ("a", "b");
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "outputs": ["a", "b"];
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == @expected;
         "note": "pipe_foreach_tuple mantiene la sequenza dopo il side effect"
     }
 );

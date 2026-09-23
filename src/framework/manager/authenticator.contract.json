@@ -24,27 +24,27 @@
     "Manager": {
       "activate": {
         "production": "2255ac56975f762238caee4246e77487385a15498c44b4b6e29b555c3033b2b3",
-        "test": "7e9afaf69be19b574fbaeb99004ce1dd029ef9d0557bd4b9eb5d4377b3313690"
+        "test": "2255ac56975f762238caee4246e77487385a15498c44b4b6e29b555c3033b2b3"
       },
       "authenticate": {
         "production": "51d8c369a84fff5daa4cca96d27c23fca74c49c98340ec6acb97d4ffbdf352d7",
-        "test": "cba8c62a81c6d800660adb3cf32f7963650c74fe043524b481f843d947a61feb"
+        "test": "51d8c369a84fff5daa4cca96d27c23fca74c49c98340ec6acb97d4ffbdf352d7"
       },
       "invalidate": {
-        "production": "e8a7fcdc692d3ca8bcf891777a428b0b9662d326899d77f3fa6278fe83bd87a6",
-        "test": "9a3561d2fa85346bff30c1e83e180f5a0055905d77f9bbd20b2ec8d58e58c345"
+        "production": "9c0e934e68bd0b62c88853f84f5d3063b2b42db0db6e87e4ea424ff7bed0fb29",
+        "test": "9c0e934e68bd0b62c88853f84f5d3063b2b42db0db6e87e4ea424ff7bed0fb29"
       },
       "regenerate": {
         "production": "41f65a6abbfbde81930a6041ea581baf0c1e540e4b42d3f5093184829b7224c3",
-        "test": "b2ce4a2838ce69538c87c750604140ed1ce55174a85c2d841fdf8e61de23eccf"
+        "test": "41f65a6abbfbde81930a6041ea581baf0c1e540e4b42d3f5093184829b7224c3"
       },
       "shutdown": {
         "production": "176d8e32d89a7d650c54edc12fb9e5f8be08d59bf689fe04df011eead274b665",
-        "test": "6ea432442825b6d1502427dad03d7a30a8c1cb26f2c873b5249dbb9f5bcdf176"
+        "test": "176d8e32d89a7d650c54edc12fb9e5f8be08d59bf689fe04df011eead274b665"
       },
       "startup": {
         "production": "bced058ae4422ad71c5bd508a2f7501417f19b91250ddcd8e244f4bbdc3ce1c1",
-        "test": "e991371e29df2dc64233d6f51e396d1840583bc2914d06fd526c1931f0fbbf30"
+        "test": "bced058ae4422ad71c5bd508a2f7501417f19b91250ddcd8e244f4bbdc3ce1c1"
       }
     }
   }

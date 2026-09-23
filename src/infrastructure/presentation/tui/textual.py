@@ -452,7 +452,9 @@ class Adapter(PresentationAdapter):
         """Inietta lo stile nell'applicazione."""
         if self.app:
             self._ensure_active_app()
-            self.app.parse_stylesheet(css_content)
+            self.app.stylesheet.add_source(css_content)
+            self.app.stylesheet.parse()
+            self.app.refresh_css()
 
     async def _run_runtime(self):
         self.logger.info("Avvio runtime Textual")

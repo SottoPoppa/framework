@@ -628,11 +628,22 @@ class Loader:
             if hasattr(defender, "startup"):
                 startup_result = await defender.startup()
                 if flow.is_result(startup_result) and not flow.check(startup_result):
-                    raise RuntimeError(flow.output(startup_result))
+                    self.logger.error(
+                        "Avvio Defender fallito",
+                        error=flow.output(startup_result),
+                    )
+                    flow.unwrap(startup_result)
             if defender:
                 self._apply_port_configurations(defender)
             if hasattr(defender, "session_create"):
-                session = flow.output(await defender.session_create())
+                session_result = await defender.session_create()
+                if flow.is_result(session_result) and not flow.check(session_result):
+                    self.logger.error(
+                        "Creazione sessione runtime fallita",
+                        error=flow.output(session_result),
+                    )
+                    flow.unwrap(session_result)
+                session = flow.output(session_result)
                 self.logger.info("Sessione creata", session=session)
 
         return {**context, "session": session}

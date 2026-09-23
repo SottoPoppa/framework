@@ -1,5 +1,6 @@
 imports: {
-    'module': import("framework.port.presentation")
+    'module': import("framework.port.presentation");
+    'session': import("framework.core.session")
 };
 
 exports: {
@@ -65,14 +66,14 @@ tuple:test_suite := (
         "action": exports.node_union;
         "inputs": (imports.module.Port, {"attrs": {"id": "counter"}; "inner": ["old"]}, {"attrs": {"class": "value"}; "inner": ["new"]});
         "outputs": {"attrs": {"id": "counter"; "class": "value"}; "inner": ["new"]};
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == @expected;
         "note": "Presentation Port unisce attributi e contenuto del descrittore DSL";
     },
     {
         "action": exports.node_union;
         "inputs": (imports.module.Port, none, {"attrs": {"class": "value"}});
         "outputs": {"attrs": {"class": "value"}; "inner": []};
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == @expected;
         "note": "Presentation Port gestisce un nodo assente durante una union";
     },
     {

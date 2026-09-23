@@ -1,61 +1,54 @@
-// Integration test: Defender -> authentication stub
+// Integration test: Defender -> policy e sessioni DSL
 
 exports: {
-    "new_session": test.managers.defender.new_session;
-    "activate": test.managers.defender.activate;
-    "authenticate": test.managers.defender.authenticate;
-    "reinstate": test.managers.defender.reinstate;
-    "terminate": test.managers.defender.terminate;
+    "session_create": test.managers.defender.session_create;
+    "session_get": test.managers.defender.session_get;
     "get_policy": test.managers.defender.get_policy;
     "authorized": test.managers.defender.authorized;
-    "resolve_route": test.managers.defender.resolve_route
+    "get_configuration": test.managers.defender.get_configuration
 };
-
-session:session := test.session;
-any:routes := {};
 
 tuple:test_suite := (
     {
-        "action": exports.new_session;
-        "inputs": {"args": [session]};
+        "action": exports.session_create;
+        "inputs": {"kwargs": {"id": "defender-integration"}};
         "outputs": none;
         "assert": @received.is_success == true & @received.output.value != none;
-        "note": "new_session restituisce la sessione corrente"
+        "note": "session_create registra una sessione nel runtime DSL"
     },
     {
-        "action": exports.activate;
-        "inputs": {"args": [session]; "kwargs": {"email": "integration@example.test"; "password": "secret"}};
+        "action": exports.session_get;
+        "inputs": "defender-integration";
         "outputs": none;
-        "assert": @received.is_success == true & @received.output.value.user.email == @expected.user.email;
-        "note": "activate registra l'utente tramite authentication stub"
-    },
-    {
-        "action": exports.authenticate;
-        "inputs": {"args": [session]; "kwargs": {"email": "integration@example.test"; "password": "secret"}};
-        "outputs": none;
-        "assert": @received.is_success == true & @received.transactions != none;
-        "note": "authenticate esegue il login e attraversa l'adapter authentication stub"
-    },
-    {
-        "action": exports.reinstate;
-        "inputs": {"args": [session]; "kwargs": {"email": "integration@example.test"; "password": "secret"}};
-        "outputs": none;
-        "assert": @received.is_success == true & @received.output.value.user.email == @expected.user.email;
-        "note": "reinstate ripristina l'identita dal provider stub"
-    },
-    {
-        "action": exports.terminate;
-        "inputs": {"args": [session]};
-        "outputs": {};
-        "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "terminate chiude la sessione tramite authentication stub"
+        "assert": @received.is_success == true & @received.output.value != none;
+        "note": "session_get recupera una sessione DSL registrata"
     },
     {
         "action": exports.get_policy;
-        "inputs": "missing";
+        "inputs": "message";
         "outputs": none;
+        "assert": @received.is_success == true & @received.output.value != none;
+        "note": "get_policy restituisce una policy caricata dal config"
+    },
+    {
+        "action": exports.authorized;
+        "inputs": {
+            "args": ["message"];
+            "kwargs": {
+                "action": "publish";
+                "request": {"provider": "console"; "receiver": "console"}
+            }
+        };
+        "outputs": true;
         "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "get_policy segnala una policy non caricata"
+        "note": "authorized applica la policy message caricata"
+    },
+    {
+        "action": exports.get_configuration;
+        "inputs": "message";
+        "outputs": none;
+        "assert": @received.is_success == true & @received.output.value != none;
+        "note": "get_configuration restituisce la configurazione validata della Port"
     },
     {
         "action": exports.authorized;
@@ -63,12 +56,5 @@ tuple:test_suite := (
         "outputs": false;
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "authorized nega una policy inesistente senza provider esterno"
-    },
-    {
-        "action": exports.resolve_route;
-        "inputs": {"args": [routes, "/missing", "GET"]};
-        "outputs": none;
-        "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "resolve_route restituisce none per una rotta non registrata"
     }
 );

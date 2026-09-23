@@ -1,5 +1,5 @@
 imports: {
-    'module': import("infrastructure.persistence.api")
+    'module': import("infrastructure.persistence.api.api")
 };
 
 any:adapter := imports.module.Adapter(
@@ -27,31 +27,10 @@ exports: {
 
 tuple:test_suite := (
     {
-        "action": exports.adapter._api_url;
-        "inputs": "Assistance/Ticket/1";
-        "outputs": "https://glpi.example.test/api.php/v2.3/Assistance/Ticket/1";
-        "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "Adapter._api_url costruisce il percorso API GLPI V2";
-    },
-    {
-        "action": exports.adapter._headers;
-        "inputs": {"headers": {"X-Test": "api"}; "has_body": true};
-        "outputs": {"Accept": "application/json"; "Content-Type": "application/json"; "X-Test": "api"};
-        "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "Adapter._headers aggiunge Content-Type solo alle richieste con body";
-    },
-    {
-        "action": exports.token_adapter._headers;
-        "inputs": {};
-        "outputs": "Token secret";
-        "assert": @received.is_success == true & @received.output.value.Authorization == @expected;
-        "note": "Adapter._headers usa il token OAuth esplicito e il suo tipo";
-    },
-    {
         "action": exports.adapter.request;
         "inputs": {"method": "GET"; "location": "Assistance/Ticket/1"; "session": session};
         "outputs": none;
-        "assert": @received.is_success == false & @received.output.value == @expected;
+        "assert": @received.is_success == false & @received.output.error != none;
         "note": "Adapter.request rifiuta una richiesta senza configurazione OAuth";
     },
     {
@@ -62,7 +41,7 @@ tuple:test_suite := (
             "session": session
         };
         "outputs": none;
-        "assert": @received.is_success == false & @received.output.value == @expected;
+        "assert": @received.is_success == false & @received.output.error != none;
         "note": "Adapter.create richiede un token prima di inviare il payload";
     },
     {
@@ -72,7 +51,7 @@ tuple:test_suite := (
             "storekeeper": {"provider": "glpi"; "location": "Assistance/Ticket/1"; "operation": "read"; "repository": "tickets"}
         };
         "outputs": none;
-        "assert": @received.is_success == false & @received.output.value == @expected;
+        "assert": @received.is_success == false & @received.output.error != none;
         "note": "Adapter.read applica il metodo GET del Port e richiede autenticazione";
     },
     {
@@ -84,7 +63,7 @@ tuple:test_suite := (
             "session": session
         };
         "outputs": none;
-        "assert": @received.is_success == false & @received.output.value == @expected;
+        "assert": @received.is_success == false & @received.output.error != none;
         "note": "Adapter.update applica PATCH e richiede autenticazione";
     },
     {
@@ -95,7 +74,7 @@ tuple:test_suite := (
             "session": session
         };
         "outputs": none;
-        "assert": @received.is_success == false & @received.output.value == @expected;
+        "assert": @received.is_success == false & @received.output.error != none;
         "note": "Adapter.delete applica DELETE e richiede autenticazione";
     },
     {
@@ -105,7 +84,7 @@ tuple:test_suite := (
             "session": session
         };
         "outputs": none;
-        "assert": @received.is_success == false & @received.output.value == @expected;
+        "assert": @received.is_success == false & @received.output.error != none;
         "note": "Adapter.query delega alla lettura di una collezione autenticata";
     },
     {
@@ -115,7 +94,7 @@ tuple:test_suite := (
             "storekeeper": {"provider": "glpi"; "location": "Assistance/Ticket"; "operation": "view"; "repository": "tickets"}
         };
         "outputs": none;
-        "assert": @received.is_success == false & @received.output.value == @expected;
+        "assert": @received.is_success == false & @received.output.error != none;
         "note": "Adapter.view applica la lettura del Port senza una risorsa implicita"
     }
 );

@@ -98,9 +98,16 @@ class Framework:
         if name in sys.modules:
             return sys.modules[name]
 
+        try:
+            spec = importlib.util.find_spec(name)
+        except (ImportError, ValueError):
+            spec = None
+        if spec is not None and spec.submodule_search_locations is not None:
+            return importlib.import_module(name)
+
         pkg = types.ModuleType(name)
         pkg.__path__ = []
-        pkg.__package__ = name.rpartition(".")[0]
+        pkg.__package__ = name
         sys.modules[name] = pkg
 
         if "." in name:
@@ -161,6 +168,15 @@ class Framework:
             self.logger.error("Impossibile creare ModuleSpec", path=path)
             raise ImportError(f"Impossibile creare ModuleSpec per {path}")
 
+        previous_module = sys.modules.get(name)
+        missing_attribute = object()
+        parent_name, separator, short_name = name.rpartition(".")
+        parent = sys.modules.get(parent_name) if separator else None
+        previous_attribute = (
+            getattr(parent, short_name, missing_attribute)
+            if parent is not None
+            else missing_attribute
+        )
         module = importlib.util.module_from_spec(spec)
         if extra:
             module.__dict__.update(extra)
@@ -174,7 +190,18 @@ class Framework:
         try:
             spec.loader.exec_module(module)
         except Exception as exc:
-            sys.modules.pop(name, None)
+            if previous_module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = previous_module
+            if separator:
+                parent = sys.modules.get(parent_name)
+                if parent is not None:
+                    if previous_attribute is missing_attribute:
+                        if hasattr(parent, short_name):
+                            delattr(parent, short_name)
+                    else:
+                        setattr(parent, short_name, previous_attribute)
             self.logger.error(
                 "Errore durante il caricamento del modulo",
                 exception=exc,

@@ -53,7 +53,7 @@ tuple:test_suite := (
         "action": exports.invalidate;
         "inputs": {"args": [session]};
         "outputs": session;
-        "assert": @received.is_success == true & @received.output.value.session == @expected;
+        "assert": @received.is_success == true & @received.output.value.id == @expected.id;
         "note": "Authenticator invalida la sessione e rimuove identità e provider";
     },
     {

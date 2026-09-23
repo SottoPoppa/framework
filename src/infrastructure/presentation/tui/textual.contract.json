@@ -1,21 +1,16 @@
 {
   "contract_version": 2,
   "exports": {
-    "format_flow_event": [
-      "_format_flow_event"
-    ],
-    "make_action": [
-      "_make_action"
+    "adapter": [
+      "Adapter.mount_css"
     ]
   },
   "hashes": {
-    "_format_flow_event": {
-      "production": "d34a1a821dfbc21ece8bd42bedfb87b957755a481ff810bfb1e6aa9d5f2d4cda",
-      "test": "d34a1a821dfbc21ece8bd42bedfb87b957755a481ff810bfb1e6aa9d5f2d4cda"
-    },
-    "_make_action": {
-      "production": "52410765474d600e6add7ba8c05cb080cc54aea6a7bfd81d12b830b48d39ef87",
-      "test": "52410765474d600e6add7ba8c05cb080cc54aea6a7bfd81d12b830b48d39ef87"
+    "Adapter": {
+      "mount_css": {
+        "production": "3e13b7c88f1c88479fcad928e75d53d8c308b2922d3d7636c56f031d6a6c2b0d",
+        "test": "3e13b7c88f1c88479fcad928e75d53d8c308b2922d3d7636c56f031d6a6c2b0d"
+      }
     }
   },
   "requires": [

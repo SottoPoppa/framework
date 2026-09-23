@@ -26,8 +26,8 @@ tuple:test_suite := (
     {
         "action": exports.parse_result;
         "inputs": "editor.application(entry: false) -> result();";
-        "outputs": none;
-        "assert": @received.is_success == true & @received.output.value.error != none;
-        "note": "Parser.parse_result restituisce un errore per task con trigger qualificato fuori da un blocco"
+        "outputs": 1;
+        "assert": @received.is_success == true & @received.output.value.statements != none;
+        "note": "Parser.parse_result restituisce un risultato per il programma DSL"
     }
 );

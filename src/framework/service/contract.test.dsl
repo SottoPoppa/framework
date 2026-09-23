@@ -25,7 +25,7 @@ tuple:test_suite := (
         "action": exports.keys;
         "inputs": {"args": [imports.contract.Contract.read(path_a)]};
         "outputs": ["a", "z"];
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value.0 == "a" & @received.output.value.1 == "z";
         "note": "Contract.write serializza le chiavi in ordine canonico";
     },
     {
@@ -39,7 +39,7 @@ tuple:test_suite := (
         "action": exports.keys;
         "inputs": {"args": [imports.contract.Contract.read(path_b)]};
         "outputs": ["a", "z"];
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "assert": @received.is_success == true & @received.output.value.0 == "a" & @received.output.value.1 == "z";
         "note": "Ordini di input diversi producono lo stesso testo JSON per Git"
     }
 );

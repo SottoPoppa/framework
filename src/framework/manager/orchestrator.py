@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 from typing import List, Dict, Any, Callable
 import re
 import traceback
@@ -17,10 +18,16 @@ class Manager(manager.Port):
         self.messenger = constants.get('messenger')
         self.interpreter = interpreter.Interpreter(scheme.schemes)
         self.logger = get_logger("orchestrator")
+        self._background_tasks: set[asyncio.Task] = set()
 
     # ── INTERPRETER ────────────────────────────────────────────────────────────────
 
     async def stop(self, session):
+        tasks = list(self._background_tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         await self.interpreter.stop()
     
     async def start(self, session):
@@ -131,67 +138,114 @@ class Manager(manager.Port):
     @flow.result()
     async def first_completed(self, session, **constants):
         """Attende il primo task completato e restituisce il suo risultato."""
-        operations = constants.get('operations', [])
+        operations = [
+            asyncio.ensure_future(operation)
+            for operation in constants.get("operations", [])
+        ]
+        if not operations:
+            return None
         errors = []
-        #await self.messenger.post(domain='debug',message="⏳ Attesa della prima operazione completata...")
+        pending = set(operations)
+        try:
+            while pending:
+                finished, pending = await asyncio.wait(
+                    pending,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for operation in operations:
+                    if operation not in finished:
+                        continue
+                    try:
+                        transaction = operation.result()
+                    except asyncio.CancelledError:
+                        continue
+                    except Exception as exc:
+                        errors.append(exc)
+                        self.logger.error(
+                            "Orchestrator: operazione terminata con eccezione",
+                            exception=exc,
+                        )
+                        continue
 
-        while operations:
-            finished, unfinished = await asyncio.wait(operations, return_when=asyncio.FIRST_COMPLETED)
+                    if flow.is_result(transaction):
+                        if not flow.check(transaction):
+                            error = flow.output(transaction)
+                            errors.append(error)
+                            self.logger.error(
+                                "Orchestrator: operazione fallita",
+                                error=error,
+                            )
+                            continue
+                        transaction = flow.output(transaction)
 
-            for operation in finished:
-                transaction = operation.result()
-                if flow.check(transaction):
-                    # framework_log("DEBUG", f"Transazione completata: {type(transaction)}", emoji="💼")
-                    if 'success' in constants:
-                        transaction = await constants['success'](transaction=transaction,profile=operation.get_name())
-                    for task in unfinished:
-                        task.cancel()
-                    return flow.success(flow.output(transaction))
+                    success = constants.get("success")
+                    if callable(success):
+                        try:
+                            transaction = await success(
+                                transaction=transaction,
+                                profile=getattr(operation, "get_name", lambda: None)(),
+                            )
+                        except Exception as exc:
+                            errors.append(exc)
+                            self.logger.error(
+                                "Orchestrator: trasformazione del risultato fallita",
+                                exception=exc,
+                            )
+                            continue
+                        if flow.is_result(transaction):
+                            if not flow.check(transaction):
+                                error = flow.output(transaction)
+                                errors.append(error)
+                                self.logger.error(
+                                    "Orchestrator: trasformazione del risultato fallita",
+                                    error=error,
+                                )
+                                continue
+                            transaction = flow.output(transaction)
 
-                if flow.is_result(transaction):
-                    errors.extend(transaction.get('errors', []))
-                    if not flow.check(transaction):
-                        errors.append(flow.output(transaction))
-
-                operations = unfinished
+                    return flow.success(transaction)
 
             error_msg = errors or "Nessuna transazione valida completata"
-            self.logger.warning("Orchestrator: first_completed senza risultato valido")
-            #await messenger.post(domain='debug',message=error_msg)
+            self.logger.warning(
+                "Orchestrator: first_completed senza risultato valido",
+                errors=error_msg,
+            )
             return flow.error(error_msg)
+        finally:
+            for task in operations:
+                if not task.done():
+                    task.cancel()
+            if operations:
+                await asyncio.gather(*operations, return_exceptions=True)
 
     @flow.result()
     async def all_completed(self, session, **constants) -> Dict[str, Any]:
         tasks: List[asyncio.Future] = constants.get('tasks', [])
     
-        # Lista per raccogliere i dettagli degli errori da ogni task
-        detailed_errors = []
-        
-        # return_exceptions=True: le eccezioni sono restituite come risultati
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # 1. Analisi dei Risultati Dettagliata
+        detailed_errors = []
         for result in results:
-            if isinstance(result, Exception):
-                
-                # Questa funzione stampa il traceback completo sul tuo log/console
+            if isinstance(result, BaseException):
                 self.logger.error(
                     "Orchestrator: task fallito",
                     exception=result,
                 )
-                
-                # Un task è fallito. Registra il traceback completo.
-                
-                # Ottieni il traceback completo (come stringa)
                 error_trace = traceback.format_exception(type(result), result, result.__traceback__)
-                full_error_log = "".join(error_trace)
-                
-                # Aggiungi il dettaglio all'elenco degli errori
-                detailed_errors.append(full_error_log)
+                detailed_errors.append("".join(error_trace))
+                continue
+            if flow.is_result(result):
+                if not flow.check(result):
+                    error = flow.output(result)
+                    detailed_errors.append(error)
+                    self.logger.error(
+                        "Orchestrator: task Flow fallito",
+                        error=error,
+                    )
+                continue
+            if isinstance(result, dict) and result.get("success") is False:
+                detailed_errors.append(result.get("error", result))
 
-        
-        # Se ci sono errori dettagliati, il risultato complessivo è un fallimento logico
-        if any(result.get('success', False) is not True for result in results):
+        if detailed_errors:
             self.logger.warning("Orchestrator: all_completed fallito", tasks=len(tasks))
             return flow.error(detailed_errors)
         
@@ -202,43 +256,66 @@ class Manager(manager.Port):
         """Esegue i task in sequenza, aspettando il completamento di ciascuno prima di passare al successivo."""
         tasks = constants.get('tasks', [])
         results = []
+        for task in tasks:
+            try:
+                result = await task(**constants)
+            except Exception as exc:
+                self.logger.error(
+                    "Orchestrator: chain_completed fallito",
+                    exception=exc,
+                )
+                return flow.error(exc)
 
-        #await self.messenger.post(domain='debug',message="🔄 Avvio esecuzione sequenziale delle operazioni...")
+            if flow.is_result(result):
+                if not flow.check(result):
+                    self.logger.error(
+                        "Orchestrator: task sequenziale fallito",
+                        error=flow.output(result),
+                    )
+                    return result
+                result = flow.output(result)
+            elif isinstance(result, dict) and result.get("success") is False:
+                self.logger.error(
+                    "Orchestrator: task sequenziale fallito",
+                    error=result.get("error", result),
+                )
+                return flow.error(result.get("error", result))
+            results.append(result)
 
-        try:
-            for task in tasks:
-                try:
-                    result = await task(**constants)
-                    results.append(result)
-                    #await messenger.post(domain='debug', message=f"✅ Task completato: {result}")
-                except Exception as e:
-                    #await messenger.post(domain='debug', message=f"❌ Errore nel task {task}: {e}")
-                    pass
-
-            return flow.success({"state": True, "result": results, "error": None})
-
-        except Exception as e:
-            error_msg = f"❌ Errore in chain_completed: {str(e)}"
-            self.logger.error("Orchestrator: chain_completed fallito", exception=e)
-            #await messenger.post(domain='debug', message=error_msg)
-            return flow.error(error_msg)
+        return flow.success({"state": True, "result": results, "error": None})
 
     @flow.result()
     async def together_completed(self, session, **constants) -> Dict[str, Any]:
         """Esegue tutti i task contemporaneamente senza attendere il completamento di tutti."""
         tasks = constants.get('tasks', [])
-
-        #await messenger.post(domain='debug', message="🚀 Avvio esecuzione simultanea delle operazioni...")
-
         try:
             for task in tasks:
-                asyncio.create_task(task)
-
-            #await messenger.post(domain='debug', message="✅ Tutti i task sono stati avviati in background.")
+                awaitable = task(**constants) if callable(task) else task
+                if not inspect.isawaitable(awaitable):
+                    raise TypeError(f"Task non awaitable: {task!r}")
+                background = asyncio.ensure_future(awaitable)
+                self._background_tasks.add(background)
+                background.add_done_callback(self._background_completed)
             return flow.success({"state": True, "result": "Tasks avviati in background", "error": None})
 
         except Exception as e:
-            error_msg = f"❌ Errore in together_completed: {str(e)}"
             self.logger.error("Orchestrator: together_completed fallito", exception=e)
-            #await messenger.post(domain='debug', message=error_msg)
-            return flow.error(error_msg)
+            return flow.error(e)
+
+    def _background_completed(self, task: asyncio.Task) -> None:
+        self._background_tasks.discard(task)
+        if task.cancelled():
+            return
+        try:
+            result = task.result()
+        except Exception as exc:
+            self.logger.error(
+                "Orchestrator: task in background terminato con eccezione",
+                exception=exc,
+            )
+            return
+        if flow.is_result(result) and not flow.check(result):
+            self.logger.error(
+                "Orchestrator: task in background fallito",
+                error=flow.output(result),
+            )

@@ -23,44 +23,44 @@ exports: {
 tuple:test_suite := (
     {
         "action": exports.startup;
-        "inputs": (session);
+        "inputs": [session];
         "outputs": none;
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "startup avvia il lifecycle dell'Authenticator senza modificare la sessione"
     },
     {
         "action": exports.shutdown;
-        "inputs": (session);
+        "inputs": [session];
         "outputs": none;
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "shutdown chiude il lifecycle dell'Authenticator senza errori"
     },
     {
         "action": exports.invalidate;
-        "inputs": (session);
+        "inputs": [session];
         "outputs": none;
-        "assert": @received.is_success == false & @received.errors != none;
+        "assert": @received.is_success == false & @received.output.error != none;
         "note": "invalidate rifiuta una policy authentication non caricata"
     },
     {
         "action": exports.regenerate;
-        "inputs": (session);
+        "inputs": [session];
         "outputs": none;
-        "assert": @received.is_success == false & @received.errors != none;
+        "assert": @received.is_success == false & @received.output.error != none;
         "note": "regenerate rifiuta una policy authentication non caricata"
     },
     {
         "action": exports.authenticate;
-        "inputs": (session);
+        "inputs": [session];
         "outputs": none;
-        "assert": @received.is_success == false & @received.errors != none;
+        "assert": @received.is_success == false & @received.output.error != none;
         "note": "authenticate rifiuta una policy authentication non caricata"
     },
     {
         "action": exports.activate;
-        "inputs": (session);
+        "inputs": [session];
         "outputs": none;
-        "assert": @received.is_success == false & @received.errors != none;
+        "assert": @received.is_success == false & @received.output.error != none;
         "note": "activate rifiuta una policy authentication non caricata"
     }
 );

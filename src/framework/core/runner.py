@@ -215,10 +215,11 @@ class DagRunner:
         for dep in node.deps:
             if dep not in dag.nodes:
                 continue
-            await session.wait(dep)
+            await session.event_for(dep).wait()
             if session.states.get(dep) != NodeState.SUCCESS:
+                cause = session.errors.get(dep)
                 session.errors[name] = DependencyFailed(
-                    f"Node {name!r} blocked by failed/skipped dependency {dep!r}"
+                    f"Node {name!r} blocked by failed/skipped dependency {dep!r}: {cause}"
                 )
                 session.mark(name, NodeState.SKIPPED)
                 return False

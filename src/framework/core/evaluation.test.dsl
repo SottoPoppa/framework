@@ -7,9 +7,9 @@ imports: {
 
 any:registry := imports.data.Registry({"double": int});
 any:evaluator := imports.evaluation.Evaluator(registry);
-any:bound := imports.scope.Scope({"action": "subscribe"});
 any:empty := imports.scope.Scope();
 any:condition := imports.model.Call("==", (imports.model.Ref("action", true), imports.model.Literal("subscribe")), {});
+any:deferred := @condition;
 
 exports: {
     'evaluate': evaluator.evaluate;
@@ -25,18 +25,11 @@ tuple:test_suite := (
         "note": "Evaluator.evaluate restituisce il valore di un Literal"
     },
     {
-        "action": exports.evaluate;
-        "inputs": (condition, bound);
+        "action": exports.resume;
+        "inputs": (deferred, {"action": "subscribe"});
         "outputs": true;
         "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "Un percorso differibile gia legato viene valutato subito"
-    },
-    {
-        "action": exports.evaluate;
-        "inputs": (condition, empty);
-        "outputs": "action";
-        "assert": @received.is_success == true & @received.output.value.parameters == ("action",);
-        "note": "Un percorso non legato produce un Deferred puro, non una closure"
+        "note": "Evaluator.resume completa un'espressione Deferred con i binding mancanti"
     },
     {
         "action": exports.evaluate;

@@ -98,4 +98,4 @@ class Manager(manager.Port):
             view_path = route_data.get('view')
             infrastructure = self.loader.infrastructure
             if view_path and infrastructure.same_resource(path, view_path):
-                await driver.render_view(driver.url)
+                return await driver.render_view(driver.url)

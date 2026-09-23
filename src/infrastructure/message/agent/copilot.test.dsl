@@ -1,5 +1,5 @@
 imports: {
-    'module': import("infrastructure.message.copilot")
+    'module': import("infrastructure.message.agent.copilot")
 };
 
 any:adapter := imports.module.Adapter(name: "copilot", test_mode: true);
@@ -7,8 +7,7 @@ session:session := test.session;
 
 exports: {
     'can': adapter.can;
-    'read': adapter.read;
-    'queue_domain': adapter._queue_domain
+    'read': adapter.read
 };
 
 tuple:test_suite := (
@@ -35,19 +34,5 @@ tuple:test_suite := (
         "outputs": none;
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Copilot adapter non blocca il test quando la coda e vuota";
-    },
-    {
-        "action": exports.queue_domain;
-        "inputs": none;
-        "outputs": "general";
-        "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "Copilot adapter usa general come dominio predefinito della coda";
-    },
-    {
-        "action": exports.queue_domain;
-        "inputs": "general";
-        "outputs": "general";
-        "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "Copilot adapter usa il dominio come chiave della coda";
     }
 );

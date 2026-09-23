@@ -1,6 +1,7 @@
 imports: {
-    'scheme': import("framework.core.scheme");
+    'scheme': import("framework.service.scheme");
     'template': import("framework.service.template");
+    'session': import("framework.core.session");
 };
 
 exports: {
@@ -34,12 +35,12 @@ tuple:test_suite := (
         "action": exports.get;
         "inputs": (data, "versioni.*[status=fallito].id");
         "outputs": [2];
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == imports.session.pure_value(@expected);
         "note": "get filtra una lista con una wildcard condizionale";
     },
     {
         "action": exports.format;
-        "inputs": {"target": "Ciao {{nome}}"; "nome": "Progetto A";};
+        "inputs": {"target": "Ciao {% raw %}{{nome}}{% endraw %}"; "nome": "Progetto A";};
         "outputs": "Ciao Progetto A";
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "format sostituisce le variabili Jinja";
@@ -55,7 +56,7 @@ tuple:test_suite := (
         "action": exports.put;
         "inputs": (data, "config.timeout", 60);
         "outputs": {"nome": "Progetto A"; "config": {"timeout": 60;}; "versioni": [{"id": 1; "status": "completo";}, {"id": 2; "status": "fallito";}];};
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == imports.session.pure_value(@expected);
         "note": "put restituisce una copia aggiornata";
     },
     {
@@ -69,7 +70,7 @@ tuple:test_suite := (
         "action": exports.normalize;
         "inputs": ([{"name": "Mario"; "age": 30;}, {"name": "Luigi"; "age": 40;}], schema);
         "outputs": [{"name": "Mario"; "age": 30;}, {"name": "Luigi"; "age": 40;}];
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == imports.session.pure_value(@expected);
         "note": "normalize accetta una collezione e normalizza ogni elemento secondo lo schema";
     }
 );

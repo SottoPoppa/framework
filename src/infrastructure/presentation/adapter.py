@@ -14,6 +14,22 @@ import framework.service.dom as dom
 import framework.port.presentation as presentation
 
 
+def split_text_and_children(values):
+    if isinstance(values, str):
+        values = (values,)
+    elif not isinstance(values, (list, tuple)):
+        values = () if values is None else (values,)
+
+    text = []
+    children = []
+    for value in values:
+        if isinstance(value, str):
+            text.append(value)
+        elif value is not None:
+            children.append(value)
+    return "".join(text), children
+
+
 def protect_editor_jinja_delimiters(root):
     """Protegge il markup Jinja scritto dentro i contenuti degli editor."""
     replacements = {
@@ -234,7 +250,7 @@ class Adapter(presentation.Port, ABC):
         """Aggiorna un nodo usando le primitive del backend concreto."""
         descriptor = self.node_union({"attrs": {}, "inner": []}, context or {})
         new_attrs = descriptor["attrs"]
-        new_text, new_children = presentation.split_text_and_children(
+        new_text, new_children = split_text_and_children(
             descriptor["inner"]
         )
 
@@ -242,17 +258,17 @@ class Adapter(presentation.Port, ABC):
             self._apply_node_attrs(node, new_attrs)
 
         if new_text and hasattr(node, "update"):
-            try:
-                node.update(new_text)
-            except Exception:
-                pass
+            result = node.update(new_text)
+            if flow.is_result(result) and not flow.check(result):
+                return result
 
         if new_children and hasattr(node, "remove_children") and hasattr(node, "mount"):
-            try:
-                await node.remove_children()
-                await node.mount(*new_children)
-            except Exception:
-                pass
+            result = await node.remove_children()
+            if flow.is_result(result) and not flow.check(result):
+                return result
+            result = await node.mount(*new_children)
+            if flow.is_result(result) and not flow.check(result):
+                return result
 
         return node
 

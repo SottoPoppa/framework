@@ -201,7 +201,7 @@ async def render(
             controller,
             manager_context,
         )
-        data[controller] = flow.output(run_result)
+        data[controller] = flow.unwrap(run_result)
 
     #raise Exception(data)
 

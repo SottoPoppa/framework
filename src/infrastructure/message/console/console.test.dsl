@@ -1,8 +1,10 @@
 imports: {
-    'module': import("infrastructure.message.console")
+    'module': import("infrastructure.message.console.console");
+    'infrastructure': import("framework.core.infrastructure");
+    'session': import("framework.core.session")
 };
 
-any:adapter := imports.module.Adapter(none);
+any:adapter := imports.module.Adapter(none, imports.infrastructure.Infrastructure());
 
 exports: {
     'can': adapter.can;
@@ -36,7 +38,7 @@ tuple:test_suite := (
         "action": exports.read;
         "inputs": {"domain": "*"};
         "outputs": [];
-        "assert": @received.is_success == true & @received.output.value == @expected;
+        "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == imports.session.pure_value(@expected);
         "note": "Console message adapter restituisce una coda vuota senza history attiva"
     }
 );

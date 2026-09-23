@@ -128,7 +128,8 @@ class Evaluator:
             if isinstance(value, (Call, ExecutionSpec, Literal, Ref)):
                 # Il contesto può contenere espressioni non ancora risolte.
                 value = await self._eval(value, scope, session)
-                scope.set(node.path, value)
+                if "." not in node.path:
+                    scope.set(node.path, value)
             return value
 
         registered = self._registry_for(session).lookup(node.path)
@@ -141,8 +142,23 @@ class Evaluator:
         return None
 
     async def _eval_call(self, node: Call, scope: Scope, session: Any) -> Any:
-        arguments = [await self._eval(item, scope, session) for item in node.arguments]
-        keywords = {key: await self._eval(item, scope, session) for key, item in node.keywords.items()}
+        if node.function in {"and", "or"} and len(node.arguments) == 2 and not node.keywords:
+            left = await self._eval(node.arguments[0], scope, session)
+            pending = _deferred_paths(left)
+            if pending:
+                return Deferred(node, pending, node.source)
+            if node.function == "and" and not left:
+                return False
+            if node.function == "or" and left:
+                return True
+            arguments = [left, await self._eval(node.arguments[1], scope, session)]
+            keywords = {}
+        else:
+            arguments = [await self._eval(item, scope, session) for item in node.arguments]
+            keywords = {
+                key: await self._eval(item, scope, session)
+                for key, item in node.keywords.items()
+            }
 
         pending = _deferred_paths(arguments) + _deferred_paths(tuple(keywords.values()))
         if pending:

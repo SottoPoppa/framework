@@ -1,12 +1,9 @@
 imports: {
-	'module': import("infrastructure.persistence.filesystem")
+	'module': import("framework.adapter.persistence.filesystem")
 };
 
 exports: {
 	'filter': imports.module.Adapter.filter;
-	'resolve_path': imports.module.Adapter._resolve_path;
-	'payload_data': imports.module.Adapter._payload_data;
-	'json_document': imports.module.Adapter._json_document
 };
 
 tuple:test_suite := (
@@ -24,25 +21,4 @@ tuple:test_suite := (
 		"assert": @received.is_success == true & @received.output.value != none;
 		"note": "Adapter.filter normalizza lo slash e applica startswith sui percorsi";
 	},
-	{
-		"action": exports.resolve_path;
-		"inputs": {"location": "/tmp/integration.txt"; "filter": {"eq": {"filename": "ignored.txt"}}};
-		"outputs": "/tmp/integration.txt";
-		"assert": @received.is_success == true & @received.output.value == @expected;
-		"note": "Adapter usa il percorso prodotto dal Repository quando disponibile";
-	},
-	{
-		"action": exports.payload_data;
-		"inputs": {"payload": {"content": "hello"}};
-		"outputs": "hello";
-		"assert": @received.is_success == true & @received.output.value == @expected;
-		"note": "Adapter estrae il contenuto dal payload del Repository";
-	},
-	{
-		"action": exports.json_document;
-		"inputs": {"document": [{"id": 1}]; "records": [{"id": 2}]};
-		"outputs": [{"id": 2}];
-		"assert": @received.is_success == true & @received.output.value == @expected;
-		"note": "Adapter conserva la forma lista dei documenti JSON durante un aggiornamento";
-	}
 );

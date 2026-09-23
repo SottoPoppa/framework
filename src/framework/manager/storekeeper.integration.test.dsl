@@ -23,16 +23,8 @@ any:expected := {
     "path": "/tmp/integration-storekeeper.txt";
     "name": "integration-storekeeper";
     "extension": "txt";
-    "mime_type": "application/octet-stream";
     "size": 23;
-    "encoding": "utf-8";
-    "content": "storekeeper integration";
-    "metadata": {};
-    "permissions": "";
-    "owner": "";
-    "created_at": none;
-    "modified_at": none;
-    "accessed_at": none
+    "content": "storekeeper integration"
 };
 
 tuple:test_suite := (
@@ -62,7 +54,7 @@ tuple:test_suite := (
             "args": [session];
             "kwargs": resource
         };
-        "outputs": none;
+        "outputs": {};
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Storekeeper.remove ripulisce la risorsa creata dal test integrativo";
     }

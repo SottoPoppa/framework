@@ -220,4 +220,4 @@ def resolve_route(risorse, request_url, request_method, base_url=None,**kargs):
 
         except Exception as e:
             logger.error("Errore nella risoluzione della route", exception=e)
-            return None
+            raise

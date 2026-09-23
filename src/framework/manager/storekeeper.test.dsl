@@ -4,7 +4,6 @@ imports: {
     'factory': import("framework.service.factory");
     'orchestrator': import("framework.manager.orchestrator");
     'messenger_module': import("framework.manager.messenger");
-    'defender_module': import("framework.manager.defender");
     'message': import("infrastructure.message.mock")
 };
 
@@ -36,12 +35,11 @@ any:repository := imports.factory.Repository(
     }
 );
 any:orchestrator := imports.orchestrator.Manager(none);
-any:messenger_defender := imports.defender_module.Manager(none, none, []);
 // Provider message mock per verificare startup/shutdown end-to-end.
 any:message_provider := imports.message.Adapter(name: "console");
 any:messenger := imports.messenger_module.Manager(
     messages: [message_provider],
-    defender: messenger_defender,
+    defender: none,
     framework: none
 );
 any:preparation_manager := imports.module.Manager(
