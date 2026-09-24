@@ -15,9 +15,11 @@ class Contract:
     Un contratto ha due responsabilità:
     1. dichiarare le dipendenze pip del componente (`requires`), quando
        presenti (tipicamente solo negli adapter, usato da Loader.install());
-    2. dichiarare gli export che compongono l'API verificata e certificare,
-       componente per componente, che il codice in esecuzione è quello che ha
-       superato i test — struttura:
+     2. dichiarare gli export da verificare e conservare, componente per
+         componente, l'hash del sorgente associato a una suite passata. Il
+         controllo dimostra solo che il sorgente coincide con quello registrato:
+         non valuta qualità o copertura dei test e non prova la correttezza del
+         comportamento — struttura:
 
                 "contract_version": 2,
                 "exports": {

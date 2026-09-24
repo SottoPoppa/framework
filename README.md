@@ -26,7 +26,7 @@ Il tutto orchestrato da un unico file di configurazione dichiarativa (`pyproject
 
 ### 1. Backend per piattaforme "vibe coding" / app-builder guidati da AI
 **Problema tipico:** un utente non tecnico chiede a un agente AI di costruire/modificare un'app via chat. L'agente ha libertà totale sul codice → rompe cose, inventa API, o scrive codice mai testato che finisce comunque in produzione.
-**Come lo risolvi:** perimetro fisso (`src/application/` è l'unica zona modificabile dall'agente, regola imposta via `SKILL.md`), DSL/XML invece di codice libero (meno gradi di libertà sintattica = meno spazio per "allucinazioni", file più corti da rileggere/riscrivere ad ogni iterazione = meno token), e il gate `Contract.verify_module()` che blocca l'avvio in modalità strict se un componente è stato modificato dopo l'ultimo test superato, a meno di usare esplicitamente `--dev`, `--test` o `--skip-verify`. È il caso d'uso "bandiera" del progetto ed è quello meglio coperto dal codice.
+**Come lo risolvi:** perimetro di modifica indicato in `SKILL.md`, DSL/XML invece di codice libero e un gate dei contract che, in modalità strict, confronta l'hash del sorgente degli export dichiarati con quello registrato dopo una suite passata. Il gate si applica solo ai componenti con un contract e rileva modifiche al sorgente: non valuta qualità o copertura dei test e non dimostra la correttezza del comportamento. `--dev`, `--test` e `--skip-verify` disattivano il controllo strict. È il caso d'uso "bandiera" del progetto ed è quello meglio coperto dal codice.
 
 ### 2. Prototipo che deve poter cambiare infrastruttura senza riscritture
 **Problema tipico:** inizi con un MVP che salva dati su filesystem (vedi `[[persistence.filesystem]]` nel `pyproject.toml` di esempio), poi devi passare a Redis o a un DB vero, senza toccare la logica di dominio.
@@ -50,7 +50,7 @@ Il tutto orchestrato da un unico file di configurazione dichiarativa (`pyproject
 
 ### 7. Passaggio di consegne da AI a sviluppatore umano
 **Problema tipico:** un MVP generato da AI arriva a un team umano che deve prenderlo in carico, ma è un "muro di codice" illeggibile e non si sa cosa è stato davvero testato.
-**Come lo risolvi:** la separazione esagonale rende chirurgico l'intervento umano (tocchi solo l'adapter o l'azione che ti interessa), e i contract dicono esplicitamente, componente per componente, cosa è certificato da un test e cosa no — documentazione di stato dei test che sopravvive al fatto che l'abbia scritta un'IA o un umano.
+**Come lo risolvi:** la separazione esagonale rende chirurgico l'intervento umano (tocchi solo l'adapter o l'azione che ti interessa), e i contract registrano quali export hanno hash corrispondenti a una suite passata. Sono una traccia di integrità del sorgente, non una misura della copertura né una garanzia indipendente della qualità dei test.
 
 ---
 
@@ -146,7 +146,7 @@ python3 public/main.py
 | `--setup` | `pip install -e .` + `--install`, per la prima configurazione dell'ambiente |
 | `--test [FILTRO]` | Esegue i test del framework, opzionalmente filtrati (es. `services`, `managers`, `infrastructure/message`) |
 | `--test-integration [FILTRO]` | Esegue gli scenari `*.integration.test.dsl` sul runtime bootstrap-ato |
-| `--skip-verify` | Bypassa il controllo "codice testato" degli adapter all'avvio — usare con cautela |
+| `--skip-verify` | Bypassa il controllo strict degli hash dei contract all'avvio — usare con cautela |
 
 ---
 

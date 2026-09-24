@@ -81,7 +81,7 @@ Attivabile **solo** quando l'umano indica esplicitamente quale file di `src/fram
 
 ## 🧪 Disciplina Test-First e Contract (obbligatoria in Modalità 2, consigliata sempre)
 
-Il framework ha già il meccanismo per impedire che codice non verificato arrivi in produzione: **usalo, non aggirarlo.**
+Il gate strict dei contract confronta l'hash corrente degli export dichiarati con quello registrato dopo una suite passata, e si applica solo ai file che hanno un contract. È un controllo di integrità del sorgente: non valuta copertura, qualità degli assert o indipendenza dei test, e non dimostra la correttezza del comportamento. **Usalo, ma non presentarlo come prova di correttezza.**
 
 1. **Prima di modificare un manager/componente, scrivi o aggiorna il suo `*.test.dsl`** nella stessa cartella (es. `src/framework/manager/tester.test.dsl` per `tester.py`). Il test è la specifica: se non riesci a scrivere un test per il comportamento che stai per aggiungere, non hai ancora capito bene cosa deve fare.
 2. **Implementa il fix/feature.**

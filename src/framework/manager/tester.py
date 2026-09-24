@@ -293,6 +293,11 @@ class Manager(manager.Port):
 
         test_suite = interpreter.flatten_records(ctx.get('test_suite', []))
 
+        if not any(isinstance(test, dict) for test in test_suite):
+            message = "test_suite vuota: deve contenere almeno un test valido."
+            s.error(message)
+            return {"success": False, "data": {"error": message}}
+
         exports = ctx.get('exports', {}) or {}
         exported_targets = {
             id(target): alias

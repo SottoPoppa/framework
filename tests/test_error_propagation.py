@@ -41,6 +41,51 @@ from framework.port.presentation import Port as PresentationPort
 
 
 class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
+    def test_websocket_origin_requires_same_origin_or_explicit_allowlist(self):
+        websocket = types.SimpleNamespace(
+            url="wss://app.example.test/reactive",
+            headers={"origin": "https://app.example.test"},
+        )
+
+        self.assertTrue(
+            starlette_web.Adapter._websocket_origin_allowed(websocket)
+        )
+        websocket.headers["origin"] = "https://attacker.example"
+        self.assertFalse(
+            starlette_web.Adapter._websocket_origin_allowed(websocket)
+        )
+        self.assertTrue(
+            starlette_web.Adapter._websocket_origin_allowed(
+                websocket, ["https://attacker.example"]
+            )
+        )
+        websocket.headers.clear()
+        self.assertFalse(
+            starlette_web.Adapter._websocket_origin_allowed(websocket)
+        )
+        websocket.headers["origin"] = "https://app.example.test"
+        websocket.url = "wss://[invalid/reactive"
+        self.assertFalse(
+            starlette_web.Adapter._websocket_origin_allowed(websocket)
+        )
+
+    async def test_reactive_websocket_rejects_untrusted_origin_before_accept(self):
+        adapter = object.__new__(starlette_web.Adapter)
+        adapter.config = {}
+        websocket = types.SimpleNamespace(
+            url="wss://app.example.test/reactive",
+            headers={"origin": "https://attacker.example"},
+            accept=AsyncMock(),
+            close=AsyncMock(),
+        )
+
+        await adapter.render_reactive(websocket)
+
+        websocket.accept.assert_not_awaited()
+        websocket.close.assert_awaited_once_with(
+            code=1008, reason="Origin not allowed"
+        )
+
     async def test_starlette_rejects_http_when_tls_is_not_configured(self):
         defender = types.SimpleNamespace(get_configuration=lambda name: {})
         middleware = starlette_web.DefenderMiddleware(AsyncMock(), defender, [])

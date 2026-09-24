@@ -8,7 +8,7 @@ import json
 import ssl
 from http.cookies import SimpleCookie
 from datetime import datetime
-from urllib.parse import urlunparse, ParseResult,parse_qs
+from urllib.parse import urlsplit, urlunparse, ParseResult,parse_qs
 import xml.etree.ElementTree as ET
 import htpy
 from markupsafe import Markup
@@ -1037,7 +1037,65 @@ class Adapter(presentation.Port):
 
         return rendered_html
 
+    @staticmethod
+    def _normalized_origin(origin):
+        if not isinstance(origin, str):
+            return None
+        try:
+            parsed = urlsplit(origin)
+            scheme = parsed.scheme.casefold()
+            hostname = parsed.hostname
+            port = parsed.port
+        except ValueError:
+            return None
+        if (
+            scheme not in {"http", "https"}
+            or not hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            return None
+        return scheme, hostname.casefold(), port or (443 if scheme == "https" else 80)
+
+    @classmethod
+    def _websocket_origin_allowed(cls, websocket, allowed_origins=()):
+        origin = cls._normalized_origin(websocket.headers.get("origin"))
+        if origin is None:
+            return False
+
+        try:
+            request_url = urlsplit(str(websocket.url))
+        except (TypeError, ValueError):
+            return False
+        request_scheme = {"ws": "http", "wss": "https"}.get(
+            request_url.scheme.casefold()
+        )
+        if request_scheme is None:
+            return False
+        expected_origin = cls._normalized_origin(
+            f"{request_scheme}://{request_url.netloc}"
+        )
+        if origin == expected_origin:
+            return True
+
+        if isinstance(allowed_origins, str):
+            allowed_origins = (allowed_origins,)
+        if not isinstance(allowed_origins, (list, tuple, set, frozenset)):
+            return False
+        return any(
+            origin == cls._normalized_origin(allowed_origin)
+            for allowed_origin in allowed_origins
+        )
+
     async def render_reactive(self, websocket):
+        if not self._websocket_origin_allowed(
+            websocket, self.config.get("websocket_allowed_origins", ())
+        ):
+            await websocket.close(code=1008, reason="Origin not allowed")
+            return
         await websocket.accept()
         session_data = websocket.session
         sid = session_data.get('id')
