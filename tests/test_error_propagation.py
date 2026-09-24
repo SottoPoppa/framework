@@ -12,11 +12,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import framework.core.flow as flow
 from framework.core.application import Application
+from framework.core.data import Registry, needs_user_session
 from framework.core.evaluation import Evaluator
 from framework.core.framework import Framework
 from framework.core.interpreter import Interpreter
 from framework.core.model import Call, DagDefinition, Deferred, Literal, Ref
-from framework.core.session import NodeState, Session
+from framework.core.session import NodeState, Session, UserSession
 from framework.core.scope import Scope
 from framework.manager.authenticator import Manager as Authenticator
 from framework.manager.defender import Manager as Defender
@@ -67,6 +68,150 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
             "https://supabase.example.test",
             "test-anon-key",
         )
+
+    async def test_evaluator_always_injects_user_session(self):
+        user_session = UserSession("user-session")
+        execution_session = Session(
+            "chat",
+            "dag-execution",
+            user_session=user_session,
+        )
+
+        @needs_user_session
+        def get_user_session(user_session):
+            return user_session
+
+        def get_default_session(session):
+            return session
+
+        evaluator = Evaluator(Registry({
+            "get_user_session": get_user_session,
+            "get_default_session": get_default_session,
+        }))
+
+        received_user_session = await evaluator.evaluate(
+            Call("get_user_session"), Scope(), session=execution_session
+        )
+        received_default_session = await evaluator.evaluate(
+            Call("get_default_session"), Scope(), session=execution_session
+        )
+
+        self.assertIs(received_user_session, user_session)
+        self.assertIs(received_default_session, user_session)
+
+    async def test_messenger_injects_user_session_and_uses_defender_runtime(self):
+        user_session = UserSession("messenger-user")
+        execution_session = Session(
+            "chat",
+            "chat-execution",
+            user_session=user_session,
+        )
+        runtime = types.SimpleNamespace(
+            dispatch_controller_event=AsyncMock(return_value={"delivered": True})
+        )
+        defender = types.SimpleNamespace(
+            controllers=["kanban"],
+            authorized=AsyncMock(return_value=True),
+            session_get=unittest.mock.Mock(return_value=runtime),
+        )
+        messenger = Messenger([], defender, None)
+        evaluator = Evaluator(Registry({"send": messenger.send}))
+
+        result = await evaluator.evaluate(
+            Call(
+                "send",
+                keywords={
+                    "adapter": "dsl",
+                    "receiver": "kanban",
+                    "domain": "refresh_board",
+                    "message": {"task": "42"},
+                },
+            ),
+            Scope(),
+            session=execution_session,
+        )
+
+        self.assertTrue(flow.is_result(result))
+        self.assertTrue(flow.check(result))
+        self.assertEqual(flow.output(result), {"delivered": True})
+        defender.session_get.assert_called_once_with(user_session)
+        runtime.dispatch_controller_event.assert_awaited_once_with(
+            "kanban",
+            "refresh_board",
+            {"task": "42"},
+        )
+
+    async def test_session_handle_starts_controller_before_dispatching_event(self):
+        runtime = Interpreter().open_session(sid="dispatch-user")
+        execution = Session(
+            "kanban",
+            "kanban-execution",
+            user_session=runtime.user_session,
+            runtime_session=runtime,
+        )
+
+        async def start_controller(controller):
+            runtime.user_session.register_execution(controller, execution)
+            return flow.success({})
+
+        with patch.object(
+            runtime,
+            "run",
+            new_callable=AsyncMock,
+            side_effect=start_controller,
+        ) as run_controller, patch.object(
+            runtime.runner,
+            "emit",
+            new_callable=AsyncMock,
+            return_value={"emitted": True},
+        ) as emit:
+            result = await runtime.dispatch_controller_event(
+                "kanban", "refresh_board", None
+            )
+
+        self.assertEqual(result, {"emitted": True})
+        run_controller.assert_awaited_once_with("kanban")
+        emit.assert_awaited_once_with(execution, "refresh_board", None)
+
+    async def test_orchestrator_builds_runtime_handle_from_user_session(self):
+        user_session = UserSession(
+            "orchestrator-user",
+            authentication={"user": {"id": "user-1"}},
+        )
+        manager = Orchestrator(None)
+
+        runtime = manager._runtime_session(user_session)
+
+        self.assertEqual(runtime.sid, user_session.id)
+        self.assertEqual(runtime.user_session.authentication, user_session.authentication)
+
+    async def test_api_adapter_reads_tokens_from_user_session(self):
+        from infrastructure.persistence.api.api import Adapter as ApiAdapter
+
+        user_session = UserSession(
+            "api-user",
+            authentication={
+                "providers": {
+                    "github": {"tokens": {"access_token": "test-token"}}
+                }
+            },
+        )
+
+        tokens = ApiAdapter._session_tokens(
+            types.SimpleNamespace(name="github"), user_session
+        )
+
+        self.assertEqual(tokens["access_token"], "test-token")
+
+    def test_defender_session_get_accepts_user_session(self):
+        interpreter = Interpreter()
+        original = interpreter.open_session(sid="defender-user")
+        defender = Defender.__new__(Defender)
+        defender.interpreter = interpreter
+
+        recovered = defender.session_get(original.user_session)
+
+        self.assertIs(recovered.user_session, original.user_session)
 
     async def test_textual_action_preserves_explicit_empty_value(self):
         action = _make_action({
@@ -206,6 +351,68 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(received.is_success)
         self.assertEqual(session["user"]["id"], "user-1")
         self.assertEqual(session["providers"]["stub"]["token"], "test-token")
+
+    async def test_authenticate_updates_user_session_authentication(self):
+        class Defender:
+            async def authorized(self, *args, **kwargs):
+                return True
+
+        class Provider:
+            name = "stub"
+
+            async def sign_in(self, **kwargs):
+                return flow.success({
+                    "providers": {"stub": {"token": "test-token"}},
+                    "user": {"id": "user-1"},
+                })
+
+        user_session = UserSession("user-session-1")
+        manager = Authenticator(None, Defender(), [Provider()])
+
+        received = await manager.authenticate(
+            user_session, email="a@example.test", password="x"
+        )
+
+        self.assertTrue(received.is_success)
+        self.assertEqual(user_session.authentication["user"]["id"], "user-1")
+        self.assertEqual(
+            user_session.authentication["providers"]["stub"]["token"],
+            "test-token",
+        )
+
+    async def test_defender_policy_session_flattens_user_authentication(self):
+        user_session = UserSession(
+            "policy-user",
+            authentication={"user": {"id": "user-1"}, "providers": {}},
+        )
+
+        policy_session = Defender._policy_session(user_session)
+
+        self.assertEqual(policy_session["id"], "policy-user")
+        self.assertEqual(policy_session["user"]["id"], "user-1")
+        self.assertEqual(policy_session["authentication"], user_session.authentication)
+
+    async def test_presenter_resolves_user_session_to_defender_handle(self):
+        handle = object()
+        user_session = UserSession("presenter-user")
+
+        class DefenderStub:
+            def session_get(self, received):
+                if received is not user_session:
+                    raise AssertionError("Presenter passed a non-user session")
+                return handle
+
+        class Loader:
+            def get_managers(self):
+                return {"defender": DefenderStub()}
+
+        presenter = Presenter(
+            [],
+            Loader(),
+            types.SimpleNamespace(get_logger=lambda _name: types.SimpleNamespace()),
+        )
+
+        self.assertIs(presenter._runtime_session(user_session), handle)
 
     async def test_invalidate_clears_session_after_successful_flow_result(self):
         class Defender:

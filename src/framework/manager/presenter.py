@@ -61,10 +61,19 @@ class Manager(manager.Port):
     def _get_driver(self):
         return self.presentations[-1] if self.presentations else None
 
-    @staticmethod
-    def _runtime_session(session):
-        runtime_session = getattr(session, "runtime_session", None)
-        return runtime_session if runtime_session is not None else session
+    def _runtime_session(self, user_session):
+        if callable(getattr(user_session, "run", None)) and callable(
+            getattr(user_session, "emit", None)
+        ):
+            return user_session
+
+        user_session = getattr(user_session, "user_session", user_session)
+        managers = self.loader.get_managers() if self.loader is not None else {}
+        defender = managers.get("defender") if isinstance(managers, dict) else None
+        runtime_session = defender.session_get(user_session) if defender else None
+        if runtime_session is None:
+            raise RuntimeError("SessionHandle non disponibile per la UserSession")
+        return runtime_session
 
     @flow.result(inputs=(), outputs=())
     async def selector(self, session, **constants):

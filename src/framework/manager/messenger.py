@@ -4,6 +4,7 @@ import framework.port.message as message
 import framework.port.manager as manager
 import framework.core.flow as flow
 import framework.core.framework as framework_module
+from framework.core.data import needs_user_session
 from framework.service.diagnostic import get_logger
 
 from framework.manager.defender import Manager as Defender
@@ -70,13 +71,14 @@ class Manager(manager.Port):
 
     async def _dispatch(
         self,
-        session,
+        user_session,
         domain: str | None,
         **constants,
     ):
         """
         Instrada il messaggio verso i provider/controller appropriati.
         """
+        user_session = self._as_user_session(user_session)
         destination = constants.get("receiver")
         adapter = constants.get("adapter")
 
@@ -97,19 +99,17 @@ class Manager(manager.Port):
                     domain=domain,
                 )
                 return flow.error("Messaggio DSL non autorizzato")
-            if session.user_session.execution(destination) is None:
-                started = await session.run(destination)
-                if flow.is_result(started) and not flow.check(started):
-                    self.logger.error(
-                        "Messenger: avvio del controller DSL fallito",
-                        receiver=destination,
-                        domain=domain,
-                        error=flow.output(started),
-                    )
-                    return started
-            execution = session.user_session.execution(destination)
-            result = await session.runner.emit(
-                execution,
+            runtime = self.defender.session_get(user_session)
+            if runtime is None:
+                self.logger.warning(
+                    "Messenger: sessione runtime non trovata",
+                    receiver=destination,
+                    domain=domain,
+                    session_id=user_session.id,
+                )
+                return flow.error("Sessione runtime non trovata")
+            result = await runtime.dispatch_controller_event(
+                destination,
                 domain,
                 constants.get("message"),
             )
@@ -153,7 +153,7 @@ class Manager(manager.Port):
 
             authorized_count += 1
             try:
-                result = await provider.post(session, **constants | {'domain': domain})
+                result = await provider.post(user_session, **constants | {'domain': domain})
             except Exception as exc:
                 self.logger.error(
                     "Messenger: eccezione durante l'invio al provider",
@@ -187,8 +187,14 @@ class Manager(manager.Port):
             return flow.error("Nessun provider di messaggistica autorizzato")
         return failure or flow.success()
 
+    @staticmethod
+    def _as_user_session(session):
+        """Accetta UserSession e normalizza gli handle legacy dei call site Python."""
+        return getattr(session, "user_session", session)
+
+    @needs_user_session
     @flow.result(inputs=('messenger',), outputs=())
-    async def send(self, session, **constants):
+    async def send(self, user_session, **constants):
         """
         Invia un messaggio.
 
@@ -200,16 +206,18 @@ class Manager(manager.Port):
             if key != "domain"
         }
         return await self._dispatch(
-            session,
+            user_session,
             constants.get('domain'),
             **dispatch_constants,
         )
 
+    @needs_user_session
     @flow.result(inputs=(), outputs=())
-    async def receive(self, session, **constants):
+    async def receive(self, user_session, **constants):
         """
         Riceve il primo risultato disponibile dai provider.
         """
+        user_session = self._as_user_session(user_session)
         domain = constants.get("domain")
         destination = constants.get("receiver")
         matched = self._matching_providers(destination)
@@ -236,7 +244,7 @@ class Manager(manager.Port):
 
         tasks = [
             asyncio.create_task(
-                provider.read(session, **constants | {'domain': domain})
+                provider.read(user_session, **constants | {'domain': domain})
             )
             for provider in authorized
         ]

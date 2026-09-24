@@ -151,6 +151,7 @@ class Manager(manager.Port):
         return await self._run_suites(session, integration=True, **constants)
 
     async def _run_suites(self, session, integration: bool, **constants):
+        user_session = getattr(session, "user_session", session)
         filter_raw = constants.get('filter', self.filter_raw)
         self.filter_raw = filter_raw
         self.prefix = resolve_filter(filter_raw)
@@ -190,7 +191,7 @@ class Manager(manager.Port):
                         path,
                         s,
                         integration=integration,
-                        runtime_session=session,
+                        runtime_session=user_session,
                     )
                     if not integration:
                         self.loader.record_contract(path, outcome)

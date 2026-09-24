@@ -251,7 +251,10 @@ class Manager(manager.Port):
         )
 
     def session_get(self, sid):
-        """Restituisce l'handle della sessione DSL esistente, se disponibile."""
+        """Restituisce l'handle DSL dato un id o una proiezione UserSession."""
+        sid = getattr(sid, "id", sid)
+        if isinstance(sid, dict):
+            sid = sid.get("id")
         # ricostruisce l'handle senza duplicare stato
         if sid not in self.interpreter.user_sessions:
             return None
@@ -265,6 +268,21 @@ class Manager(manager.Port):
         """Restituisce la configurazione globale validata di una Port."""
         return self.port_configurations.get(port)
 
+    @staticmethod
+    def _policy_session(session):
+        user_session = getattr(session, "user_session", session)
+        authentication = getattr(user_session, "authentication", None)
+        if not isinstance(authentication, dict):
+            return session
+
+        snapshot = user_session.to_dict()
+        return {
+            **authentication,
+            **snapshot,
+            "id": user_session.id,
+            "authentication": authentication,
+        }
+
     async def authorized(self, policy, **constants) -> bool:
         """Valuta le regole DSL di una policy per azione, risorsa, posizione e sessione."""
         policy_name = policy
@@ -275,12 +293,13 @@ class Manager(manager.Port):
             return False
         rules = policy.get('rules', {})
         action, resource, location = constants.get('action', ''), constants.get('resource', ''), constants.get('location', '')
-        session = constants.get("session")
+        runtime_session = constants.get("session")
+        policy_session = self._policy_session(runtime_session)
         target = {
             'action': action,
             'resource': resource,
             'location': location,
-            'session': session,
+            'session': policy_session,
             'request': constants.get('request', {}),
         }
         filted_rules = []
@@ -311,7 +330,7 @@ class Manager(manager.Port):
                 tes = await self.interpreter.evaluate(
                     condition,
                     for_target,
-                    session=session,
+                    session=runtime_session,
                 )
             else:
                 continue

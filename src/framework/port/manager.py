@@ -3,6 +3,8 @@
 import inspect
 from abc import ABC
 
+from framework.core.data import session_injection
+
 
 class Port(ABC):
     """Validate that public manager operations receive a session first."""
@@ -23,7 +25,9 @@ class Port(ABC):
             parameters = list(signature.parameters.values())
             if not parameters or parameters[0].name != "self":
                 continue
-            if len(parameters) < 2 or parameters[1].name != "session":
+            injection = session_injection(method)
+            expected_session_parameter = injection[0] if injection else "session"
+            if len(parameters) < 2 or parameters[1].name != expected_session_parameter:
                 raise TypeError(
-                    f"{cls.__name__}.{name} deve ricevere 'session' come primo argomento."
+                    f"{cls.__name__}.{name} deve ricevere '{expected_session_parameter}' come primo argomento."
                 )

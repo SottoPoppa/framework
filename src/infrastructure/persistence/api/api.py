@@ -489,10 +489,16 @@ class Adapter(persistence.Port):
             session["providers"][self.name]["tokens"]
         """
 
-        if not isinstance(
-            session,
-            Mapping,
-        ):
+        user_session = getattr(session, "user_session", session)
+        authentication = getattr(user_session, "authentication", None)
+        if isinstance(authentication, Mapping):
+            session = authentication
+        elif isinstance(session, Mapping) and isinstance(
+            session.get("authentication"), Mapping
+        ) and not isinstance(session.get("providers"), Mapping):
+            session = session["authentication"]
+
+        if not isinstance(session, Mapping):
             return None
 
         providers = session.get(

@@ -34,6 +34,7 @@ __all__ = [
 ]
 
 _EXPRESSION_TYPES = (Call, Deferred, ExecutionSpec, Literal, Ref)
+_PAYLOAD_NOT_GIVEN = object()
 
 
 class SessionHandle:
@@ -117,12 +118,17 @@ class SessionHandle:
             visible[key] = value
         return pure_mapping(visible)
 
-    async def emit(self, target: str, node_or_payload: Any = None, payload: Any = None):
+    async def emit(
+        self,
+        target: str,
+        node_or_payload: Any = None,
+        payload: Any = _PAYLOAD_NOT_GIVEN,
+    ):
         """Emette un evento su un nodo, opzionalmente qualificato dal controller."""
         if self._closed:
             raise RuntimeError("La sessione è stata chiusa")
 
-        if payload is not None:
+        if payload is not _PAYLOAD_NOT_GIVEN:
             node, event_payload = node_or_payload, payload
             session = self.user_session.execution(target)
         else:
@@ -139,6 +145,19 @@ class SessionHandle:
         if session is None:
             raise RuntimeError("L'esecuzione DAG non è disponibile")
         return await self.runner.emit(session, node, event_payload)
+
+    async def dispatch_controller_event(
+        self,
+        controller: str,
+        node: str,
+        payload: Any = None,
+    ):
+        """Avvia il controller se necessario e consegna l'evento al suo DAG."""
+        if self.user_session.execution(controller) is None:
+            started = await self.run(controller)
+            if flow.is_result(started) and not flow.check(started):
+                return started
+        return await self.emit(controller, node, payload=payload)
 
     def report(self, dag_name: str):
         """Esito puro dell'esecuzione di un DAG della sessione."""
