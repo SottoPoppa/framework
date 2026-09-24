@@ -2,15 +2,41 @@ imports: {
     'module': import("infrastructure.presentation.web.starlette");
     'mock': import("unittest.mock");
     'types': import("types");
-    'session': import("framework.core.session")
+    'session': import("framework.core.session");
+    'flow': import("framework.core.flow")
 };
 
 any:adapter := imports.module.Adapter(loader: none, defender: none, presenter: none, messenger: none, authenticator: none, storekeeper: none, manager: {"defender": {"key": "test-key"}});
 any:unsupported_request := imports.module.Request({"type": "http"; "method": "PUT"; "path": "/"; "query_string": ""; "headers": []; "session": {}});
 any:action_request := imports.types.SimpleNamespace(method: "GET", query_params: {"q": "dsl"}, session: {});
-any:authenticate := imports.mock.AsyncMock(return_value: {"success": true; "outputs": {"user": "alice"}; "errors": []});
-any:authenticator := imports.types.SimpleNamespace(authenticate: authenticate);
+any:authenticated_snapshot := imports.session.SessionData.from_dict({
+    "id": "auth-route";
+    "context": {};
+    "authentication": {"providers": {}; "user": {"id": "alice"; "role": "member"}};
+    "results": {}
+});
+any:invalidated_snapshot := imports.session.SessionData.from_dict({
+    "id": "auth-route";
+    "context": {};
+    "authentication": {};
+    "results": {}
+});
+any:invalidated_session_data := imports.session.pure_value(invalidated_snapshot);
+any:authenticate := imports.mock.AsyncMock(return_value: imports.flow.success(authenticated_snapshot));
+any:activate := imports.mock.AsyncMock(return_value: imports.flow.success(authenticated_snapshot));
+any:invalidate := imports.mock.AsyncMock(return_value: imports.flow.success(invalidated_snapshot));
+any:regenerate := imports.mock.AsyncMock(return_value: imports.flow.success(authenticated_snapshot));
+any:authenticator := imports.types.SimpleNamespace(
+    authenticate: authenticate,
+    activate: activate,
+    invalidate: invalidate,
+    regenerate: regenerate
+);
 any:auth_adapter := imports.module.Adapter(loader: none, defender: none, presenter: none, messenger: none, authenticator: authenticator, storekeeper: none, manager: {"defender": {"key": "test-key"}});
+any:failed_authenticate := imports.mock.AsyncMock(return_value: imports.flow.error("Credenziali non valide"));
+any:failed_authenticator := imports.types.SimpleNamespace(authenticate: failed_authenticate);
+any:failed_auth_adapter := imports.module.Adapter(loader: none, defender: none, presenter: none, messenger: none, authenticator: failed_authenticator, storekeeper: none, manager: {"defender": {"key": "test-key"}});
+any:failed_request := imports.types.SimpleNamespace(method: "GET", query_params: {}, session: {"id": "auth-failure"});
 
 exports: {
     'attrs': imports.module.attrs;
@@ -208,8 +234,36 @@ tuple:test_suite := (
         "action": exports.signin;
         "inputs": (auth_adapter, action_request);
         "outputs": 303;
-        "assert": @received.is_success == true & @received.output.value.status_code == @expected;
-        "note": "AsyncMock e SimpleNamespace isolano il defender e verificano la mutazione della sessione";
+        "assert": @received.is_success == true & @received.output.value.status_code == @expected & action_request.session.authentication.user.id == "alice" & action_request.session.user.id == "alice";
+        "note": "signin applica il SessionData restituito come flow.Result e mantiene session.user";
+    },
+    {
+        "action": exports.signup;
+        "inputs": (auth_adapter, action_request);
+        "outputs": 303;
+        "assert": @received.is_success == true & @received.output.value.status_code == @expected & action_request.session.authentication.user.id == "alice";
+        "note": "signup applica il risultato Flow dell'Authenticator";
+    },
+    {
+        "action": exports.signout;
+        "inputs": (auth_adapter, action_request);
+        "outputs": 303;
+        "assert": @received.is_success == true & @received.output.value.status_code == @expected & imports.session.pure_value(action_request.session) == invalidated_session_data;
+        "note": "signout invalida la sessione tramite Authenticator e rimuove l'utente legacy";
+    },
+    {
+        "action": exports.signaid;
+        "inputs": (auth_adapter, action_request);
+        "outputs": 303;
+        "assert": @received.is_success == true & @received.output.value.status_code == @expected & action_request.session.authentication.user.id == "alice";
+        "note": "signaid usa regenerate e applica il risultato Flow";
+    },
+    {
+        "action": exports.signin;
+        "inputs": (failed_auth_adapter, failed_request);
+        "outputs": 303;
+        "assert": @received.is_success == true & @received.output.value.status_code == @expected & failed_request.session.errors.0 == "Credenziali non valide";
+        "note": "signin espone l'errore del Flow come messaggio di sessione";
     },
     {
         "action": exports.register_route;
@@ -217,6 +271,13 @@ tuple:test_suite := (
         "outputs": "/health";
         "assert": @received.is_success == true & @received.output.value.0 == @expected;
         "note": "Starlette registra una route applicativa nell'indice del Port";
+    },
+    {
+        "action": exports.register_route;
+        "inputs": (adapter, {"path": "/ready"; "method": "GET"; "type": "action"});
+        "outputs": "/ready";
+        "assert": @received.is_success == true & @received.output.value.0 == @expected;
+        "note": "Starlette registra più route applicative prima del mount";
     },
     {
         "action": exports.mount_route;
@@ -228,9 +289,9 @@ tuple:test_suite := (
     {
         "action": exports.keys;
         "inputs": {"args": (adapter.views)};
-        "outputs": ["/health"];
+        "outputs": ["/health", "/ready"];
         "assert": @received.is_success == true & imports.session.pure_value(@received.output.value) == imports.session.pure_value(@expected);
-        "note": "Starlette conserva la route montata nell'indice delle view";
+        "note": "Starlette conserva tutte le route montate nell'indice delle view";
     },
     {
         "action": exports.shutdown;

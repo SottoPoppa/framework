@@ -19,14 +19,14 @@ tuple:test_suite := (
     },
     {
         "action": exports.capabilities_authorized;
-        "inputs": (none, {"security": {"tls": true; "min_tls_version": "TLSv1.2"; "required_authentication": "jwt"}}, none, {"tls": true; "min_tls_version": "TLSv1.3"; "csrf": true; "authentication": ["jwt"]; "rate_limiting": true});
+        "inputs": (none, {"configuration": {"security": {"tls": true; "min_tls_version": "TLSv1.2"; "required_authentication": "jwt"}}}, none, {"tls": true; "min_tls_version": "TLSv1.3"; "csrf": true; "authentication": ["jwt"]; "rate_limiting": true});
         "outputs": true;
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Il Defender accetta un adapter presentation che soddisfa i requisiti di sicurezza"
     },
     {
         "action": exports.capabilities_authorized;
-        "inputs": (none, {"security": {"tls": true; "min_tls_version": "TLSv1.2"; "required_authentication": "jwt"}}, none, {"tls": false; "authentication": []});
+        "inputs": (none, {"configuration": {"security": {"tls": true; "min_tls_version": "TLSv1.2"; "required_authentication": "jwt"}}}, none, {"tls": false; "authentication": []});
         "outputs": false;
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Il Defender rifiuta un profilo presentation privo dei requisiti"

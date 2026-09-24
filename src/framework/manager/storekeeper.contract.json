@@ -50,11 +50,11 @@
       },
       "shutdown": {
         "production": "8e8d2366707df278b7a37293509d36319211105b2388c303520ba9f495d060e3",
-        "test": "1b729459b2e2d93651a08de800ca14a7a5595a5dd8dcf1e10fd49117ce9e6dea"
+        "test": "8e8d2366707df278b7a37293509d36319211105b2388c303520ba9f495d060e3"
       },
       "startup": {
         "production": "f7549635e112e4264de9e0131cab2e77e2754fd95bdf44f84c370ceefad93f2e",
-        "test": "b30620e5a4d149bf0227908f61804e1afdc7ef07ace296ace2118a2002580f92"
+        "test": "f7549635e112e4264de9e0131cab2e77e2754fd95bdf44f84c370ceefad93f2e"
       },
       "store": {
         "production": "7a37f7674aa4c1e11f2bc59ba32a038b4e3fa1d697957bbb8c488a95d1c27300",

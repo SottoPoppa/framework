@@ -1429,7 +1429,10 @@ class Adapter(authentication.Port):
                 session=session,
             )
 
-            if result is None:
+            if result is None or (
+                flow.is_result(result)
+                and not flow.check(result)
+            ):
 
                 raise RuntimeError(
                     "OAuth token refresh failed"

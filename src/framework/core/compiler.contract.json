@@ -1,0 +1,16 @@
+{
+  "contract_version": 2,
+  "exports": {
+    "compile": [
+      "Compiler.compile"
+    ]
+  },
+  "hashes": {
+    "Compiler": {
+      "compile": {
+        "production": "bd115b526833b08c2deaaa74a4e20fada79f8d9edd0f3ce340ba65cd7471e98a",
+        "test": "bd115b526833b08c2deaaa74a4e20fada79f8d9edd0f3ce340ba65cd7471e98a"
+      }
+    }
+  }
+}

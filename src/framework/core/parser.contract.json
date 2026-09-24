@@ -1,6 +1,26 @@
 {
+  "contract_version": 2,
+  "exports": {
+    "parse": [
+      "Parser.parse"
+    ],
+    "parse_result": [
+      "Parser.parse_result"
+    ]
+  },
+  "hashes": {
+    "Parser": {
+      "parse": {
+        "production": "61a58b19a108c20bcc7867156e4436e461f41294462b7518777f9a879a324777",
+        "test": "61a58b19a108c20bcc7867156e4436e461f41294462b7518777f9a879a324777"
+      },
+      "parse_result": {
+        "production": "3d68a49eac165c8e04f7b0a57ed9836ce094d0e87637df39766a1994f34133df",
+        "test": "3d68a49eac165c8e04f7b0a57ed9836ce094d0e87637df39766a1994f34133df"
+      }
+    }
+  },
   "requires": [
     "lark"
-  ],
-  "contract_version": 2
+  ]
 }

@@ -148,6 +148,14 @@ class Adapter(authentication.Port):
         self._key = key
         self._db_url = db_url
         self.name = "supabase"
+        self.capabilities = {
+            "password_hashing": True,
+            "mfa": False,
+            "token_rotation": False,
+            "sso": False,
+            "account_lockout": False,
+            "authentication": ["password"],
+        }
         self._migrations = [
             profiles_table(self._schema),
             handle_new_user(self._schema),

@@ -1,6 +1,6 @@
 authentication:configuration := {
-    "policy_name": "default";
-    "allowed_methods": ["password", "mfa_totp"];
+    "policy_name": "integration-test";
+    "allowed_methods": ["password"];
     "password_policy": {
         "min_length": 8;
         "require_uppercase": false;
@@ -8,15 +8,12 @@ authentication:configuration := {
         "require_numbers": false;
         "require_symbols": false
     };
-    "mfa_policy": {
-        "mode": "required";
-        "allowed_factors": ["totp_app"]
-    };
+    "mfa_policy": { "mode": "disabled" };
     "session_and_token": {
         "jwt_algorithm": "HS256";
         "access_token_ttl_seconds": 3600;
         "refresh_token_ttl_seconds": 86400;
-        "enable_refresh_rotation": true
+        "enable_refresh_rotation": false
     };
     "account_lockout": {
         "enabled": false;
@@ -25,8 +22,8 @@ authentication:configuration := {
     };
     "security": {
         "password_hashing": true;
-        "mfa": true;
-        "token_rotation": true;
+        "mfa": false;
+        "token_rotation": false;
         "sso": false;
         "account_lockout": false
     }

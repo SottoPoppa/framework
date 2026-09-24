@@ -1,1 +1,23 @@
-{}
+{
+  "contract_version": 2,
+  "exports": {
+    "load_data_store": [
+      "port.load_data_store"
+    ],
+    "load_policies": [
+      "port.load_policies"
+    ]
+  },
+  "hashes": {
+    "port": {
+      "load_data_store": {
+        "production": "0a2b140320ee3294a445def852d803565950c97487fb2d38bce35b50b4bba491",
+        "test": "0a2b140320ee3294a445def852d803565950c97487fb2d38bce35b50b4bba491"
+      },
+      "load_policies": {
+        "production": "1922130b13caa0a924d05961d18c1c59b6630d808537b51b43afc278d5a323c4",
+        "test": "1922130b13caa0a924d05961d18c1c59b6630d808537b51b43afc278d5a323c4"
+      }
+    }
+  }
+}

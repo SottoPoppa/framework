@@ -1,45 +1,38 @@
 {
-  "requires": [
-    "cerberus"
-  ],
   "contract_version": 2,
   "exports": {
-    "get": [
-      "get"
-    ],
-    "format": [
-      "format"
-    ],
     "convert": [
       "convert"
     ],
-    "put": [
-      "put"
+    "get": [
+      "get"
     ],
     "normalize": [
       "normalize"
+    ],
+    "put": [
+      "put"
     ]
   },
   "hashes": {
-    "format": {
-      "test": "189dd63cfb2c4a2ebd4fb94839892c1ff6dfb0b6a57b1ba8df03a4215273792c",
-      "production": "189dd63cfb2c4a2ebd4fb94839892c1ff6dfb0b6a57b1ba8df03a4215273792c"
-    },
-    "normalize": {
-      "test": "cb30afb4832097b87c0168ccf75f768eaef473f578906006fcd17251461c498f",
-      "production": "cb30afb4832097b87c0168ccf75f768eaef473f578906006fcd17251461c498f"
+    "convert": {
+      "production": "e89fb1fe562d27d4486589dbae264025d43982b91cf1f455563039bc87d9d7d7",
+      "test": "e89fb1fe562d27d4486589dbae264025d43982b91cf1f455563039bc87d9d7d7"
     },
     "get": {
-      "test": "cbbf83d8cdd70e34f3bfce254acaa0fb2f2a7b1efcbfabf49496deb782a7f896",
-      "production": "cbbf83d8cdd70e34f3bfce254acaa0fb2f2a7b1efcbfabf49496deb782a7f896"
+      "production": "51b39a516188b85aaa7deb6987f92e12914286f6a21134c19bb1a6ce36a81c61",
+      "test": "51b39a516188b85aaa7deb6987f92e12914286f6a21134c19bb1a6ce36a81c61"
     },
-    "convert": {
-      "test": "1685f541e127a5ec17e9f15274a579705effbd3be92d0bfe38ca3e85b6398c02",
-      "production": "1685f541e127a5ec17e9f15274a579705effbd3be92d0bfe38ca3e85b6398c02"
+    "normalize": {
+      "production": "729c390d2ddbade3c6fc6d47c1591e2ddf0bdd23a1b017aa52b78d1966773b5b",
+      "test": "729c390d2ddbade3c6fc6d47c1591e2ddf0bdd23a1b017aa52b78d1966773b5b"
     },
     "put": {
-      "test": "18166073bb3f0e87c49d8c3fcaa3b190ce9ea0beec20d965b5221c92094006c4",
-      "production": "18166073bb3f0e87c49d8c3fcaa3b190ce9ea0beec20d965b5221c92094006c4"
+      "production": "7ac755f8602735ca4cddebf0299065da212dd35f6a0baf33b6c6caacd6a3ce3e",
+      "test": "7ac755f8602735ca4cddebf0299065da212dd35f6a0baf33b6c6caacd6a3ce3e"
     }
-  }
+  },
+  "requires": [
+    "cerberus"
+  ]
 }

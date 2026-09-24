@@ -13,6 +13,9 @@
     "read": [
       "Port.read"
     ],
+    "request": [
+      "Port.request"
+    ],
     "update": [
       "Port.update"
     ],
@@ -37,6 +40,10 @@
       "read": {
         "production": "391c18216663c74a2b599e39a5ee96fbb773535a0f2c6ebea4463f7480a46c34",
         "test": "391c18216663c74a2b599e39a5ee96fbb773535a0f2c6ebea4463f7480a46c34"
+      },
+      "request": {
+        "production": "3fe5a9a6a671255734950ea7f11385002dc3d6c4b2d982bfed9d4c215ce75e54",
+        "test": "3fe5a9a6a671255734950ea7f11385002dc3d6c4b2d982bfed9d4c215ce75e54"
       },
       "update": {
         "production": "1b08e80783c5bb915f5a83e1cac035233c599e569bbcec20bdff7518d7ad831e",

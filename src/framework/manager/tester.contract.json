@@ -1,6 +1,12 @@
 {
   "contract_version": 2,
   "exports": {
+    "is_contract_test_path": [
+      "is_contract_test_path"
+    ],
+    "is_integration_test_path": [
+      "is_integration_test_path"
+    ],
     "resolve_filter": [
       "resolve_filter"
     ],
@@ -9,6 +15,14 @@
     ]
   },
   "hashes": {
+    "is_contract_test_path": {
+      "production": "96c08e9ad108b7f115aeffd5a7a0f22e91d2b0c4f1a4abf5dd8e6d27e65a05c3",
+      "test": "96c08e9ad108b7f115aeffd5a7a0f22e91d2b0c4f1a4abf5dd8e6d27e65a05c3"
+    },
+    "is_integration_test_path": {
+      "production": "c0fb49453eb4eb64fbbcc6de9b2ac3d57b365be672c13fd69a743ab12b77f9db",
+      "test": "c0fb49453eb4eb64fbbcc6de9b2ac3d57b365be672c13fd69a743ab12b77f9db"
+    },
     "resolve_filter": {
       "production": "f33bea95ba734634deab134f1c5efbb6b99c37275ff6e527695e33c3193fe661",
       "test": "f33bea95ba734634deab134f1c5efbb6b99c37275ff6e527695e33c3193fe661"

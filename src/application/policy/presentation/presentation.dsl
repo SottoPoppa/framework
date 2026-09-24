@@ -7,8 +7,10 @@ presentation:configuration := {
         "enabled": false;
     };
     "security_and_waf": {
-        "tls_enabled": false;
-        "csrf_protection": false
+        "tls_enabled": true;
+        "min_tls_version": "TLSv1.2";
+        "enable_hsts": true;
+        "csrf_protection": true
     };
     "authentication_guards": {
         "auth_required": false
@@ -42,7 +44,7 @@ rules : {
     "/shop": [policies.GET_ALLOW_ALL];
     "/profile": [policies.GET_ALLOW_PATH];
     "/login": [policies.GET_ALLOW_ALL,policies.POST_ALLOW_ALL];
-    "/logout": [policies.GET_ALLOW_PATH];
+    "/logout": [policies.GET_ALLOW_PATH, policies.POST_ALLOW_ALL];
     "/signup": [policies.GET_ALLOW_ALL,policies.POST_ALLOW_ALL];
     "/recovery": [policies.GET_ALLOW_ALL,policies.POST_ALLOW_ALL];
     "/admin": [policies.GET_ALLOW_PATH];

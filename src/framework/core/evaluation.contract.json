@@ -1,0 +1,23 @@
+{
+  "contract_version": 2,
+  "exports": {
+    "evaluate": [
+      "Evaluator.evaluate"
+    ],
+    "resume": [
+      "Evaluator.resume"
+    ]
+  },
+  "hashes": {
+    "Evaluator": {
+      "evaluate": {
+        "production": "279983185d864d6db4afd53f19819535b358871de2b61c70cde79fa5ba9826be",
+        "test": "279983185d864d6db4afd53f19819535b358871de2b61c70cde79fa5ba9826be"
+      },
+      "resume": {
+        "production": "f94b7bbbbac9fe8f57d9ec3f40336ca24248806f68287080151f03e6373358ce",
+        "test": "f94b7bbbbac9fe8f57d9ec3f40336ca24248806f68287080151f03e6373358ce"
+      }
+    }
+  }
+}

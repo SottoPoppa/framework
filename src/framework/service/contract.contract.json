@@ -1,0 +1,16 @@
+{
+  "contract_version": 2,
+  "exports": {
+    "write": [
+      "Contract.write"
+    ]
+  },
+  "hashes": {
+    "Contract": {
+      "write": {
+        "production": "0097a1d212a3a66483f88a4a19206366d6541e617fd05e4fe5c9e216c913d64b",
+        "test": "0097a1d212a3a66483f88a4a19206366d6541e617fd05e4fe5c9e216c913d64b"
+      }
+    }
+  }
+}

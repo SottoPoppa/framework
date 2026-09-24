@@ -1,0 +1,16 @@
+{
+  "contract_version": 2,
+  "exports": {
+    "import_module": [
+      "Loader.import_module"
+    ]
+  },
+  "hashes": {
+    "Loader": {
+      "import_module": {
+        "production": "7ad2af1ddaaab163ca8e6fa63fd34f01d304a6e1f93660df09232336664680ab",
+        "test": "7ad2af1ddaaab163ca8e6fa63fd34f01d304a6e1f93660df09232336664680ab"
+      }
+    }
+  }
+}

@@ -86,14 +86,14 @@ class Manager(manager.Port):
         """Seleziona gli adapter compatibili con la sezione security di una policy."""
         if not isinstance(policy, dict):
             return []
-        security = policy.get("security", {})
+        security = self._security_requirements(policy)
         return self.compatible_adapters(session, port, security, adapters)
 
     def capabilities_authorized(self, session, policy, port=None, profile=None) -> bool:
         """Verifica che almeno un profilo adapter soddisfi la sicurezza della policy."""
         if not isinstance(policy, dict):
             return False
-        requirements = policy.get("security", {})
+        requirements = self._security_requirements(policy)
         if not requirements:
             return True
         profiles = profile
@@ -121,6 +121,14 @@ class Manager(manager.Port):
                 return False
         required_authentication = requirements.get("required_authentication")
         return not required_authentication or required_authentication in profile.get("authentication", [])
+
+    @staticmethod
+    def _security_requirements(policy: dict) -> dict:
+        configuration = policy.get("configuration", {})
+        if not isinstance(configuration, dict):
+            return {}
+        requirements = configuration.get("security", {})
+        return requirements if isinstance(requirements, dict) else {}
 
     @flow.result(inputs=(), outputs=())
     async def shutdown(self, session):

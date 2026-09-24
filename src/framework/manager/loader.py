@@ -434,7 +434,15 @@ class Loader:
 
         source_path = norm_path[: -len(".test.dsl")] + ".py"
         resource = self.framework.resource_by_path(source_path)
-        if not resource or not resource.module:
+        module = resource.module if resource else None
+        if module is None:
+            module_name = (
+                source_path.removeprefix("src/")
+                .removesuffix(".py")
+                .replace("/", ".")
+            )
+            module = sys.modules.get(module_name)
+        if module is None:
             return
 
         data = outcome.get("data", {})
@@ -449,11 +457,23 @@ class Loader:
                 elif isinstance(methods, str):
                     declared_exports.append(methods)
         available = reflection.module_components(
-            resource.module,
+            module,
             set(declared_exports) if declared_exports is not None else None,
         )
         if not available:
             return
+
+        if declared_exports is not None:
+            local_manifest = {}
+            local_exports = []
+            for alias, methods in manifest.items():
+                method_names = methods if isinstance(methods, list) else [methods]
+                local_methods = [name for name in method_names if name in available]
+                if local_methods:
+                    local_manifest[alias] = local_methods
+                    local_exports.extend(local_methods)
+            contract_exports = local_manifest
+            declared_exports = local_exports
 
         if declared_exports is not None and not outcome.get("success"):
             return
@@ -463,7 +483,16 @@ class Loader:
             target = detail.get("target")
             if not target:
                 continue
-            candidates = [str(target), str(target).rsplit(".", 1)[-1]]
+            alias = detail.get("export")
+            declared_methods = (
+                contract_exports.get(alias)
+                if isinstance(contract_exports, dict)
+                else None
+            )
+            candidates = declared_methods or [
+                str(target),
+                str(target).rsplit(".", 1)[-1],
+            ]
             name = next((c for c in candidates if c in available), None)
             if name:
                 (passed if detail.get("status") == "OK" else failed).add(name)

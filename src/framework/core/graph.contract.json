@@ -1,0 +1,23 @@
+{
+  "contract_version": 2,
+  "exports": {
+    "entries": [
+      "Dag.entries"
+    ],
+    "get": [
+      "Dag.get"
+    ]
+  },
+  "hashes": {
+    "Dag": {
+      "entries": {
+        "production": "9204236c8e33b6ab36f122bb76758df992d273587f7471b0e8a08f17a0c081f5",
+        "test": "9204236c8e33b6ab36f122bb76758df992d273587f7471b0e8a08f17a0c081f5"
+      },
+      "get": {
+        "production": "a45278a411e829d37693429e3b04bcd0fe157e8f15927ed545d7076c6db6868c",
+        "test": "a45278a411e829d37693429e3b04bcd0fe157e8f15927ed545d7076c6db6868c"
+      }
+    }
+  }
+}

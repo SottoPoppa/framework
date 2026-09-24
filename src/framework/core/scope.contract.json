@@ -1,0 +1,51 @@
+{
+  "contract_version": 2,
+  "exports": {
+    "delete": [
+      "Scope.delete"
+    ],
+    "exists": [
+      "Scope.exists"
+    ],
+    "flatten": [
+      "Scope.flatten"
+    ],
+    "get": [
+      "Scope.get"
+    ],
+    "lookup": [
+      "Scope.lookup"
+    ],
+    "set": [
+      "Scope.set"
+    ]
+  },
+  "hashes": {
+    "Scope": {
+      "delete": {
+        "production": "d9e0fdc19d6c807e02e8bdcee6946d383d90615bdec9969d05b3fe692a8705d8",
+        "test": "d9e0fdc19d6c807e02e8bdcee6946d383d90615bdec9969d05b3fe692a8705d8"
+      },
+      "exists": {
+        "production": "b662d6274b51d6c15fa07af61cd368861cdab3f32bdde546466022827ba5a481",
+        "test": "b662d6274b51d6c15fa07af61cd368861cdab3f32bdde546466022827ba5a481"
+      },
+      "flatten": {
+        "production": "21689f49f3c9b6968aea15d251bb0262823f2988ae36d9483bc87873b097ec4c",
+        "test": "21689f49f3c9b6968aea15d251bb0262823f2988ae36d9483bc87873b097ec4c"
+      },
+      "get": {
+        "production": "94b1da2b7e8d4cc7a73c8dc4a57dd15c9074d2d410fd2a4982e519382ca946ae",
+        "test": "94b1da2b7e8d4cc7a73c8dc4a57dd15c9074d2d410fd2a4982e519382ca946ae"
+      },
+      "lookup": {
+        "production": "97865d04df3e990bbf006c78b28935e8f5232b23ba29305ebba924821d4fd97e",
+        "test": "97865d04df3e990bbf006c78b28935e8f5232b23ba29305ebba924821d4fd97e"
+      },
+      "set": {
+        "production": "c5fe4892d0abf67f5f70885a5ce0018c7266b2a4e9b44a258442684eb4ac1fd0",
+        "test": "c5fe4892d0abf67f5f70885a5ce0018c7266b2a4e9b44a258442684eb4ac1fd0"
+      }
+    }
+  }
+}

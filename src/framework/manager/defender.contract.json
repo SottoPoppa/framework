@@ -11,8 +11,8 @@
   "hashes": {
     "Manager": {
       "capabilities_authorized": {
-        "production": "e69758ee1fafcf8e0585f0074cf43add942c7c7d5494604ddad10642c82141b0",
-        "test": "e69758ee1fafcf8e0585f0074cf43add942c7c7d5494604ddad10642c82141b0"
+        "production": "406a5fb5399efbc27875cb041d22e91e61205215fff2b9554e6a0b4793533cd3",
+        "test": "406a5fb5399efbc27875cb041d22e91e61205215fff2b9554e6a0b4793533cd3"
       },
       "compatible_adapters": {
         "production": "b4c07480f8449af33dff90edaf463027596e26eb810bf46c2b87d78990b793ad",

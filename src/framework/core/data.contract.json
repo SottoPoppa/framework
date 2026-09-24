@@ -1,0 +1,37 @@
+{
+  "contract_version": 2,
+  "exports": {
+    "has": [
+      "Registry.has"
+    ],
+    "register": [
+      "Registry.register"
+    ],
+    "register_dict": [
+      "Registry.register_dict"
+    ],
+    "resolve": [
+      "Registry.resolve"
+    ]
+  },
+  "hashes": {
+    "Registry": {
+      "has": {
+        "production": "6d342e6590b6be2fedab70b554a1c31a3bb6260949efdeae61c38c2295c770d8",
+        "test": "6d342e6590b6be2fedab70b554a1c31a3bb6260949efdeae61c38c2295c770d8"
+      },
+      "register": {
+        "production": "7d98a3df22d8a558681c31b8e7051eed50ff8fc4da4de125fc1850ee3bddb2a5",
+        "test": "7d98a3df22d8a558681c31b8e7051eed50ff8fc4da4de125fc1850ee3bddb2a5"
+      },
+      "register_dict": {
+        "production": "7db51f811230655699df78fba7b0296624196b78826d1bffce300c5a4ea35d84",
+        "test": "7db51f811230655699df78fba7b0296624196b78826d1bffce300c5a4ea35d84"
+      },
+      "resolve": {
+        "production": "b8330f9594791d7e4fb8eed92f30f451054061e60152f4fd6d32cf6d1b3a940d",
+        "test": "b8330f9594791d7e4fb8eed92f30f451054061e60152f4fd6d32cf6d1b3a940d"
+      }
+    }
+  }
+}

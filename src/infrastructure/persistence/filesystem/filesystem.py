@@ -146,9 +146,8 @@ class Adapter(persistence.Port):
         values = constants.get('storekeeper', constants)
         if not isinstance(values, dict):
             values = constants
-        path = self._resolve_path(**values)
-        if not os.path.isabs(path):
-            path = os.path.join(self.path, path)
+        path = self._resolve_path(**(values | {"path": self.path}))
+        path = self._resolve_confined_path(path)
         if self._is_structured_json(path, values):
             return await self._request_json(path, constants.get('method'), values)
         data = self._payload_data(**values)
@@ -304,6 +303,20 @@ class Adapter(persistence.Port):
             return location
         filename = constants.get('filter', {}).get('eq', {}).get('filename', '')
         return os.path.join(constants.get('path', os.getcwd()), filename)
+
+    def _resolve_confined_path(self, path):
+        root = Path(self.path).resolve()
+        candidate = Path(path)
+        if not candidate.is_absolute():
+            candidate = root / candidate
+        resolved = candidate.resolve()
+        try:
+            resolved.relative_to(root)
+        except ValueError as exc:
+            raise ValueError(
+                "Percorso fuori dalla directory filesystem configurata"
+            ) from exc
+        return str(resolved)
 
     @staticmethod
     def _payload_data(**constants):

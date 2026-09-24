@@ -17,6 +17,7 @@ from framework.core.evaluation import EvaluationError, Evaluator
 from framework.core.framework import Framework
 from framework.core.interpreter import Interpreter
 from framework.core.model import Call, DagDefinition, Deferred, Literal, Ref
+from framework.core.parser import Parser
 from framework.core.session import NodeState, Session, SessionData
 from framework.core.scope import Scope
 from framework.manager.authenticator import Manager as Authenticator
@@ -34,11 +35,50 @@ from infrastructure.persistence.filesystem.filesystem import (
     FileWatcherHandler,
 )
 from infrastructure.presentation.adapter import Adapter as PresentationAdapter
+from infrastructure.presentation.web import starlette as starlette_web
 from infrastructure.presentation.tui.widgets import _make_action
 from framework.port.presentation import Port as PresentationPort
 
 
 class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_starlette_rejects_http_when_tls_is_not_configured(self):
+        defender = types.SimpleNamespace(get_configuration=lambda name: {})
+        middleware = starlette_web.DefenderMiddleware(AsyncMock(), defender, [])
+        request = types.SimpleNamespace(url=types.SimpleNamespace(scheme="http"))
+
+        response = await middleware.dispatch(request, AsyncMock())
+
+        self.assertEqual(response.status_code, 400)
+
+    async def test_starlette_requires_csrf_and_returns_token_by_default(self):
+        defender = types.SimpleNamespace(
+            get_configuration=lambda name: {},
+            authorized=AsyncMock(return_value=True),
+        )
+        middleware = starlette_web.DefenderMiddleware(AsyncMock(), defender, [])
+        metadata = {"path": "/mutate", "view": "mutate"}
+        request = types.SimpleNamespace(
+            url=types.SimpleNamespace(scheme="https", path="/mutate"),
+            session={"id": "session", "csrf_token": "expected-token"},
+            client=types.SimpleNamespace(host="127.0.0.1"),
+            method="POST",
+            headers={"x-csrf-token": "wrong-token"},
+            state=types.SimpleNamespace(),
+        )
+        resolve_route = "infrastructure.presentation.web.starlette.route.resolve_route"
+        with patch(resolve_route, return_value={"metadata": metadata}):
+            rejected = await middleware.dispatch(request, AsyncMock())
+        self.assertEqual(rejected.status_code, 403)
+
+        request.headers["x-csrf-token"] = "expected-token"
+        with patch(resolve_route, return_value={"metadata": metadata}):
+            accepted = await middleware.dispatch(
+                request, AsyncMock(return_value=starlette_web.HTMLResponse("ok"))
+            )
+        self.assertEqual(accepted.status_code, 200)
+        self.assertEqual(accepted.headers["X-CSRF-Token"], "expected-token")
+        self.assertIn("Strict-Transport-Security", accepted.headers)
+
     async def test_oauth_boolean_parser_accepts_textual_flags(self):
         if importlib.util.find_spec("aiohttp") is None:
             self.skipTest("OAuth2 adapter e opzionale")
@@ -47,6 +87,38 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(OAuthAdapter._bool("true"))
         self.assertFalse(OAuthAdapter._bool("false"))
+
+    async def test_oauth_get_headers_rejects_expired_token_after_failed_refresh(self):
+        if importlib.util.find_spec("aiohttp") is None:
+            self.skipTest("OAuth2 adapter e opzionale")
+
+        from infrastructure.authentication.oauth2.oauth import Adapter as OAuthAdapter
+
+        adapter = OAuthAdapter(
+            provider="provider",
+            token_url="https://auth.example.test/token",
+            authorization_endpoint="https://auth.example.test/authorize",
+            redirect_uri="https://app.example.test/callback",
+            client_id="client",
+            client_secret="secret",
+            grant_type="password",
+            auth_style="body",
+        )
+        session = {"providers": {"provider": {"tokens": {
+            "access_token": "expired-access-token",
+            "refresh_token": "refresh-token",
+            "expires_at": 1,
+        }}}}
+        refresh = AsyncMock(return_value=flow.error("refresh rejected"))
+
+        with patch.object(adapter, "refresh", new=refresh):
+            with self.assertRaisesRegex(RuntimeError, "OAuth token refresh failed"):
+                await adapter.get_headers(session)
+
+        refresh.assert_awaited_once_with(
+            refresh_token="refresh-token",
+            session=session,
+        )
 
     async def test_supabase_adapter_creates_client_from_configuration(self):
         if importlib.util.find_spec("supabase") is None:
@@ -233,6 +305,121 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(runtime.sid, session_data["id"])
         self.assertEqual(runtime.session_data["authentication"]["user"]["id"], "user-1")
+
+    async def test_orchestrator_first_completed_cancels_pending_loser(self):
+        manager = Orchestrator(None)
+        cancelled = asyncio.Event()
+
+        async def pending():
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+
+        result = await manager.first_completed(
+            None,
+            operations=[asyncio.sleep(0, result="winner"), pending()],
+        )
+
+        self.assertTrue(result.is_success)
+        self.assertEqual(flow.output(result), "winner")
+        self.assertTrue(cancelled.is_set())
+
+    async def test_orchestrator_first_completed_propagates_normalization_error(self):
+        manager = Orchestrator(None)
+
+        async def reject_payload(transaction, profile=None):
+            return flow.error("invalid payload")
+
+        result = await manager.first_completed(
+            None,
+            operations=[asyncio.sleep(0, result={"invalid": True})],
+            success=reject_payload,
+        )
+
+        self.assertFalse(result.is_success)
+        self.assertIn("invalid payload", str(flow.output(result)))
+
+    async def test_orchestrator_all_completed_propagates_failed_flow_result(self):
+        manager = Orchestrator(None)
+
+        async def fail():
+            return flow.error("task failed")
+
+        result = await manager.all_completed(None, tasks=[fail()])
+
+        self.assertFalse(result.is_success)
+        self.assertIn("task failed", str(flow.output(result)))
+
+    async def test_orchestrator_chain_completed_propagates_task_exception(self):
+        manager = Orchestrator(None)
+
+        async def raise_error(**constants):
+            raise ValueError("step raised")
+
+        result = await manager.chain_completed(None, tasks=[raise_error])
+
+        self.assertFalse(result.is_success)
+        self.assertIn("step raised", str(flow.output(result)))
+
+    async def test_chat_dependencies_read_published_terminal_select_result(self):
+        source_path = (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "application"
+            / "controller"
+            / "chat.dsl"
+        )
+        interpreter = Interpreter()
+        interpreter.registry.register("file_dependencies", lambda path: path)
+        program = interpreter.load("chat-test", source_path.read_text(encoding="utf-8"))
+        dependency_node = next(
+            node for node in program.definition.nodes if node.name == "dependencies"
+        )
+        session_data = SessionData({
+            "id": "chat-test",
+            "context": {},
+            "authentication": {},
+            "results": {
+                "terminal": {
+                    "select": "src/infrastructure/presentation/console.py"
+                }
+            },
+        })
+
+        received = await interpreter.evaluate(
+            dependency_node.action.expression,
+            {"session": session_data},
+        )
+
+        self.assertEqual(
+            received,
+            "src/infrastructure/presentation/console.py",
+        )
+
+    async def test_parser_decodes_escaped_string_literals(self):
+        program = Parser().parse(r'value: "line\n say \"quoted\"";')
+        parsed_value = program.statements[0].items[0].value.value
+
+        self.assertEqual(parsed_value, 'line\n say "quoted"')
+
+    async def test_encefalo_initializes_available_module_vocabulary(self):
+        from infrastructure.network.neural.encefalo import Encefalo
+
+        encefalo = Encefalo()
+
+        self.assertEqual(
+            encefalo.moduli["Modulo 6: Memoria (Episodica)"][0][0],
+            (600, "Remoto"),
+        )
+        self.assertEqual(
+            encefalo.moduli["Modulo 8: Attentivo (Focus)"][0][0],
+            (800, "Rilevante"),
+        )
+        self.assertEqual(
+            encefalo.moduli["Modulo 9: Meta-Cognitivo (Talamo)"][0][0],
+            (900, "Attivo"),
+        )
 
     async def test_api_adapter_reads_tokens_from_session_data(self):
         from infrastructure.persistence.api.api import Adapter as ApiAdapter
@@ -982,6 +1169,23 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(path, "/tmp/integration.txt")
+
+    async def test_filesystem_rejects_filename_traversal_outside_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "root"
+            root.mkdir()
+            outside_file = Path(directory) / "outside.txt"
+            outside_file.write_text("private", encoding="utf-8")
+            adapter = FilesystemAdapter(messenger=None, path=str(root))
+
+            received = await adapter.request(
+                method="GET",
+                path=str(root),
+                filter={"eq": {"filename": "../outside.txt"}},
+            )
+
+            self.assertFalse(received.is_success)
+            self.assertEqual(outside_file.read_text(encoding="utf-8"), "private")
 
     async def test_filesystem_payload_data_extracts_content(self):
         content = FilesystemAdapter._payload_data(

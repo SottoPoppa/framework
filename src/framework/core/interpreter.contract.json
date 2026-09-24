@@ -1,0 +1,23 @@
+{
+  "contract_version": 2,
+  "exports": {
+    "call": [
+      "Interpreter.call"
+    ],
+    "load_file": [
+      "Interpreter.load_file"
+    ]
+  },
+  "hashes": {
+    "Interpreter": {
+      "call": {
+        "production": "addb6e112bd7011c3694396617bcf0c622e54f86002fb6ffed5165b08fd77d13",
+        "test": "addb6e112bd7011c3694396617bcf0c622e54f86002fb6ffed5165b08fd77d13"
+      },
+      "load_file": {
+        "production": "55a163ba2f262d6869b7efb10219ea3c57108eff93c8e4ce70228ac4006a1a30",
+        "test": "55a163ba2f262d6869b7efb10219ea3c57108eff93c8e4ce70228ac4006a1a30"
+      }
+    }
+  }
+}

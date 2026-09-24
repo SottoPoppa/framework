@@ -1,14 +1,14 @@
 {
   "contract_version": 2,
-  "requires": [
-    "PyJWT"
-  ],
   "exports": {
-    "bool": [
-      "Adapter._bool"
+    "authorization_url": [
+      "Adapter.authorization_url"
     ],
     "headers": [
       "Adapter.get_headers"
+    ],
+    "token_expired": [
+      "Adapter.token_expired"
     ],
     "user": [
       "Adapter.get_user"
@@ -16,18 +16,25 @@
   },
   "hashes": {
     "Adapter": {
-      "get_user": {
-        "test": "f1c793574ed4d42e226dede5d12cbff51a9f87dd79b39fbc6bf35470ce16bfab",
-        "production": "e5b0dca5ed5ae1e8fe4378c8fc2365ae971d8f08e338b51baf41c5a1515f1763"
+      "authorization_url": {
+        "production": "83bd740304a60a7bfa267ebdd0bac965e40289d26fa202458b3b415f28605d5f",
+        "test": "83bd740304a60a7bfa267ebdd0bac965e40289d26fa202458b3b415f28605d5f"
       },
       "get_headers": {
-        "test": "90f285f6369688f9513bee5f10f4a91ab3f369336a340db1c800ab0617ea563c",
-        "production": "61c27a1ae78518d1dece37767076ad1533ac0b5e7cc3bc4e7276e8486d42db7e"
+        "production": "4df5a72637913a2a8050c5b6c3175c9500c53e8c36571fe1b999f6c9a62b8c57",
+        "test": "4df5a72637913a2a8050c5b6c3175c9500c53e8c36571fe1b999f6c9a62b8c57"
       },
-      "_bool": {
-        "test": "c4246d6e54a0ccae937d912923fad26f1ceb72d641b856e7fc11af1b6f6f1642",
-        "production": "52a43b11f5448c89f0ca6f4239e3cd896259d26b0e3094d1e4f531cf3c4bdfcc"
+      "get_user": {
+        "production": "e5b0dca5ed5ae1e8fe4378c8fc2365ae971d8f08e338b51baf41c5a1515f1763",
+        "test": "e5b0dca5ed5ae1e8fe4378c8fc2365ae971d8f08e338b51baf41c5a1515f1763"
+      },
+      "token_expired": {
+        "production": "e14ef58b222c560b0673a4dc883ae7351b9582162146f0dbfeffe504550bbe7c",
+        "test": "e14ef58b222c560b0673a4dc883ae7351b9582162146f0dbfeffe504550bbe7c"
       }
     }
-  }
+  },
+  "requires": [
+    "PyJWT"
+  ]
 }

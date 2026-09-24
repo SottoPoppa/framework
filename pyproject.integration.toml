@@ -16,7 +16,7 @@ message = "message.dsl"
 persistence = "persistence.dsl"
 
 [manager.authenticator]
-authentication = "authentication.dsl"
+ authentication = "authentication.integration.dsl"
 
 [[message.stub]]
 name = "console"

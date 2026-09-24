@@ -1,3 +1,5 @@
+import ast
+
 from lark import Lark, Token, Transformer, v_args
 
 from .ast import (
@@ -121,7 +123,7 @@ class DSLTransformer(Transformer):
         return NumberLiteral(value=val, meta=self._meta(meta))
 
     def string(self, meta, s):
-        return StringLiteral(value=str(s[0])[1:-1], meta=self._meta(meta))
+        return StringLiteral(value=ast.literal_eval(str(s[0])), meta=self._meta(meta))
 
     def true(self, meta, _):
         return BoolLiteral(value=True, meta=self._meta(meta))

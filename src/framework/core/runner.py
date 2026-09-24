@@ -186,6 +186,7 @@ class DagRunner:
         node = dag.get(name)
 
         if session.states.get(name) in (
+            NodeState.RUNNING,
             NodeState.SUCCESS,
             NodeState.FAILED,
             NodeState.SKIPPED,
@@ -196,6 +197,13 @@ class DagRunner:
             return
 
         async with self._sem:
+            if session.states.get(name) in (
+                NodeState.RUNNING,
+                NodeState.SUCCESS,
+                NodeState.FAILED,
+                NodeState.SKIPPED,
+            ):
+                return
             session.mark(name, NodeState.RUNNING)
             value = await self._execute_with_retry(session, node, name)
             if value is _FAILED:

@@ -4,46 +4,60 @@
     "check": [
       "check"
     ],
-    "pipeline": [
-      "pipeline"
+    "configure_dev_logging": [
+      "configure_dev_logging"
     ],
-    "reset": [
-      "reset"
+    "is_result": [
+      "is_result"
+    ],
+    "output": [
+      "output"
+    ],
+    "pipe_sync": [
+      "pipe_sync"
+    ],
+    "set_dev_sink": [
+      "set_dev_sink"
     ],
     "success": [
       "success"
     ],
-    "switch": [
-      "switch"
-    ],
-    "transactions": [
-      "transactions"
+    "unwrap": [
+      "unwrap"
     ]
   },
   "hashes": {
     "check": {
       "production": "3dbeddb72f0d9de9ecc104ce8667ba6b2970327c63c24a027c22ed5dbd0b2a53",
-      "test": "9bc5a31f41fbdeb72babfaa32f5ebf606691a1cf3dba8c9979afe77866300ad0"
+      "test": "3dbeddb72f0d9de9ecc104ce8667ba6b2970327c63c24a027c22ed5dbd0b2a53"
     },
-    "pipeline": {
-      "production": "3a9f08a08c9cd273a49882ce17c292eec608f40ce26004053bd7bdae9b223259",
-      "test": "3a9f08a08c9cd273a49882ce17c292eec608f40ce26004053bd7bdae9b223259"
+    "configure_dev_logging": {
+      "production": "fdbd9d501b694b38bc274fd2d5e28ac06a9b8619f3bf4fb76f025b9d370249ef",
+      "test": "fdbd9d501b694b38bc274fd2d5e28ac06a9b8619f3bf4fb76f025b9d370249ef"
     },
-    "reset": {
-      "production": "efabe157fb368873be24c5dce2710178c1df694ecde6a4782b4006066b944660",
-      "test": "efabe157fb368873be24c5dce2710178c1df694ecde6a4782b4006066b944660"
+    "is_result": {
+      "production": "a463dbdfa3d58d57e2b1851b36b12be547118119457fae34e2d47b0f9f5e4c33",
+      "test": "a463dbdfa3d58d57e2b1851b36b12be547118119457fae34e2d47b0f9f5e4c33"
+    },
+    "output": {
+      "production": "7b671a9157b51e15ca737c72b8502118fbdf973b0cd35557a9282bd8d3e56884",
+      "test": "7b671a9157b51e15ca737c72b8502118fbdf973b0cd35557a9282bd8d3e56884"
+    },
+    "pipe_sync": {
+      "production": "de05dbf5b0af28458d32e53ca4177faa849029b3da8d9650f7b687101779337b",
+      "test": "de05dbf5b0af28458d32e53ca4177faa849029b3da8d9650f7b687101779337b"
+    },
+    "set_dev_sink": {
+      "production": "705102984e91f2117f7c2cc71882ef82aa1847cdc256679c494248a09ee339c1",
+      "test": "705102984e91f2117f7c2cc71882ef82aa1847cdc256679c494248a09ee339c1"
     },
     "success": {
       "production": "b96cdd21d0463efb137693698d7e4aa5a84ad6081d7daffa287f3af4ab424f24",
-      "test": "6ad6ec76c5a9d5ce42c42a33bd23b3119d1b3f5323905384bdd6d4d4251a2486"
+      "test": "b96cdd21d0463efb137693698d7e4aa5a84ad6081d7daffa287f3af4ab424f24"
     },
-    "switch": {
-      "production": "eebf5c5efe090b8ec6ae6134781481d8eb0792c5a3e3b78ff1568f806a8444fb",
-      "test": "eebf5c5efe090b8ec6ae6134781481d8eb0792c5a3e3b78ff1568f806a8444fb"
-    },
-    "transactions": {
-      "production": "374af066ced78a1fe5d770c5454c1f1e7e2acc796e0401f3bf6eeda2ced0911a",
-      "test": "374af066ced78a1fe5d770c5454c1f1e7e2acc796e0401f3bf6eeda2ced0911a"
+    "unwrap": {
+      "production": "8655df77da49894976c521eb50229dac904d741f86ee7c783ce23c5d57b345ef",
+      "test": "8655df77da49894976c521eb50229dac904d741f86ee7c783ce23c5d57b345ef"
     }
   },
   "requires": [

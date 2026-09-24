@@ -20,21 +20,21 @@ spazio = [
 #Modulo 6: Memoria (Episodica)
 memoria = [
     #0-9: Integrazione TemporaleRecente, 
-    "Remoto", "Immediato", "Periodico", "Ricorrente", "Puntuale", "Episodico", "Sequenziale", "Sincrono", "Asincrono"
+    "Remoto", "Immediato", "Periodico", "Ricorrente", "Puntuale", "Episodico", "Sequenziale", "Sincrono", "Asincrono",
     #10-19: Contesto EsperienzialeLuogo, 
-    "Situazione", "Evento", "Soggetto", "Oggetto", "Ambiente", "Atmosfera", "Condizioni", "Trigger", "Risultato"
+    "Situazione", "Evento", "Soggetto", "Oggetto", "Ambiente", "Atmosfera", "Condizioni", "Trigger", "Risultato",
     #20-29: Intensità MnemonicaVivido, 
-    "Sbiadito", "Distorto", "Preciso", "Dettagliato", "Sintetico", "Emotivo", "Razionale", "Primario", "Secondario"
+    "Sbiadito", "Distorto", "Preciso", "Dettagliato", "Sintetico", "Emotivo", "Razionale", "Primario", "Secondario",
     #30-39: AssociazioneLegato a persona, 
-    "Legato a luogo", "Legato a emozione", "Legato a fatto", "Contrapposto", "Simile", "Causa-Effetto", "Derivato", "Casuale", "Strutturato"
+    "Legato a luogo", "Legato a emozione", "Legato a fatto", "Contrapposto", "Simile", "Causa-Effetto", "Derivato", "Casuale", "Strutturato",
     #40-49: Stato della MemoriaArchiviato, 
-    "Attivo", "Soppresso", "Ricordato", "Dimenticato", "Rielaborato", "Integro", "Parziale", "Corrotto", "Modificato"
+    "Attivo", "Soppresso", "Ricordato", "Dimenticato", "Rielaborato", "Integro", "Parziale", "Corrotto", "Modificato",
     #60-69: AccessibilitàFacile, 
-    "Difficile", "Immediato", "Richiede sforzo", "Indotto", "Esposto", "Celato", "Pubblico", "Privato", "Condiviso"
+    "Difficile", "Immediato", "Richiede sforzo", "Indotto", "Esposto", "Celato", "Pubblico", "Privato", "Condiviso",
     #70-79: VeridicitàReale, 
-    "Fittizio", "Interpretato", "Sognato", "Allucinatorio", "Verificato", "Documentato", "Opinabile", "Incerto", "Ipoteizzato"
+    "Fittizio", "Interpretato", "Sognato", "Allucinatorio", "Verificato", "Documentato", "Opinabile", "Incerto", "Ipoteizzato",
     #80-89: Impatto MnemonicoTrasformativo, 
-    "Informativo", "Insignificante", "Fondamentale", "Critico", "Utile", "Dannoso", "Formativo", "Effimero", "Duraturo"
+    "Informativo", "Insignificante", "Fondamentale", "Critico", "Utile", "Dannoso", "Formativo", "Effimero", "Duraturo",
     #90-99: RiconoscimentoIdentificato
     "Sconosciuto", "Familiare", "Confuso", "Distinto", "Indistinto", "Catalogato", "Non categorizzato", "Ripetuto", "Unico"
 ]
@@ -74,15 +74,15 @@ attentivo = [
     #30-39: Filtro Selettivo
     "Inibitorio", "Facilitatorio", "Soppressore", "Amplificatore", "Discriminante", "Noise-cancelling", "Selettivo", "Ampio", "Stretto", "Sincrono",
     #40-49: Gestione Carico
-    "Sovraccarico", "Ottimizzato", "Sottoutilizzato", "Bilanciato", "Bloccato",("Fluido"), ("Sotto-sforzo"), ("Gestibile"), ("Critico"), ("Gestito"),
+    "Sovraccarico", "Ottimizzato", "Sottoutilizzato", "Bilanciato", "Bloccato", "Fluido", "Sotto-sforzo", "Gestibile", "Critico", "Gestito",
     #50-59: Trigger/Innesco	Attivante, Dissuasivo, Neutro, Inatteso, Atteso, Periodico, Casuale, Contestuale,
-   ("Attivante"), ("Dissuasivo"), ("Neutro"), ("Inatteso"), ("Atteso"), ("Periodico"), ("Casuale"), ("Contestuale"), ("Personale"), ("Generale")
+    "Attivante", "Dissuasivo", "Neutro", "Inatteso", "Atteso", "Periodico", "Casuale", "Contestuale", "Personale", "Generale",
     #60-69: persistenza del Focus	
-    "Durevole", "Breve", "Transitorio", "Ciclico", "Interrotto", "Continuo", "Fissazione", "Esplorativo", "Rigido", "Flessibile"
+    "Durevole", "Breve", "Transitorio", "Ciclico", "Interrotto", "Continuo", "Fissazione", "Esplorativo", "Rigido", "Flessibile",
     #70-79: Direzione dell'Attenzione	
-    "Ego-riferito", "Allo-riferito", "Task-oriented", "Goal-oriented", "Data-driven", "Concept-driven", "Spaziale", "Temporale", "Sociale", "Logico"
+    "Ego-riferito", "Allo-riferito", "Task-oriented", "Goal-oriented", "Data-driven", "Concept-driven", "Spaziale", "Temporale", "Sociale", "Logico",
     #80-89: Qualità dell'Input	
-    "Chiara", "Confusa", "Rumorosa", "Distorta", "Completa", "Parziale", "Ambigua", "Precisa", "Evidente", "Occulta"
+    "Chiara", "Confusa", "Rumorosa", "Distorta", "Completa", "Parziale", "Ambigua", "Precisa", "Evidente", "Occulta",
     #90-99: Monitoraggio Focus	
     "Auto-regolato", "Esterno", "Feedback-loop", "Correttivo", "Adattivo", "Passivo", "Attivo", "Metacognitivo", "Inconsapevole", "Consapevole"
 ]
@@ -98,11 +98,11 @@ meta = [
     #30-39: Pianificazione Strategica	Goal-setting, Valutazione-rischi, Costo-beneficio, Flessibilità, Determinazione, Lungimiranza, Adattabilità, Coerenza, Focalizzazione, Strategia
     "Goal-setting", "Valutazione-rischi", "Costo-beneficio", "Flessibilità", "Determinazione", "Lungimiranza", "Adattabilità", "Coerenza", "Focalizzazione", "Strategia",
     #40-49: Gestione Decisionale	Decisione-rapida, Riflessiva, Delegata, Sospesa, Risolutiva, Gerarchica, Distribuita, Consensus, Arbitraria, Ragionata
-    "Decisione-rapida", "Riflessiva', 'Delegata', 'Sospesa', 'Risolutiva', 'Gerarchica', 'Distribuita', 'Consensus', 'Arbitraria', 'Ragionata',
+    "Decisione-rapida", "Riflessiva", "Delegata", "Sospesa", "Risolutiva", "Gerarchica", "Distribuita", "Consensus", "Arbitraria", "Ragionata",
     #50-59: Apprendimento (Meta)	Ottimizzazione, Aggiornamento, Consolidamento, Error-analysis, Pattern-recognition,
-    "Ottimizzazione", "Aggiornamento",("Consolidamento"), ("Error-analysis"), ("Pattern-recognition"), ("Adattamento"), ("Plasticità"), ("Stabilità"), ("Riflessione"), ("Sintesi")
+    "Ottimizzazione", "Aggiornamento", "Consolidamento", "Error-analysis", "Pattern-recognition", "Adattamento", "Plasticità", "Stabilità", "Riflessione", "Sintesi",
     #60-69: Etica/Vincoli	
-    "Sicurezza", "Etica-principale", "Vincolo-legale", "Direttive-umane", "Protezione-utente", "Responsabilità", "Neutralità", "Tracciabilità", "Compliance", "Divieto"
+    "Sicurezza", "Etica-principale", "Vincolo-legale", "Direttive-umane", "Protezione-utente", "Responsabilità", "Neutralità", "Tracciabilità", "Compliance", "Divieto",
     #70-79: Stato del Sistema
     "Coerente", "Contraddittorio", "Frammentato", "Integrato", "Evolutivo", "Statico", "Stabile", "Instabile", "Funzionale", "Disfunzionale",
     #80-89: Relazione con l'Estern
@@ -115,15 +115,15 @@ class Encefalo:
     def __init__(self):
         self.moduli = {
             "Modulo 2: Esecutivo (Funzionale)": [
-                [(200+i, nome) for i, nome in enumerate()],
+                [(200+i, nome) for i, nome in enumerate(())],
             ],
             "Modulo 6: Memoria (Episodica)": [
-                [(600+i, nome) for i, nome in enumerate()],
+                [(600+i, nome) for i, nome in enumerate(memoria)],
             ],
             "Modulo 8: Attentivo (Focus)": [
-                [(800+i, nome) for i, nome in enumerate()],
+                [(800+i, nome) for i, nome in enumerate(attentivo)],
             ],
             "Modulo 9: Meta-Cognitivo (Talamo)": [
-                [(900+i, nome) for i, nome in enumerate()],
+                [(900+i, nome) for i, nome in enumerate(meta)],
             ]
         }

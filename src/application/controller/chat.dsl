@@ -2,7 +2,7 @@
     message(default: "",entry:false) -> message;
 
     // I risultati degli altri controller vivono nella sessione utente.
-    dependencies(entry: false) -> file_dependencies(@session.results.terminal.selected);
+    dependencies(entry: false) -> file_dependencies(@session.results.terminal.select);
 
     send(entry:false, deps: ["dependencies"]) -> messenger.send(
             session,

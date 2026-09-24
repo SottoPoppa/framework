@@ -5,6 +5,7 @@ import hmac
 from html import escape
 import re
 import json
+import ssl
 from http.cookies import SimpleCookie
 from datetime import datetime
 from urllib.parse import urlunparse, ParseResult,parse_qs
@@ -189,12 +190,13 @@ class DefenderMiddleware(BaseHTTPMiddleware):
         configuration = self.defender.get_configuration("presentation") or {}
         security = configuration.get("security_and_waf", {})
         authentication = configuration.get("authentication_guards", {})
-        if security.get("tls_enabled") and request.url.scheme != "https":
+        tls_required = security.get("tls_enabled", True)
+        if tls_required and request.url.scheme != "https":
             return HTMLResponse(status_code=400, content="HTTPS required")
 
         # Esempio: decidiamo se accettare la richiesta in base al path
         request.session["ip"] = request.client.host
-        if security.get("csrf_protection"):
+        if security.get("csrf_protection", True):
             request.session.setdefault("csrf_token", secrets.token_urlsafe(32))
         #print(request.session)
         #request.session["user"] = await self.defender.whoami(session_id=request.session["id"],ip=request.session["ip"])
@@ -215,12 +217,17 @@ class DefenderMiddleware(BaseHTTPMiddleware):
         request.state.params = data.get('params', {})
         route_type = request.state.metadata.get("type")
         anonymous_route = route_type in {"authenticate", "activate", "reinstate"}
-        user = request.session.get("user", {})
+        authentication_data = request.session.get("authentication")
+        user = (
+            authentication_data.get("user", {})
+            if isinstance(authentication_data, dict)
+            else request.session.get("user", {})
+        )
         authenticated = isinstance(user, dict) and bool(user.get("id"))
         if authentication.get("auth_required") and not authenticated and not anonymous_route:
             return HTMLResponse(status_code=401, content="Authentication required")
 
-        csrf_required = security.get("csrf_protection")
+        csrf_required = security.get("csrf_protection", True)
         if csrf_required and method in {"POST", "PUT", "PATCH", "DELETE"}:
             csrf_token = request.headers.get("x-csrf-token")
             if not csrf_token and request.headers.get("content-type", "").startswith(
@@ -242,8 +249,10 @@ class DefenderMiddleware(BaseHTTPMiddleware):
 
         # Se va bene, procediamo
         response = await call_next(request)
-        if security.get("enable_hsts"):
+        if security.get("enable_hsts", tls_required) and request.url.scheme == "https":
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        if csrf_required:
+            response.headers["X-CSRF-Token"] = request.session["csrf_token"]
         content_security_policy = security.get("content_security_policy")
         if content_security_policy:
             response.headers["Content-Security-Policy"] = content_security_policy
@@ -509,9 +518,9 @@ def attrs(tag_key, input_data, classe=None):
 
 class Adapter(presentation.Port):
     capabilities = {
-        "tls": False,
+        "tls": True,
         "min_tls_version": "TLSv1.2",
-        "csrf": False,
+        "csrf": True,
         "authentication": ["session_cookie"],
         "rate_limiting": False,
     }
@@ -746,6 +755,12 @@ class Adapter(presentation.Port):
             #WebSocketRoute("/messenger", self.websocket, name="messenger"),
             #WebSocketRoute("/ssh", self.websocketssh, name="ssh"),
         ]
+
+        presentation_configuration = {}
+        if self.defender is not None and hasattr(self.defender, "get_configuration"):
+            presentation_configuration = self.defender.get_configuration("presentation") or {}
+        security_configuration = presentation_configuration.get("security_and_waf", {})
+        tls_required = security_configuration.get("tls_enabled", True)
         
         self.middleware_static = [
             Middleware(
@@ -753,7 +768,7 @@ class Adapter(presentation.Port):
                 cookie_name="session_state",
                 secret_key=self._session_secret(),
                 storekeeper=self.storekeeper,
-                secure=bool(self.config.get("ssl_certfile")),
+                secure=bool(tls_required or self.config.get("ssl_certfile")),
             ),
             Middleware(
                 CORSMiddleware,
@@ -812,7 +827,8 @@ class Adapter(presentation.Port):
         security = (self.defender.get_configuration("presentation") or {}).get(
             "security_and_waf", {}
         )
-        tls_required = security.get("tls_enabled", False)
+        tls_required = security.get("tls_enabled", True)
+        minimum_tls_version = security.get("min_tls_version", "TLSv1.2")
         if tls_required and not {
             "ssl_keyfile",
             "ssl_certfile",
@@ -856,6 +872,12 @@ class Adapter(presentation.Port):
         # Costruisci l'URL
         self.url = f"http{'s' if 'ssl_certfile' in self.config else ''}://{uvicorn_config_params['host']}{port_str}"
         config = Config(**uvicorn_config_params)
+        config.load()
+        if config.ssl is not None:
+            config.ssl.minimum_version = {
+                "TLSv1.2": ssl.TLSVersion.TLSv1_2,
+                "TLSv1.3": ssl.TLSVersion.TLSv1_3,
+            }[minimum_tls_version]
         self.server = Server(config)
         return self.server.serve()
 
@@ -867,7 +889,38 @@ class Adapter(presentation.Port):
             await websocket.close()
         self.active_websockets.clear()
         
-    async def signout(self,request) -> None:
+    @staticmethod
+    def _apply_authentication_result(request, result):
+        if not flow.is_result(result):
+            request.session["errors"] = ["Risultato di autenticazione non valido"]
+            return False
+        if not flow.check(result):
+            request.session["errors"] = [str(flow.output(result))]
+            return False
+
+        session_data = flow.output(result)
+        to_dict = getattr(session_data, "to_dict", None)
+        if callable(to_dict):
+            session_data = to_dict()
+        if not isinstance(session_data, dict):
+            request.session["errors"] = ["La sessione restituita non è valida"]
+            return False
+
+        request.session.update(session_data)
+        request.session.pop("errors", None)
+        authentication_data = session_data.get("authentication", {})
+        user = (
+            authentication_data.get("user")
+            if isinstance(authentication_data, dict)
+            else None
+        )
+        if isinstance(user, dict) and user:
+            request.session["user"] = user
+        else:
+            request.session.pop("user", None)
+        return True
+
+    async def signout(self,request):
         # Determina le credenziali in base al metodo HTTP
         match request.method:
             case 'GET':
@@ -877,13 +930,8 @@ class Adapter(presentation.Port):
             case _:
                 return RedirectResponse('/', status_code=405)
 
-        # Autenticazione tramite defender
-        session = await self.defender.terminate(request.session, **credentials)
-        
-        if session['success']:
-            request.session.update(session['outputs'])
-        else:
-            request.session["errors"] = session['errors']
+        result = await self.authenticator.invalidate(request.session, **credentials)
+        self._apply_authentication_result(request, result)
 
         # Crea la risposta di reindirizzamento
         return RedirectResponse(request.session.get("previous_url", "/"), status_code=303)
@@ -898,14 +946,8 @@ class Adapter(presentation.Port):
             case _:
                 return RedirectResponse('/', status_code=405)
 
-        # Autenticazione tramite defender
-        #raise Exception("Defender non implementato per Starlette. Implementare la logica di autenticazione qui.")
-        session = await self.authenticator.authenticate(request.session, **credentials)
-        
-        if session['success']:
-            request.session.update(session['outputs'])
-        else:
-            request.session["errors"] = session['errors']
+        result = await self.authenticator.authenticate(request.session, **credentials)
+        self._apply_authentication_result(request, result)
 
         # Crea la risposta di reindirizzamento
         return RedirectResponse(request.session.get("previous_url", "/"), status_code=303)
@@ -920,13 +962,8 @@ class Adapter(presentation.Port):
             case _:
                 return RedirectResponse('/', status_code=405)
 
-        # Autenticazione tramite defender
-        session = await self.authenticator.activate(request.session, **credentials)
-        
-        if session['success']:
-            request.session.update(session['outputs'])
-        else:
-            request.session["errors"] = session['errors']
+        result = await self.authenticator.activate(request.session, **credentials)
+        self._apply_authentication_result(request, result)
 
         # Crea la risposta di reindirizzamento
         return RedirectResponse(request.session.get("previous_url", "/"), status_code=303)
@@ -941,13 +978,8 @@ class Adapter(presentation.Port):
             case _:
                 return RedirectResponse('/', status_code=405)
 
-        # Autenticazione tramite defender
-        session = await self.authenticator.reinstate(request.session, **credentials)
-        
-        if session['success']:
-            request.session.update(session['outputs'])
-        else:
-            request.session["errors"] = session['errors']
+        result = await self.authenticator.regenerate(request.session, **credentials)
+        self._apply_authentication_result(request, result)
 
         # Crea la risposta di reindirizzamento
         return RedirectResponse(request.session.get("previous_url", "/"), status_code=303)
@@ -978,7 +1010,7 @@ class Adapter(presentation.Port):
             html = str(html)
         if (self.defender.get_configuration("presentation") or {}).get(
             "security_and_waf", {}
-        ).get("csrf_protection"):
+        ).get("csrf_protection", True):
             document = BeautifulSoup(html, "html.parser")
             for form in document.find_all("form"):
                 token = document.new_tag("input", type="hidden", name="csrf_token")
@@ -1129,7 +1161,7 @@ class Adapter(presentation.Port):
                 # Crea la rotta e aggiungila
                 r = Route(path, endpoint=endpoint, methods=[method])
                 routes.append(r)
-            return routes
+        return routes
 
     def mount_css(self, node, context):
         pass

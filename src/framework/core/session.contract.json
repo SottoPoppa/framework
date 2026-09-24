@@ -1,0 +1,46 @@
+{
+  "contract_version": 2,
+  "exports": {
+    "get_result": [
+      "SessionData.get_result"
+    ],
+    "mark": [
+      "Session.mark"
+    ],
+    "publish_result": [
+      "SessionData.publish_result"
+    ],
+    "to_dict": [
+      "SessionData.to_dict"
+    ],
+    "to_json": [
+      "SessionData.to_json"
+    ]
+  },
+  "hashes": {
+    "Session": {
+      "mark": {
+        "production": "13d6237afc95542be238b00bf3cb0581d8f49662cca3fd887abc8a8ea085fcd4",
+        "test": "13d6237afc95542be238b00bf3cb0581d8f49662cca3fd887abc8a8ea085fcd4"
+      }
+    },
+    "SessionData": {
+      "get_result": {
+        "production": "24d0d859c69161e70e4566c933a8c6c11f900061776d1a8d9e4f579b029c75af",
+        "test": "24d0d859c69161e70e4566c933a8c6c11f900061776d1a8d9e4f579b029c75af"
+      },
+      "publish_result": {
+        "production": "37594c03889001935ea46ef6e742a84840d98a91dc7c1b9f0218555f7666639e",
+        "test": "37594c03889001935ea46ef6e742a84840d98a91dc7c1b9f0218555f7666639e"
+      },
+      "to_dict": {
+        "production": "ab7304a3e6d5759e2e5a8dfa72330e23cff4f61cba1963b412883c92bca4a7a8",
+        "test": "ab7304a3e6d5759e2e5a8dfa72330e23cff4f61cba1963b412883c92bca4a7a8"
+      },
+      "to_json": {
+        "production": "02bdbf087d9d4098ac0d58fada8093a57214504febb28d87ea00eae3b5046839",
+        "test": "02bdbf087d9d4098ac0d58fada8093a57214504febb28d87ea00eae3b5046839"
+      }
+    }
+  }
+}

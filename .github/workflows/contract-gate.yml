@@ -26,6 +26,9 @@ jobs:
       - name: Run DSL test suite
         run: python3 public/main.py --test
 
+      - name: Verify component contracts
+        run: python3 public/main.py --verify
+
       - name: Check generated contracts
         run: |
           python3 - <<'PY'
