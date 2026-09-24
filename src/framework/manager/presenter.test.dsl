@@ -7,7 +7,7 @@ imports: {
 any:provider := imports.stub.Adapter(name: "stub");
 any:framework := imports.framework_module.Framework();
 any:runtime_session := test.managers.defender.interpreter.open_session(sid: "presenter-test");
-any:user_session := runtime_session.user_session;
+any:session_data := runtime_session.session_data;
 any:presenter := imports.module.Manager(presentations: [provider], loader: test.managers.loader, framework: framework);
 
 exports: {
@@ -17,9 +17,9 @@ exports: {
 tuple:test_suite := (
     {
         "action": exports.rebuild;
-        "inputs": {"args": [user_session, "kanban-board", {}]};
+        "inputs": {"args": [session_data, "kanban-board", {}]};
         "outputs": {"rebuilt": true; "session_id": runtime_session.sid};
         "assert": @received.is_success == true & @received.output.value.rebuilt == @expected.rebuilt & @received.output.value.session_id != none & @received.output.value.session_id == @expected.session_id;
-        "note": "rebuild risolve tramite Defender la SessionHandle associata alla UserSession";
+        "note": "rebuild risolve tramite Defender la SessionHandle associata a SessionData";
     }
 );

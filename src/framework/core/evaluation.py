@@ -13,7 +13,7 @@ import inspect
 import operator
 from typing import Any
 
-from .data import MISSING as REGISTRY_MISSING, Registry, session_injection
+from .data import MISSING as REGISTRY_MISSING, Registry
 from .model import Call, Deferred, ExecutionSpec, Literal, Ref, Source
 from .scope import MISSING, Scope
 
@@ -166,15 +166,6 @@ class Evaluator:
             return Deferred(node, pending, node.source)
 
         function = self._resolve(node, scope, session)
-        injection = session_injection(function)
-        if injection is not None and session is not None:
-            parameter, kind = injection
-            if parameter not in keywords:
-                injected_session = session
-                if kind == "user":
-                    injected_session = getattr(session, "user_session", session)
-                arguments = [injected_session, *arguments]
-
         try:
             value = function(*arguments, **keywords)
             return await value if inspect.isawaitable(value) else value

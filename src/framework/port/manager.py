@@ -1,9 +1,7 @@
 """Contract for application managers."""
 
-import inspect
 from abc import ABC
-
-from framework.core.data import session_injection
+import inspect
 
 
 class Port(ABC):
@@ -25,9 +23,7 @@ class Port(ABC):
             parameters = list(signature.parameters.values())
             if not parameters or parameters[0].name != "self":
                 continue
-            injection = session_injection(method)
-            expected_session_parameter = injection[0] if injection else "session"
-            if len(parameters) < 2 or parameters[1].name != expected_session_parameter:
+            if len(parameters) < 2 or parameters[1].name != "session":
                 raise TypeError(
-                    f"{cls.__name__}.{name} deve ricevere '{expected_session_parameter}' come primo argomento."
+                    f"{cls.__name__}.{name} deve ricevere 'session' come primo argomento."
                 )

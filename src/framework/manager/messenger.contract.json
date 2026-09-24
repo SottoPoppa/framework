@@ -9,12 +9,12 @@
   "hashes": {
     "Manager": {
       "receive": {
-        "production": "085817591fda1672817ade6e9f2355babcc172d64ce7b869231c37642707a482",
-        "test": "085817591fda1672817ade6e9f2355babcc172d64ce7b869231c37642707a482"
+        "production": "eb97bdb7e677aedf47ba63f28790f53ce8d4b5743de42a4733a8c15f77442704",
+        "test": "eb97bdb7e677aedf47ba63f28790f53ce8d4b5743de42a4733a8c15f77442704"
       },
       "send": {
-        "production": "5adf2adde7a11e5a8a264ae73057f11f345217bc30627afe11e61ce44033d0c0",
-        "test": "5adf2adde7a11e5a8a264ae73057f11f345217bc30627afe11e61ce44033d0c0"
+        "production": "12f448d75204cb09772e27cdf2ffadd6794a9c3f26416c31d0bc40ee3bcaa81b",
+        "test": "12f448d75204cb09772e27cdf2ffadd6794a9c3f26416c31d0bc40ee3bcaa81b"
       }
     }
   }

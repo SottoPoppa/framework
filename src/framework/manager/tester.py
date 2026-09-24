@@ -151,7 +151,7 @@ class Manager(manager.Port):
         return await self._run_suites(session, integration=True, **constants)
 
     async def _run_suites(self, session, integration: bool, **constants):
-        user_session = getattr(session, "user_session", session)
+        session_data = getattr(session, "session_data", session)
         filter_raw = constants.get('filter', self.filter_raw)
         self.filter_raw = filter_raw
         self.prefix = resolve_filter(filter_raw)
@@ -191,7 +191,7 @@ class Manager(manager.Port):
                         path,
                         s,
                         integration=integration,
-                        runtime_session=user_session,
+                        session_data=session_data,
                     )
                     if not integration:
                         self.loader.record_contract(path, outcome)
@@ -248,7 +248,7 @@ class Manager(manager.Port):
         path: str,
         s: "diagnostic.LogScope",
         integration: bool = False,
-        runtime_session=None,
+        session_data=None,
     ) -> dict:
         """Esegue una suite di test DSL e registra i risultati.
 
@@ -258,13 +258,6 @@ class Manager(manager.Port):
         :return: Dizionario con esito e dettagli dei test
         """
         session_id = str(uuid.uuid4())
-        session_dict = {
-            'id': session_id,
-            'errors': [],
-            'providers': {},
-            'user': {'id': 'tester', 'role': 'system'}
-        }
-
         interp.session_create(
             sid=session_id,
             env=library.BUILTINS | {
@@ -274,7 +267,7 @@ class Manager(manager.Port):
                     'loader': self.loader,
                     'application': getattr(self.loader, 'app', None),
                     'managers': self.loader.get_managers(),
-                    'session': runtime_session,
+                    'session': session_data,
                     'integration': integration,
                 },
             }
@@ -287,7 +280,7 @@ class Manager(manager.Port):
             if flow.is_result(run_result) and not run_result.is_success:
                 error = flow.output(run_result)
                 raise error if isinstance(error, Exception) else RuntimeError(str(error))
-            execution = session.user_session.execution(path)
+            execution = session.execution(path)
             if execution is None:
                 raise RuntimeError(f"L'esecuzione DSL {path} non ha prodotto un contesto runtime")
             ctx = execution.context.flatten()

@@ -11,8 +11,9 @@ exports: {
 
 any:session := {
     "id": "authenticator-integration";
-    "providers": {};
-    "user": {}
+    "context": {};
+    "authentication": {"providers": {}; "user": {}};
+    "results": {}
 };
 
 any:credentials := {
@@ -32,21 +33,21 @@ tuple:test_suite := (
         "action": exports.activate;
         "inputs": {"args": [session]; "kwargs": credentials};
         "outputs": "integration@example.test";
-        "assert": @received.is_success == true & @received.output.value.user.email == @expected;
+        "assert": @received.is_success == true & @received.output.value.authentication.user.email == @expected;
         "note": "Authenticator registra un utente tramite il provider stub";
     },
     {
         "action": exports.authenticate;
         "inputs": {"args": [session]; "kwargs": credentials};
         "outputs": "integration@example.test";
-        "assert": @received.is_success == true & @received.output.value.user.email == @expected;
+        "assert": @received.is_success == true & @received.output.value.authentication.user.email == @expected;
         "note": "Authenticator autentica credenziali valide e aggiorna la sessione";
     },
     {
         "action": exports.regenerate;
         "inputs": {"args": [session]; "kwargs": credentials};
         "outputs": "integration@example.test";
-        "assert": @received.is_success == true & @received.output.value.user.email == @expected;
+        "assert": @received.is_success == true & @received.output.value.authentication.user.email == @expected;
         "note": "Authenticator rigenera l'identita tramite sign_aid del provider";
     },
     {

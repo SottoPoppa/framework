@@ -16,7 +16,7 @@ from .evaluation import Evaluator
 from .graph import Dag, NodeNotFound
 from .model import DagDefinition
 from .scope import Scope
-from .session import NodeState, Session
+from .session import NodeState, Session, SessionData
 
 
 class DependencyFailed(Exception):
@@ -58,7 +58,6 @@ class DagRunner:
         *,
         initial_context: dict[str, Any] | None = None,
         context: Scope | None = None,
-        user_session=None,
         runtime_session=None,
         resolve_context: bool = True,
     ) -> Session:
@@ -67,7 +66,6 @@ class DagRunner:
             dag.name,
             uuid.uuid4().hex,
             context if context is not None else Scope(),
-            user_session=user_session,
             runtime_session=runtime_session,
         )
         self.sessions[session.id] = session
@@ -326,9 +324,11 @@ class DagRunner:
         """Registra il risultato nel runtime e ne pubblica la forma pura."""
         session.results[name] = value
         session.context.set(name, value)
-        if session.user_session is not None:
+        if session.runtime_session is not None:
             payload = flow.output(value) if flow.is_result(value) else value
-            session.user_session.publish_result(session.dag_name, name, payload)
+            if isinstance(payload, SessionData):
+                session.runtime_session.replace_session_data(payload)
+            session.runtime_session.publish_result(session.dag_name, name, payload)
 
     def _bind_event(self, dag: Dag, session: Session, node: str, payload: Any) -> None:
         session.context.set(f"events.{node}", payload)
@@ -345,8 +345,8 @@ class DagRunner:
                 continue
             visited.add(current)
             session.results.pop(current, None)
-            if session.user_session is not None:
-                session.user_session.clear_result(session.dag_name, current)
+            if session.runtime_session is not None:
+                session.runtime_session.clear_result(session.dag_name, current)
             session.errors.pop(current, None)
             session.mark(current, NodeState.PENDING)
             pending.extend(dag.successors.get(current, ()))

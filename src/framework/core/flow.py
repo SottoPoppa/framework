@@ -274,6 +274,12 @@ class Immutable(dict):
     def __setattr__(self, k, v): raise TypeError(f"{self.__class__.__name__} è immutabile")
     def __setitem__(self, k, v): raise TypeError(f"{self.__class__.__name__} è immutabile")
     def __delitem__(self, k): raise TypeError(f"{self.__class__.__name__} è immutabile")
+    def clear(self): raise TypeError(f"{self.__class__.__name__} è immutabile")
+    def pop(self, *args, **kwargs): raise TypeError(f"{self.__class__.__name__} è immutabile")
+    def popitem(self): raise TypeError(f"{self.__class__.__name__} è immutabile")
+    def setdefault(self, *args, **kwargs): raise TypeError(f"{self.__class__.__name__} è immutabile")
+    def update(self, *args, **kwargs): raise TypeError(f"{self.__class__.__name__} è immutabile")
+    def __ior__(self, other): raise TypeError(f"{self.__class__.__name__} è immutabile")
 
     def __copy__(self):
         return dict(self)

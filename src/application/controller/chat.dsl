@@ -5,6 +5,7 @@
     dependencies(entry: false) -> file_dependencies(@session.results.terminal.selected);
 
     send(entry:false, deps: ["dependencies"]) -> messenger.send(
+            session,
             adapter: "dsl",
             receiver: "kanban",
             message: {
@@ -19,11 +20,13 @@
         source: true,
         on_event: "render_response"
     ) -> messenger.receive(
+            session,
             receiver: "copilot",
             domain: "general"
         );
     
     render_response(entry: false, deps: false) -> presenter.rebuild(
+            session,
             "chat-response",
             {}
         );

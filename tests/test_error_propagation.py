@@ -12,12 +12,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import framework.core.flow as flow
 from framework.core.application import Application
-from framework.core.data import Registry, needs_user_session
-from framework.core.evaluation import Evaluator
+from framework.core.data import Registry
+from framework.core.evaluation import EvaluationError, Evaluator
 from framework.core.framework import Framework
 from framework.core.interpreter import Interpreter
 from framework.core.model import Call, DagDefinition, Deferred, Literal, Ref
-from framework.core.session import NodeState, Session, UserSession
+from framework.core.session import NodeState, Session, SessionData
 from framework.core.scope import Scope
 from framework.manager.authenticator import Manager as Authenticator
 from framework.manager.defender import Manager as Defender
@@ -69,43 +69,91 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
             "test-anon-key",
         )
 
-    async def test_evaluator_always_injects_user_session(self):
-        user_session = UserSession("user-session")
-        execution_session = Session(
-            "chat",
-            "dag-execution",
-            user_session=user_session,
-        )
-
-        @needs_user_session
-        def get_user_session(user_session):
-            return user_session
-
+    async def test_evaluator_requires_explicit_session_data_argument(self):
+        session_data = SessionData({
+            "id": "session-data",
+            "context": {},
+            "authentication": {},
+            "results": {},
+        })
         def get_default_session(session):
             return session
 
-        evaluator = Evaluator(Registry({
-            "get_user_session": get_user_session,
-            "get_default_session": get_default_session,
-        }))
+        evaluator = Evaluator(Registry({"get_default_session": get_default_session}))
 
-        received_user_session = await evaluator.evaluate(
-            Call("get_user_session"), Scope(), session=execution_session
+        received_session_data = await evaluator.evaluate(
+            Call("get_default_session", (Literal(session_data),)), Scope()
         )
-        received_default_session = await evaluator.evaluate(
-            Call("get_default_session"), Scope(), session=execution_session
+        self.assertIs(received_session_data, session_data)
+        with self.assertRaises(EvaluationError):
+            await evaluator.evaluate(Call("get_default_session"), Scope())
+
+    async def test_session_data_is_immutable_and_rejects_runtime_values(self):
+        session_data = SessionData({
+            "id": "session-data",
+            "context": {"locale": "it"},
+            "authentication": {"providers": {}},
+            "results": {"chat": {"reply": "ciao"}},
+        })
+
+        self.assertIsInstance(session_data, dict)
+        self.assertEqual(session_data["results"]["chat"]["reply"], "ciao")
+        with self.assertRaises(TypeError):
+            session_data["id"] = "changed"
+        with self.assertRaises(TypeError):
+            session_data["context"]["locale"] = "en"
+        with self.assertRaises(TypeError):
+            session_data["context"].update({"locale": "en"})
+        with self.assertRaises(TypeError):
+            session_data["authentication"].setdefault("user", {})
+        with self.assertRaises(TypeError):
+            SessionData({
+                "id": "invalid-runtime",
+                "context": {"handle": object()},
+                "authentication": {},
+                "results": {},
+            })
+
+    async def test_runner_adopts_returned_session_data_snapshot(self):
+        original = SessionData({
+            "id": "session-transition",
+            "context": {},
+            "authentication": {},
+            "results": {},
+        })
+        updated = original.evolve(authentication={"user": {"id": "user-1"}})
+        interpreter = Interpreter()
+        handle = interpreter.open_session(
+            sid=original["id"],
+            state=original,
+        )
+        execution = Session(
+            "authentication",
+            "authentication-execution",
+            Scope({"session": original}),
+            runtime_session=handle,
+        )
+        handle._executions["authentication"] = execution
+
+        interpreter.runner._publish(execution, "authenticate", updated)
+
+        self.assertEqual(
+            handle.session_data["authentication"]["user"]["id"],
+            "user-1",
+        )
+        self.assertIs(execution.context.get("session"), handle.session_data)
+        self.assertEqual(
+            handle.session_data.get_result("authentication", "authenticate"),
+            updated.to_dict(),
         )
 
-        self.assertIs(received_user_session, user_session)
-        self.assertIs(received_default_session, user_session)
-
-    async def test_messenger_injects_user_session_and_uses_defender_runtime(self):
-        user_session = UserSession("messenger-user")
-        execution_session = Session(
-            "chat",
-            "chat-execution",
-            user_session=user_session,
-        )
+    async def test_messenger_uses_explicit_session_data_to_find_runtime(self):
+        session_data = SessionData({
+            "id": "messenger-user",
+            "context": {},
+            "authentication": {},
+            "results": {},
+        })
         runtime = types.SimpleNamespace(
             dispatch_controller_event=AsyncMock(return_value={"delivered": True})
         )
@@ -120,6 +168,7 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
         result = await evaluator.evaluate(
             Call(
                 "send",
+                (Literal(session_data),),
                 keywords={
                     "adapter": "dsl",
                     "receiver": "kanban",
@@ -128,13 +177,12 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
                 },
             ),
             Scope(),
-            session=execution_session,
         )
 
         self.assertTrue(flow.is_result(result))
         self.assertTrue(flow.check(result))
         self.assertEqual(flow.output(result), {"delivered": True})
-        defender.session_get.assert_called_once_with(user_session)
+        defender.session_get.assert_called_once_with(session_data)
         runtime.dispatch_controller_event.assert_awaited_once_with(
             "kanban",
             "refresh_board",
@@ -146,12 +194,11 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
         execution = Session(
             "kanban",
             "kanban-execution",
-            user_session=runtime.user_session,
             runtime_session=runtime,
         )
 
         async def start_controller(controller):
-            runtime.user_session.register_execution(controller, execution)
+            runtime._executions[controller] = execution
             return flow.success({})
 
         with patch.object(
@@ -173,45 +220,49 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
         run_controller.assert_awaited_once_with("kanban")
         emit.assert_awaited_once_with(execution, "refresh_board", None)
 
-    async def test_orchestrator_builds_runtime_handle_from_user_session(self):
-        user_session = UserSession(
-            "orchestrator-user",
-            authentication={"user": {"id": "user-1"}},
-        )
+    async def test_orchestrator_builds_runtime_handle_from_session_data(self):
+        session_data = SessionData({
+            "id": "orchestrator-user",
+            "context": {},
+            "authentication": {"user": {"id": "user-1"}},
+            "results": {},
+        })
         manager = Orchestrator(None)
 
-        runtime = manager._runtime_session(user_session)
+        runtime = manager._runtime_session(session_data)
 
-        self.assertEqual(runtime.sid, user_session.id)
-        self.assertEqual(runtime.user_session.authentication, user_session.authentication)
+        self.assertEqual(runtime.sid, session_data["id"])
+        self.assertEqual(runtime.session_data["authentication"]["user"]["id"], "user-1")
 
-    async def test_api_adapter_reads_tokens_from_user_session(self):
+    async def test_api_adapter_reads_tokens_from_session_data(self):
         from infrastructure.persistence.api.api import Adapter as ApiAdapter
 
-        user_session = UserSession(
-            "api-user",
-            authentication={
+        session_data = SessionData({
+            "id": "api-user",
+            "context": {},
+            "authentication": {
                 "providers": {
                     "github": {"tokens": {"access_token": "test-token"}}
                 }
             },
-        )
+            "results": {},
+        })
 
         tokens = ApiAdapter._session_tokens(
-            types.SimpleNamespace(name="github"), user_session
+            types.SimpleNamespace(name="github"), session_data
         )
 
         self.assertEqual(tokens["access_token"], "test-token")
 
-    def test_defender_session_get_accepts_user_session(self):
+    def test_defender_session_get_accepts_session_data(self):
         interpreter = Interpreter()
         original = interpreter.open_session(sid="defender-user")
         defender = Defender.__new__(Defender)
         defender.interpreter = interpreter
 
-        recovered = defender.session_get(original.user_session)
+        recovered = defender.session_get(original.session_data)
 
-        self.assertIs(recovered.user_session, original.user_session)
+        self.assertEqual(recovered.session_data.to_dict(), original.session_data.to_dict())
 
     async def test_textual_action_preserves_explicit_empty_value(self):
         action = _make_action({
@@ -343,63 +394,53 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
                     "user": {"id": "user-1"},
                 })
 
-        session = {"id": "session-1", "providers": {}, "user": {}}
+        session = SessionData({
+            "id": "session-1",
+            "context": {},
+            "authentication": {},
+            "results": {},
+        })
         manager = Authenticator(None, Defender(), [Provider()])
 
         received = await manager.authenticate(session, email="a@example.test", password="x")
 
         self.assertTrue(received.is_success)
-        self.assertEqual(session["user"]["id"], "user-1")
-        self.assertEqual(session["providers"]["stub"]["token"], "test-token")
-
-    async def test_authenticate_updates_user_session_authentication(self):
-        class Defender:
-            async def authorized(self, *args, **kwargs):
-                return True
-
-        class Provider:
-            name = "stub"
-
-            async def sign_in(self, **kwargs):
-                return flow.success({
-                    "providers": {"stub": {"token": "test-token"}},
-                    "user": {"id": "user-1"},
-                })
-
-        user_session = UserSession("user-session-1")
-        manager = Authenticator(None, Defender(), [Provider()])
-
-        received = await manager.authenticate(
-            user_session, email="a@example.test", password="x"
-        )
-
-        self.assertTrue(received.is_success)
-        self.assertEqual(user_session.authentication["user"]["id"], "user-1")
+        updated = flow.output(received)
+        self.assertIsInstance(updated, SessionData)
+        self.assertEqual(session["authentication"], {})
+        self.assertEqual(updated["authentication"]["user"]["id"], "user-1")
         self.assertEqual(
-            user_session.authentication["providers"]["stub"]["token"],
+            updated["authentication"]["providers"]["stub"]["token"],
             "test-token",
         )
 
-    async def test_defender_policy_session_flattens_user_authentication(self):
-        user_session = UserSession(
-            "policy-user",
-            authentication={"user": {"id": "user-1"}, "providers": {}},
-        )
+    async def test_defender_policy_session_flattens_session_data_authentication(self):
+        session_data = SessionData({
+            "id": "policy-user",
+            "context": {},
+            "authentication": {"user": {"id": "user-1"}, "providers": {}},
+            "results": {},
+        })
 
-        policy_session = Defender._policy_session(user_session)
+        policy_session = Defender._policy_session(session_data)
 
         self.assertEqual(policy_session["id"], "policy-user")
         self.assertEqual(policy_session["user"]["id"], "user-1")
-        self.assertEqual(policy_session["authentication"], user_session.authentication)
+        self.assertEqual(policy_session["authentication"], session_data["authentication"])
 
-    async def test_presenter_resolves_user_session_to_defender_handle(self):
+    async def test_presenter_resolves_session_data_to_defender_handle(self):
         handle = object()
-        user_session = UserSession("presenter-user")
+        session_data = SessionData({
+            "id": "presenter-user",
+            "context": {},
+            "authentication": {},
+            "results": {},
+        })
 
         class DefenderStub:
             def session_get(self, received):
-                if received is not user_session:
-                    raise AssertionError("Presenter passed a non-user session")
+                if received is not session_data:
+                    raise AssertionError("Presenter did not pass SessionData")
                 return handle
 
         class Loader:
@@ -412,7 +453,7 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
             types.SimpleNamespace(get_logger=lambda _name: types.SimpleNamespace()),
         )
 
-        self.assertIs(presenter._runtime_session(user_session), handle)
+        self.assertIs(presenter._runtime_session(session_data), handle)
 
     async def test_invalidate_clears_session_after_successful_flow_result(self):
         class Defender:
@@ -423,14 +464,24 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
             async def sign_out(self, session):
                 return flow.success({"session": session})
 
-        session = {"id": "session-1", "providers": {"stub": {}}, "user": {"id": "user-1"}}
+        session = SessionData({
+            "id": "session-1",
+            "context": {},
+            "authentication": {
+                "providers": {"stub": {}},
+                "user": {"id": "user-1"},
+            },
+            "results": {},
+        })
         manager = Authenticator(None, Defender(), [Provider()])
 
         received = await manager.invalidate(session)
 
         self.assertTrue(received.is_success)
-        self.assertNotIn("providers", session)
-        self.assertNotIn("user", session)
+        updated = flow.output(received)
+        self.assertEqual(session["authentication"]["user"]["id"], "user-1")
+        self.assertNotIn("providers", updated["authentication"])
+        self.assertNotIn("user", updated["authentication"])
 
     async def test_receive_propagates_provider_exception(self):
         class Provider:

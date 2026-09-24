@@ -4,7 +4,6 @@ import framework.port.message as message
 import framework.port.manager as manager
 import framework.core.flow as flow
 import framework.core.framework as framework_module
-from framework.core.data import needs_user_session
 from framework.service.diagnostic import get_logger
 
 from framework.manager.defender import Manager as Defender
@@ -71,14 +70,14 @@ class Manager(manager.Port):
 
     async def _dispatch(
         self,
-        user_session,
+        session,
         domain: str | None,
         **constants,
     ):
         """
         Instrada il messaggio verso i provider/controller appropriati.
         """
-        user_session = self._as_user_session(user_session)
+        session = self._as_session_data(session)
         destination = constants.get("receiver")
         adapter = constants.get("adapter")
 
@@ -99,13 +98,13 @@ class Manager(manager.Port):
                     domain=domain,
                 )
                 return flow.error("Messaggio DSL non autorizzato")
-            runtime = self.defender.session_get(user_session)
+            runtime = self.defender.session_get(session)
             if runtime is None:
                 self.logger.warning(
                     "Messenger: sessione runtime non trovata",
                     receiver=destination,
                     domain=domain,
-                    session_id=user_session.id,
+                    session_id=session["id"],
                 )
                 return flow.error("Sessione runtime non trovata")
             result = await runtime.dispatch_controller_event(
@@ -153,7 +152,7 @@ class Manager(manager.Port):
 
             authorized_count += 1
             try:
-                result = await provider.post(user_session, **constants | {'domain': domain})
+                result = await provider.post(session, **constants | {'domain': domain})
             except Exception as exc:
                 self.logger.error(
                     "Messenger: eccezione durante l'invio al provider",
@@ -188,13 +187,12 @@ class Manager(manager.Port):
         return failure or flow.success()
 
     @staticmethod
-    def _as_user_session(session):
-        """Accetta UserSession e normalizza gli handle legacy dei call site Python."""
-        return getattr(session, "user_session", session)
+    def _as_session_data(session):
+        """Estrae lo snapshot puro dagli handle runtime legacy."""
+        return getattr(session, "session_data", session)
 
-    @needs_user_session
     @flow.result(inputs=('messenger',), outputs=())
-    async def send(self, user_session, **constants):
+    async def send(self, session, **constants):
         """
         Invia un messaggio.
 
@@ -206,18 +204,17 @@ class Manager(manager.Port):
             if key != "domain"
         }
         return await self._dispatch(
-            user_session,
+            session,
             constants.get('domain'),
             **dispatch_constants,
         )
 
-    @needs_user_session
     @flow.result(inputs=(), outputs=())
-    async def receive(self, user_session, **constants):
+    async def receive(self, session, **constants):
         """
         Riceve il primo risultato disponibile dai provider.
         """
-        user_session = self._as_user_session(user_session)
+        session = self._as_session_data(session)
         domain = constants.get("domain")
         destination = constants.get("receiver")
         matched = self._matching_providers(destination)
@@ -244,7 +241,7 @@ class Manager(manager.Port):
 
         tasks = [
             asyncio.create_task(
-                provider.read(user_session, **constants | {'domain': domain})
+                provider.read(session, **constants | {'domain': domain})
             )
             for provider in authorized
         ]

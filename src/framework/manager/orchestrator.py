@@ -90,17 +90,21 @@ class Manager(manager.Port):
     async def load_file(self, session, name, source):
         return await self.interpreter.load_file(name, source)
 
-    def _runtime_session(self, user_session, env=None):
-        if callable(getattr(user_session, "run", None)) and callable(
-            getattr(user_session, "emit", None)
+    def _runtime_session(self, session, env=None):
+        if callable(getattr(session, "run", None)) and callable(
+            getattr(session, "emit", None)
         ):
-            return user_session
+            return session
 
-        user_session = getattr(user_session, "user_session", user_session)
-        session_id = getattr(user_session, "id", user_session)
-        state = user_session.to_dict() if callable(
-            getattr(user_session, "to_dict", None)
-        ) else None
+        session_data = getattr(session, "session_data", session)
+        session_id = (
+            session_data.get("id")
+            if isinstance(session_data, dict)
+            else getattr(session_data, "id", session_data)
+        )
+        state = session_data.to_dict() if callable(
+            getattr(session_data, "to_dict", None)
+        ) else session_data if isinstance(session_data, dict) else None
         return self.interpreter.open_session(
             env=env,
             sid=session_id,

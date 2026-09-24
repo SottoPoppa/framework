@@ -251,12 +251,12 @@ class Manager(manager.Port):
         )
 
     def session_get(self, sid):
-        """Restituisce l'handle DSL dato un id o una proiezione UserSession."""
-        sid = getattr(sid, "id", sid)
-        if isinstance(sid, dict):
-            sid = sid.get("id")
-        # ricostruisce l'handle senza duplicare stato
-        if sid not in self.interpreter.user_sessions:
+        """Restituisce l'handle runtime dato un id o uno snapshot sessione."""
+        session_data = getattr(sid, "session_data", sid)
+        sid = session_data.get("id") if isinstance(session_data, dict) else getattr(
+            session_data, "id", session_data
+        )
+        if sid not in self.interpreter.session_data:
             return None
         return self.interpreter.open_session(sid=sid)
     
@@ -270,16 +270,19 @@ class Manager(manager.Port):
 
     @staticmethod
     def _policy_session(session):
-        user_session = getattr(session, "user_session", session)
-        authentication = getattr(user_session, "authentication", None)
-        if not isinstance(authentication, dict):
+        session_data = getattr(session, "session_data", session)
+        if not isinstance(session_data, dict):
             return session
-
-        snapshot = user_session.to_dict()
+        snapshot = (
+            session_data.to_dict()
+            if callable(getattr(session_data, "to_dict", None))
+            else dict(session_data)
+        )
+        authentication = snapshot.get("authentication", {})
         return {
             **authentication,
             **snapshot,
-            "id": user_session.id,
+            "id": snapshot.get("id"),
             "authentication": authentication,
         }
 

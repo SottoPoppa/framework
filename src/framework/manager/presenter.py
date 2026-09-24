@@ -61,18 +61,17 @@ class Manager(manager.Port):
     def _get_driver(self):
         return self.presentations[-1] if self.presentations else None
 
-    def _runtime_session(self, user_session):
-        if callable(getattr(user_session, "run", None)) and callable(
-            getattr(user_session, "emit", None)
+    def _runtime_session(self, session):
+        if callable(getattr(session, "run", None)) and callable(
+            getattr(session, "emit", None)
         ):
-            return user_session
+            return session
 
-        user_session = getattr(user_session, "user_session", user_session)
         managers = self.loader.get_managers() if self.loader is not None else {}
         defender = managers.get("defender") if isinstance(managers, dict) else None
-        runtime_session = defender.session_get(user_session) if defender else None
+        runtime_session = defender.session_get(session) if defender else None
         if runtime_session is None:
-            raise RuntimeError("SessionHandle non disponibile per la UserSession")
+            raise RuntimeError("SessionHandle non disponibile per SessionData")
         return runtime_session
 
     @flow.result(inputs=(), outputs=())

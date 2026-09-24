@@ -164,9 +164,9 @@ Ogni controller DSL mantiene il proprio contesto locale. I risultati di un
 controller non vengono copiati nel contesto di un altro controller e non sono
 esposti tramite un namespace globale `shared`.
 
-La `UserSession` è il punto esplicito di coordinamento tra DAG e pubblica gli
-ultimi payload riusciti dei nodi eseguiti. Un risultato remoto si legge usando
-la forma canonica:
+Lo snapshot immutabile `SessionData` è il punto esplicito di coordinamento tra
+DAG e pubblica gli ultimi payload riusciti dei nodi eseguiti. Un risultato
+remoto si legge usando la forma canonica:
 
 ```text
 @session.results.<controller>.<node>
@@ -185,24 +185,27 @@ La forma `@` identifica un valore di contesto runtime. Per i risultati
 cross-controller è obbligatoria: evita che un nome remoto venga interpretato
 come variabile locale.
 
-Nel contesto DSL `@session` è la proiezione pura della sessione utente
-(`UserSessionData`: `id`, `context`, `authentication`, `results`). Non
-contiene e non deve contenere `Session`, `SessionHandle`, Runner, Manager,
-Adapter, task asincroni o primitive di sincronizzazione. La `Session` del DAG
-resta privata al Runner e vive solo in `UserSession.executions`, che non viene
-mai serializzato. Quando una chiamata DSL attraversa un Manager o una
-Port che richiede l'argomento `session`, il framework reinietta internamente
-il riferimento runtime senza esporlo al DSL o alla serializzazione della
-`UserSession`.
+Nel contesto DSL `@session` è uno snapshot `SessionData`, una mappa validata e
+immutabile con `id`, `context`, `authentication` e `results`. Non contiene e
+non deve contenere `Session`, `SessionHandle`, Scope, Runner, Manager, Adapter,
+task asincroni o primitive di sincronizzazione. `Session` rappresenta una
+singola esecuzione DAG; handle, Scope ed esecuzioni sono mantenuti nel runtime
+dell'Interpreter, fuori dallo snapshot.
+
+Le callable DSL non ricevono la sessione per convenzione sul nome del
+parametro. Il controller passa esplicitamente `session` come argomento, per
+esempio `authenticator.authenticate(session, email: ..., password: ...)`.
+Una callable che aggiorna lo stato restituisce un nuovo `SessionData` tramite
+`evolve()`; il Runner adotta quello snapshot e le chiamate successive vedono la
+nuova versione.
 
 Esiste un solo modo di trattare le due cose e non è configurabile:
 
-- `SessionHandle.run(dag)` restituisce sempre il **contesto runtime** del DAG
-  (Manager, callable, espressioni sospese incluse). È il risultato di
-  esecuzione, non uno stato da persistere.
-- `UserSession.to_dict()` / `to_json()` è l'**unica** rappresentazione dello
-  stato: sempre pura, sempre le stesse quattro chiavi, validabile con
-  `framework.service.scheme`.
+- `SessionHandle.run(dag)` restituisce il **contesto visibile** del DAG. Il
+    handle e le esecuzioni sono runtime e non vanno serializzati.
+- `SessionData.to_dict()` / `to_json()` è la rappresentazione persistibile
+    dello stato: sempre pura, sempre le stesse quattro chiavi, validabile con
+    `framework.service.scheme`. Gli aggiornamenti producono nuove istanze.
 
 Quella rappresentazione è portabile: un altro interprete la riprende con
 `Interpreter.open_session(state=payload)` e ottiene contesto, autenticazione e

@@ -29,6 +29,7 @@
 
     files() ->
         storekeeper.overview(
+            session,
             repository: "file",
             filter: {"eq": {"type": "file"}}
         ) |> result();
@@ -54,16 +55,16 @@
     gg(entry: false,
         //deps: ["editor.application", "editor.framework", "editor.infrastructure"]
     ) ->
-        presenter.rebuild("workspace-editors", {});
+        presenter.rebuild(session, "workspace-editors", {});
 
     update_app(entry: false) ->
-        presenter.rebuild("application", {});
+        presenter.rebuild(session, "application", {});
 
     update_frame(entry: false) ->
-        presenter.rebuild("framework", {});
+        presenter.rebuild(session, "framework", {});
 
     update_infra(entry: false) ->
-        presenter.rebuild("infrastructure", {});
+        presenter.rebuild(session, "infrastructure", {});
 
     cmd: {
         close(entry: false) ->

@@ -7,12 +7,7 @@ sessioni diverse dello stesso interprete.
 
 from __future__ import annotations
 
-import inspect
 from typing import Any, Dict, Iterator
-
-SESSION_PARAMETER = "session"
-_SESSION_FLAG = "__dsl_wants_session__"
-_SESSION_KIND_FLAG = "__dsl_session_kind__"
 
 
 class _Missing:
@@ -26,60 +21,6 @@ class _Missing:
 
 
 MISSING = _Missing()
-
-
-def needs_session(fn):
-    """Dichiara che la callable riceve la UserSession come primo argomento."""
-    return needs_user_session(fn)
-
-
-def needs_user_session(fn):
-    """Dichiara che la callable riceve la UserSession come primo argomento."""
-    setattr(fn, _SESSION_KIND_FLAG, "user")
-    setattr(fn, _SESSION_FLAG, True)
-    return fn
-
-
-def _first_parameter(fn: Any):
-    try:
-        parameters = list(inspect.signature(fn).parameters.values())
-    except (TypeError, ValueError):
-        return None
-    if parameters and parameters[0].name in {"self", "cls"}:
-        return parameters[1] if len(parameters) > 1 else None
-    return parameters[0] if parameters else None
-
-
-def _first_parameter_is_session(fn: Any) -> bool:
-    parameter = _first_parameter(fn)
-    return parameter is not None and parameter.name == SESSION_PARAMETER
-
-
-def session_injection(fn: Any) -> tuple[str, str] | None:
-    """Restituisce il parametro e il tipo di sessione richiesti da una callable."""
-    parameter = _first_parameter(fn)
-    kind = getattr(fn, _SESSION_KIND_FLAG, None)
-    if kind is not None:
-        if kind != "user" or parameter is None:
-            return None
-        return parameter.name, kind
-
-    flag = getattr(fn, _SESSION_FLAG, None)
-    if flag is None:
-        flag = _first_parameter_is_session(fn)
-        holder = getattr(fn, "__func__", fn)
-        try:
-            setattr(holder, _SESSION_FLAG, flag)
-        except (AttributeError, TypeError):
-            pass
-    if not flag or parameter is None:
-        return None
-    return parameter.name, "user"
-
-
-def wants_session(fn: Any) -> bool:
-    """True se la callable dichiara o richiede la UserSession."""
-    return session_injection(fn) is not None
 
 
 class Registry:

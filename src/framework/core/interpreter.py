@@ -23,7 +23,7 @@ from .model import Call, Deferred, ExecutionSpec, Literal, Ref
 from .program import DSLSourceError, Program, ProgramLoader
 from .runner import DagRunner
 from .scope import Scope
-from .session import UserSession, UserSessionData, pure_mapping, pure_value
+from .session import SessionData, pure_mapping, pure_value
 
 __all__ = [
     "DSLSourceError",
@@ -46,7 +46,10 @@ class SessionHandle:
         sid: str | None = None,
         env: dict | None = None,
         context_preparer=None,
-        user_session: UserSession | None = None,
+        session_data: SessionData | None = None,
+        session_data_store: dict[str, SessionData] | None = None,
+        executions: dict[str, Any] | None = None,
+        context: Scope | None = None,
         registry: Registry | None = None,
     ):
         self.runner = runner
@@ -54,20 +57,64 @@ class SessionHandle:
         self.registry = registry or runner.registry
         self._context_preparer = context_preparer
         self._closed = False
-        self.user_session = user_session or UserSession(
-            sid or uuid.uuid4().hex,
-            Scope(pure_mapping(self.env)),
+        self.sid = sid or (session_data["id"] if session_data else uuid.uuid4().hex)
+        if session_data_store is None:
+            self._session_data_store = {
+                self.sid: session_data or SessionData({
+                    "id": self.sid,
+                    "context": pure_mapping(self.env),
+                    "authentication": {},
+                    "results": {},
+                })
+            }
+        else:
+            self._session_data_store = session_data_store
+            if self.sid not in self._session_data_store:
+                self._session_data_store[self.sid] = session_data
+        self._executions = executions if executions is not None else {}
+        self._context = context or Scope(pure_value(self.session_data["context"]))
+
+    @property
+    def session_data(self) -> SessionData:
+        return self._session_data_store[self.sid]
+
+    def replace_session_data(self, session_data: SessionData | dict[str, Any]):
+        """Pubblica uno snapshot nuovo e aggiorna i binding runtime esistenti."""
+        snapshot = (
+            session_data
+            if isinstance(session_data, SessionData)
+            else SessionData.from_dict(session_data)
         )
-        self.sid = self.user_session.id
+        if snapshot["id"] != self.sid:
+            raise ValueError("L'id dello snapshot non corrisponde alla sessione aperta")
+        self._session_data_store[self.sid] = snapshot
+        self._context.data.clear()
+        self._context.data.update(pure_value(snapshot["context"]))
+        for execution in self._executions.values():
+            execution.context.set("session", snapshot)
+        return snapshot
+
+    def publish_result(self, dag_name: str, node_name: str, value: Any):
+        return self.replace_session_data(
+            self.session_data.publish_result(dag_name, node_name, value)
+        )
+
+    def clear_result(self, dag_name: str, node_name: str):
+        return self.replace_session_data(
+            self.session_data.clear_result(dag_name, node_name)
+        )
+
+    def execution(self, dag_name: str):
+        return self._executions.get(dag_name)
 
     @property
     def context(self) -> Scope:
-        return self.user_session.context
+        return self._context
 
     @property
     def results(self) -> dict[str, dict[str, Any]]:
-        """Risultati pubblicati dai DAG della sessione, separati dai contesti locali."""
-        return self.user_session.results
+        """Vista immutabile dei risultati pubblicati dai DAG."""
+        return self.session_data["results"]
 
     async def run(self, dag_name: str, env: dict | None = None):
         """Esegue un DAG e restituisce il Context DSL come risultato puro."""
@@ -78,21 +125,20 @@ class SessionHandle:
 
         self.env.update(env or {})
         bindings = pure_mapping(self.env)
-        bindings["session"] = self.user_session.to_dict()
+        bindings["session"] = self.session_data
         self.registry.register_dict(self.env)
 
-        session = self.user_session.execution(dag_name)
+        session = self.execution(dag_name)
         created = session is None
         if created:
             session = await self.runner.create_session(
                 dag_name,
                 initial_context=bindings,
-                context=Scope(parent=self.user_session.context),
-                user_session=self.user_session,
+                context=Scope(parent=self.context),
                 runtime_session=self,
                 resolve_context=False,
             )
-            self.user_session.register_execution(dag_name, session)
+            self._executions[dag_name] = session
 
         setattr(session, "registry", self.registry)
         if created:
@@ -130,13 +176,13 @@ class SessionHandle:
 
         if payload is not _PAYLOAD_NOT_GIVEN:
             node, event_payload = node_or_payload, payload
-            session = self.user_session.execution(target)
+            session = self.execution(target)
         else:
             node, event_payload = target, node_or_payload
             session = next(
                 (
                     execution
-                    for execution in self.user_session.executions.values()
+                    for execution in self._executions.values()
                     if node in execution.states
                 ),
                 None,
@@ -153,7 +199,7 @@ class SessionHandle:
         payload: Any = None,
     ):
         """Avvia il controller se necessario e consegna l'evento al suo DAG."""
-        if self.user_session.execution(controller) is None:
+        if self.execution(controller) is None:
             started = await self.run(controller)
             if flow.is_result(started) and not flow.check(started):
                 return started
@@ -161,7 +207,7 @@ class SessionHandle:
 
     def report(self, dag_name: str):
         """Esito puro dell'esecuzione di un DAG della sessione."""
-        session = self.user_session.execution(dag_name)
+        session = self.execution(dag_name)
         return session.report() if session is not None else None
 
     async def __aenter__(self):
@@ -173,10 +219,9 @@ class SessionHandle:
     async def close(self):
         if self._closed:
             return
-        for session in tuple(self.user_session.executions.values()):
+        for session in tuple(self._executions.values()):
             await self.runner.close_session(session)
-        self.user_session.clear_executions()
-        self.user_session.results.clear()
+        self._executions.clear()
         self._closed = True
 
 
@@ -190,7 +235,9 @@ class Interpreter:
         self.evaluator = Evaluator(self.registry)
         self.runner = DagRunner(registry=self.registry, evaluator=self.evaluator)
         self.session_envs: dict[str, dict] = {}
-        self.user_sessions: dict[str, UserSession] = {}
+        self.session_data: dict[str, SessionData] = {}
+        self.session_executions: dict[str, dict[str, Any]] = {}
+        self.session_contexts: dict[str, Scope] = {}
         self._started = False
 
     # ── programmi ────────────────────────────────────────────────────────────
@@ -350,7 +397,7 @@ class Interpreter:
         sid: str = None,
         env: dict = None,
         authentication: dict | None = None,
-        state: dict | UserSessionData | None = None,
+        state: dict | SessionData | None = None,
     ):
         """Crea una sessione registrandone l'ambiente runtime."""
         sid = sid or uuid.uuid4().hex
@@ -368,38 +415,47 @@ class Interpreter:
         env: dict = None,
         sid: str = None,
         authentication: dict | None = None,
-        state: dict | UserSessionData | None = None,
+        state: dict | SessionData | None = None,
     ):
         """Apre una sessione, riprendendo lo stato puro prodotto da `to_dict()`."""
         restored = None
         if state is not None:
             restored = (
                 state
-                if isinstance(state, UserSessionData)
-                else UserSessionData.from_dict(state)
+                if isinstance(state, SessionData)
+                else SessionData.from_dict(state)
             )
-            sid = sid or restored.id
+            sid = sid or restored["id"]
         sid = sid or uuid.uuid4().hex
         merged_env = dict(self.session_envs.get(sid, {}))
         if env is not None:
             merged_env.update(env)
             self.session_envs[sid] = merged_env
 
-        user_session = self.user_sessions.get(sid)
-        if user_session is None:
-            user_session = UserSession(
-                sid,
-                Scope(pure_mapping(merged_env)),
-                authentication=authentication,
-            )
-            self.user_sessions[sid] = user_session
-        else:
-            user_session.update_context(merged_env)
-            if authentication:
-                user_session.authenticate(authentication)
-
+        current = self.session_data.get(sid)
+        payload = current.to_dict() if current is not None else {
+            "id": sid,
+            "context": {},
+            "authentication": {},
+            "results": {},
+        }
         if restored is not None:
-            user_session.restore(restored)
+            restored_data = restored.to_dict()
+            payload["context"].update(restored_data["context"])
+            payload["authentication"].update(restored_data["authentication"])
+            for dag, nodes in restored_data["results"].items():
+                payload["results"].setdefault(dag, {}).update(nodes)
+        payload["context"].update(pure_mapping(merged_env))
+        payload["authentication"].update(pure_mapping(authentication or {}))
+        snapshot = SessionData(payload)
+        self.session_data[sid] = snapshot
+        context = self.session_contexts.get(sid)
+        if context is None:
+            context = Scope(pure_value(snapshot["context"]))
+            self.session_contexts[sid] = context
+        else:
+            context.data.clear()
+            context.data.update(pure_value(snapshot["context"]))
 
         # Registry figlio: l'ambiente di una sessione non contamina le altre.
         registry = self.registry.child()
@@ -410,7 +466,10 @@ class Interpreter:
             sid=sid,
             env=merged_env,
             context_preparer=self._prepare_context,
-            user_session=user_session,
+            session_data=snapshot,
+            session_data_store=self.session_data,
+            executions=self.session_executions.setdefault(sid, {}),
+            context=context,
             registry=registry,
         )
 
@@ -421,11 +480,13 @@ class Interpreter:
         return self
 
     async def stop(self):
-        for user_session in tuple(self.user_sessions.values()):
-            for session in tuple(user_session.executions.values()):
+        for executions in tuple(self.session_executions.values()):
+            for session in tuple(executions.values()):
                 await self.runner.close_session(session)
-            user_session.clear_executions()
-        self.user_sessions.clear()
+            executions.clear()
+        self.session_data.clear()
+        self.session_executions.clear()
+        self.session_contexts.clear()
         for session in tuple(self.runner.sessions.values()):
             await self.runner.close_session(session)
         self.session_envs.clear()

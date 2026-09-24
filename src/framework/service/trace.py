@@ -20,15 +20,19 @@ def safe_value(value: Any, *, key: str = "", depth: int = 0) -> Any:
         }
     if isinstance(value, (list, tuple, set)):
         return [safe_value(item, depth=depth + 1) for item in value]
-    if hasattr(value, "sid") and hasattr(value, "user_session"):
+    if hasattr(value, "sid") and hasattr(value, "_session_data_store"):
         details = {"session_id": str(value.sid)}
-        authentication = getattr(value.user_session, "authentication", {})
+        snapshot = value._session_data_store.get(value.sid)
+        authentication = snapshot.get("authentication", {}) if snapshot else {}
         if isinstance(authentication, dict):
             actor = (
                 authentication.get("user_id")
                 or authentication.get("username")
                 or authentication.get("email")
             )
+            user = authentication.get("user", {})
+            if actor is None and isinstance(user, dict):
+                actor = user.get("id") or user.get("username") or user.get("email")
             if actor is not None:
                 details["actor"] = str(actor)
         return details

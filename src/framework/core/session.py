@@ -1,14 +1,8 @@
 """Stato di sessione del framework.
 
-Il modulo separa esplicitamente due mondi:
-
-* ``UserSessionData`` — dati puri, serializzabili, validabili tramite
-  ``framework.service.scheme`` e ricostruibili senza riferimenti runtime;
-* ``UserSession`` / ``Session`` — controller runtime che possiedono
-  ``Scope``, esecuzioni DAG, eventi asyncio, Manager e Adapter.
-
-Regola invariante: i dati puri non conoscono il runtime, il runtime può usare
-i dati puri ma non viene mai inserito nella proiezione persistibile.
+Il modulo separa esplicitamente lo snapshot puro ``SessionData`` dalle
+esecuzioni runtime ``Session``. Lo snapshot è serializzabile e validato tramite
+``framework.service.scheme``; non contiene Scope, handle, task o Manager.
 """
 
 import asyncio
@@ -16,6 +10,8 @@ import json
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
+
+from framework.service.scheme import Scheme
 
 from . import model
 from .scope import Scope
@@ -73,7 +69,7 @@ def pure_mapping(mapping: Any) -> dict[str, Any]:
     return projection
 
 
-USER_SESSION_SCHEME: dict[str, Any] = {
+SESSION_DATA_SCHEME: dict[str, Any] = {
     "id": {"type": "string", "required": True, "empty": False},
     "context": {"type": "dict", "required": True},
     "authentication": {"type": "dict", "required": True},
@@ -81,52 +77,90 @@ USER_SESSION_SCHEME: dict[str, Any] = {
 }
 
 
-@dataclass
-class UserSessionData:
-    """Stato puro della sessione utente: nessun riferimento al runtime."""
+class SessionData(Scheme):
+    """Snapshot immutabile e validato dei soli dati di sessione."""
 
-    id: str
-    context: dict[str, Any] = field(default_factory=dict)
-    authentication: dict[str, Any] = field(default_factory=dict)
-    results: dict[str, dict[str, Any]] = field(default_factory=dict)
+    SCHEME = SESSION_DATA_SCHEME
+
+    def __init__(self, payload: dict[str, Any]):
+        if not isinstance(payload, dict):
+            raise TypeError("Lo stato della sessione deve essere una mappa")
+        state = {
+            "id": str(payload.get("id") or ""),
+            "context": pure_value(payload.get("context") or {}),
+            "authentication": pure_value(payload.get("authentication") or {}),
+            "results": pure_value(payload.get("results") or {}),
+        }
+        super().__init__(state)
+
+    def clear(self):
+        raise TypeError("SessionData è immutabile; usa evolve()")
+
+    def pop(self, key, default=None):
+        raise TypeError("SessionData è immutabile; usa evolve()")
+
+    def popitem(self):
+        raise TypeError("SessionData è immutabile; usa evolve()")
+
+    def setdefault(self, key, default=None):
+        raise TypeError("SessionData è immutabile; usa evolve()")
+
+    def update(self, *args, **kwargs):
+        raise TypeError("SessionData è immutabile; usa evolve()")
+
+    def __ior__(self, other):
+        raise TypeError("SessionData è immutabile; usa evolve()")
+
+    def evolve(self, **changes) -> "SessionData":
+        """Restituisce un nuovo snapshot validato con i campi aggiornati."""
+        return SessionData(self.to_dict() | changes)
+
+    def get_result(self, dag_name: str, node_name: str, default=None):
+        """Restituisce un risultato DAG senza esporre strutture mutabili."""
+        dag_results = self["results"].get(str(dag_name), {})
+        return dag_results.get(str(node_name), default)
+
+    def publish_result(self, dag_name: str, node_name: str, value: Any):
+        """Restituisce uno snapshot con un risultato DAG puro pubblicato."""
+        try:
+            safe_value = pure_value(value)
+        except ImpureValueError:
+            return self
+        results = self.to_dict()["results"]
+        results.setdefault(str(dag_name), {})[str(node_name)] = safe_value
+        return self.evolve(results=results)
+
+    def clear_result(self, dag_name: str, node_name: str):
+        """Restituisce uno snapshot senza il risultato DAG indicato."""
+        results = self.to_dict()["results"]
+        dag_results = results.get(str(dag_name))
+        if not dag_results:
+            return self
+        dag_results.pop(str(node_name), None)
+        if not dag_results:
+            results.pop(str(dag_name), None)
+        return self.evolve(results=results)
 
     def to_dict(self) -> dict[str, Any]:
-        """Proiezione persistibile: solo id, contesto, autenticazione e risultati."""
-        return {
-            "id": str(self.id),
-            "context": pure_value(self.context),
-            "authentication": pure_value(self.authentication),
-            "results": pure_value(self.results),
-        }
+        """Restituisce una copia mutabile per confini di serializzazione."""
+        return pure_value(dict(self))
 
     def to_json(self) -> str:
-        """Serializza la proiezione persistibile in JSON deterministico."""
         return json.dumps(self.to_dict(), sort_keys=True)
 
     @classmethod
-    def from_dict(cls, payload: Any) -> "UserSessionData":
-        """Ricostruisce lo stato puro da un dizionario deserializzato."""
-        if not isinstance(payload, dict):
-            raise TypeError("Lo stato della sessione deve essere una mappa")
-        return cls(
-            id=str(payload.get("id") or ""),
-            context=pure_mapping(payload.get("context") or {}),
-            authentication=pure_mapping(payload.get("authentication") or {}),
-            results={
-                str(dag): pure_mapping(nodes)
-                for dag, nodes in (payload.get("results") or {}).items()
-            },
-        )
+    def from_dict(cls, payload: Any) -> "SessionData":
+        return cls(payload)
 
     @classmethod
-    def from_json(cls, payload: str) -> "UserSessionData":
+    def from_json(cls, payload: str) -> "SessionData":
         return cls.from_dict(json.loads(payload))
 
     def validate(self, schema: dict[str, Any] | None = None):
-        """Valida lo stato puro tramite ``framework.service.scheme``."""
+        """Valida lo snapshot con lo schema sessione o uno schema fornito."""
         from framework.service import scheme
 
-        return scheme.normalize(self.to_dict(), schema or USER_SESSION_SCHEME)
+        return scheme.normalize(self.to_dict(), schema or SESSION_DATA_SCHEME)
 
 
 class NodeState(str, Enum):
@@ -172,11 +206,10 @@ class Session:
     l'osservabilità si usa ``report()``, che è puro.
     """
 
-    def __init__(self, dag_name, session_id, context=None, user_session=None, runtime_session=None):
+    def __init__(self, dag_name, session_id, context=None, runtime_session=None):
         self.dag_name = dag_name
         self.id = session_id
         self.context = context if isinstance(context, Scope) else Scope(context or {})
-        self.user_session = user_session
         self.runtime_session = runtime_session
         self.results: dict[str, Any] = {}
         self.states: dict[str, NodeState] = {}
@@ -215,112 +248,12 @@ class Session:
         )
 
 
-class UserSession:
-    """Controller runtime della sessione utente.
 
-    Possiede lo ``Scope`` operativo e le esecuzioni DAG, mentre lo stato
-    condivisibile resta confinato in ``UserSessionData``.
-    """
 
-    def __init__(self, session_id, context=None, authentication=None):
-        self.id = str(session_id)
-        self.context = (
-            context
-            if isinstance(context, Scope)
-            else Scope(pure_mapping(context or {}))
-        )
-        self.authentication: dict[str, Any] = pure_mapping(authentication or {})
-        self.results: dict[str, dict[str, Any]] = {}
-        # Riferimenti runtime: non entrano mai nella serializzazione.
-        self.executions: dict[str, Session] = {}
 
-    # ── contesto e autenticazione ────────────────────────────────────────────
 
-    def update_context(self, values: Any) -> dict[str, Any]:
-        """Aggiorna il contesto con i soli valori puri, scartando il runtime."""
-        projection = pure_mapping(values)
-        for key, value in projection.items():
-            self.context.set(key, value)
-        return projection
 
-    def authenticate(self, authentication: Any) -> dict[str, Any]:
-        """Fonde nell'autenticazione pubblica i soli dati serializzabili."""
-        self.authentication.update(pure_mapping(authentication))
-        return self.authentication
 
-    # ── risultati pubblicati dai DAG ─────────────────────────────────────────
 
-    def publish_result(self, dag_name: str, node_name: str, value: Any) -> Any:
-        """Pubblica l'ultimo payload riuscito di un nodo nella sessione utente."""
-        try:
-            safe_value = pure_value(value)
-        except ImpureValueError:
-            return None
-        self.results.setdefault(str(dag_name), {})[str(node_name)] = safe_value
-        return safe_value
-
-    def get_result(self, dag_name: str, node_name: str, default: Any = None) -> Any:
-        """Recupera un risultato DAG senza appiattirlo nel contesto locale."""
-        return self.results.get(dag_name, {}).get(node_name, default)
-
-    def clear_result(self, dag_name: str, node_name: str) -> None:
-        dag_results = self.results.get(dag_name)
-        if not dag_results:
-            return
-        dag_results.pop(node_name, None)
-        if not dag_results:
-            self.results.pop(dag_name, None)
-
-    # ── esecuzioni DAG (solo runtime) ────────────────────────────────────────
-
-    def execution(self, dag_name: str) -> Session | None:
-        return self.executions.get(dag_name)
-
-    def register_execution(self, dag_name: str, session: Session) -> Session:
-        self.executions[dag_name] = session
-        return session
-
-    def clear_executions(self) -> None:
-        self.executions.clear()
-
-    # ── proiezione pura ──────────────────────────────────────────────────────
-
-    def snapshot(self) -> UserSessionData:
-        """Estrae lo stato puro della sessione, senza le esecuzioni DAG."""
-        return UserSessionData(
-            id=self.id,
-            context=pure_mapping(self.context.data),
-            authentication=pure_mapping(self.authentication),
-            results={dag: dict(nodes) for dag, nodes in self.results.items()},
-        )
-
-    def restore(self, data: "UserSessionData | dict[str, Any]") -> "UserSession":
-        """Ripristina lo stato puro; l'identità resta quella del runtime."""
-        state = data if isinstance(data, UserSessionData) else UserSessionData.from_dict(data)
-        self.update_context(state.context)
-        self.authentication.update(state.authentication)
-        for dag, nodes in state.results.items():
-            self.results.setdefault(str(dag), {}).update(nodes)
-        return self
-
-    @classmethod
-    def from_data(cls, data: "UserSessionData | dict[str, Any]") -> "UserSession":
-        """Costruisce un controller runtime a partire dai soli dati puri."""
-        state = data if isinstance(data, UserSessionData) else UserSessionData.from_dict(data)
-        session = cls(state.id, Scope(dict(state.context)), state.authentication)
-        session.results = {str(dag): dict(nodes) for dag, nodes in state.results.items()}
-        return session
-
-    def to_dict(self) -> dict[str, Any]:
-        """Restituisce la proiezione persistibile, senza esecuzioni DAG."""
-        return self.snapshot().to_dict()
-
-    def to_json(self) -> str:
-        """Serializza la proiezione persistibile in JSON deterministico."""
-        return self.snapshot().to_json()
-
-    def validate(self, schema: dict[str, Any] | None = None):
-        """Valida la proiezione pubblica tramite ``framework.service.scheme``."""
-        return self.snapshot().validate(schema)
 
 
