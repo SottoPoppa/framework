@@ -260,7 +260,7 @@ viene chiusa.
 
 ## 📁 Struttura Directory (`src/application/`)
 
-- `action/`: logica di dominio in `.dsl` (o `.py` per casi non esprimibili nel DSL).
+- `controller/`: logica di dominio esclusivamente in DSL testuale (`.dsl`).
 - `model/`: entità e schemi in `.json`.
 - `repository/`: pattern di accesso ai dati.
 - `view/`: definizioni UI in `.xml`.

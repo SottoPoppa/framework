@@ -98,6 +98,51 @@ Il tutto orchestrato da un unico file di configurazione dichiarativa (`pyproject
 
 ---
 
+# OmniPort vs Django vs Laravel vs FastAPI — Confronto funzionalità
+
+Basato su verifica diretta del repository OmniPort (clone, esecuzione, lettura del codice sorgente) e su dati aggiornati a settembre 2026 per Django 6.0, Laravel 13 e FastAPI.
+
+**Legenda:** ✅ nativo e maturo · 🟡 presente ma parziale/da costruire · ⚠️ presente ma con bug noti o non testato dal vivo · ❌ assente
+
+| Area | **OmniPort** | **Django 6.0** | **Laravel 13** | **FastAPI** |
+|---|---|---|---|---|
+| Linguaggio / runtime | Python + DSL proprietario | Python 3.12–3.14 | PHP 8.3+ | Python 3.9+ |
+| Paradigma architetturale | Hexagonal (Ports & Adapters), imposto dai file | MVT, convenzionale | MVC, convenzionale | Nessuno imposto, libero |
+| Logica applicativa | Solo DSL testuale (`.dsl`) | Python diretto | PHP diretto | Python diretto |
+| ORM | ❌ nessuno maturo (solo filesystem + adapter API generico) | ✅ Django ORM, maturissimo | ✅ Eloquent, maturissimo | ❌ nessuno incluso (si aggiunge SQLAlchemy/SQLModel) |
+| Database relazionale reale | ❌ non ancora supportato | ✅ Postgres/MySQL/SQLite/Oracle nativi | ✅ Postgres/MySQL/SQLite nativi | 🟡 via librerie terze |
+| Migrazioni schema | ❌ assenti | ✅ automatiche | ✅ automatiche | ❌ (Alembic va aggiunto) |
+| Multi-sorgente dati con racing sulla stessa risorsa | ✅ verificato nel kernel (`Storekeeper` + `Orchestrator.first_completed`) | ❌ (solo router multi-DB per modello) | ❌ | ❌ |
+| Admin panel incluso | ❌ | ✅ gratuito, auto-generato | 🟡 Nova (99$) o Filament (gratis, 3rd party) | ❌ |
+| Autenticazione built-in | 🟡 Supabase + OAuth2 (OAuth con bug noto sul refresh token) | ✅ matura | ✅ matura, starter kit | ❌ (si implementa a mano) |
+| Multi-provider di autenticazione senza toccare la logica | ✅ verificato nel kernel (`Authenticator` itera i provider) | ✅ `AUTHENTICATION_BACKENDS`, maturo da 10+ anni | 🟡 possibile, meno standardizzato | ❌ |
+| Policy/autorizzazione centralizzata | ✅ dichiarativa, a livello di Port | 🟡 permessi per modello/vista, non generalizzati | 🟡 Gates/Policies, per risorsa | ❌ (dependency injection manuale) |
+| Sicurezza ereditata automaticamente da nuovi adapter | ✅ verificato (`Defender.capabilities_authorized`), ma **default deboli** (TLS/CSRF off) | 🟡 solo per convenzione | 🟡 solo per convenzione | ❌ |
+| Multi-presentazione (stessa logica, runtime diversi) | ✅ **verificato dal vivo**: web + TUI dalla stessa vista | ❌ (va costruito) | ❌ (va costruito) | ❌ |
+| API REST/JSON | 🟡 via adapter Starlette | 🟡 via Django REST Framework (3rd party, ubiquo) | 🟡 via risorse/controller | ✅ nativo, è il suo scopo |
+| Documentazione API automatica (OpenAPI/Swagger) | ❌ | 🟡 via DRF | 🟡 via pacchetti terzi | ✅ nativa, punto di forza |
+| Async nativo | 🟡 parziale (adapter Starlette) | ✅ async views nativi da 6.0 | 🟡 via Octane | ✅ async-first by design |
+| Job/task in background | ❌ | ✅ framework nativo da 6.0 | ✅ Queues + Horizon | ❌ (si aggiunge Celery/RQ) |
+| Portabilità del codice applicativo a un kernel riscritto in altro linguaggio | ✅ in teoria reale (proprietà del design), ma **nessuna specifica formale** del DSL oggi | ❌ (Python è il codice stesso) | ❌ (PHP è il codice stesso) | ❌ |
+| Contract/test gate che blocca il boot su codice non verificato | ⚠️ presente e funziona, ma oggi lascia passare bug reali e `--install` è rotto | ❌ (nessun meccanismo equivalente) | ❌ | ❌ |
+| Test out-of-the-box sull'app demo | ⚠️ 176/178 passati, ma 4 componenti infrastrutturali critici non testati | ✅ framework di test maturo | ✅ Pest/PHPUnit maturo | ✅ pytest, maturo |
+| Funziona davvero out-of-the-box (verificato in questa sessione) | ❌ no — `--install` rotto, `await` mancante, bug su `<Storekeeper>`, route duplicata | ✅ sì | ✅ sì | ✅ sì |
+| Licenza | AGPL-3.0 (vincolante per SaaS) | BSD-3 (libera) | MIT (libera) | MIT (libera) |
+| Community / adozione | ~0, progetto singolo | ~87.6k stelle GitHub, ~48.8M download/mese | ~34.7–84k stelle, ~531M install Packagist | Enorme e in crescita |
+| Maintainer | Sostanzialmente 1 persona (442/486 commit) | Django Software Foundation | Team Laravel + Taylor Otwell | Team dedicato + community enorme |
+| Costo di apprendimento per un LLM/agente AI | Alto: ~16.500 token di documentazione obbligatoria prima di scrivere codice | Basso: conosciuto a fondo dai modelli | Basso: conosciuto a fondo dai modelli | Bassissimo |
+| Maturità complessiva | Pre-alpha (v0.1.0) | Ventennale, LTS fino al 2028 | Maturo, versione 13 | Maturo, adozione enorme |
+
+## Lettura rapida
+
+Tre vantaggi di design che OmniPort ha e gli altri tre no, tutti verificati direttamente in questa sessione (clone del repo, lettura del codice, esecuzione live):
+
+1. **Multi-presentazione nativa** — stessa vista e stesso controller renderizzati sia su web (Starlette) sia su terminale (Textual), testato dal vivo senza modificare l'app.
+2. **Persistenza multi-sorgente con racing** — `Storekeeper` interroga più provider configurati per la stessa risorsa e tiene il primo che risponde, confermato leggendo `storekeeper.py`.
+3. **Sicurezza ereditata automaticamente da ogni nuovo adapter** — `Defender` rifiuta un adapter che non soddisfa i requisiti di sicurezza della policy, confermato leggendo `defender.py`.
+
+Contro questi tre vantaggi, il resto della tabella mostra quanto ancora manchi rispetto a Django e Laravel in maturità (ORM, database vero, admin, community) — e, cosa verificata di persona, il fatto che l'app demo del repository non parte seguendo esattamente le istruzioni ufficiali del progetto.
+
 ## Installazione
 
 ### Requisiti
