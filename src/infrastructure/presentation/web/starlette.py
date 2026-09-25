@@ -879,7 +879,7 @@ class Adapter(presentation.Port):
                 "TLSv1.3": ssl.TLSVersion.TLSv1_3,
             }[minimum_tls_version]
         self.server = Server(config)
-        return self.server.serve()
+        return await self.server.serve()
 
     async def shutdown(self):
         if hasattr(self, 'server'):

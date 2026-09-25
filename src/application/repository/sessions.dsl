@@ -2,7 +2,7 @@
 factory:repository := {
     location: {
         "WORKFOLDER": [
-            "/tmp/sessions/{% raw %}{{session.id}}{% endraw %}.json"
+            "/tmp/sessions/{{session.id}}.json"
         ]
     };
 };

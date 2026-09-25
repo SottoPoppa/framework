@@ -186,13 +186,15 @@ La configurazione è divisa in due livelli:
 Il TOML può definire più istanze dello stesso servizio, ciascuna con nome, host e porta propri:
 
 ```toml
-[[presentation.starlette]]
+[[presentation.web]]
+implementation = "starlette"
 name = "public"
 host = "127.0.0.1"
 port = 8000
 protocol = "http"
 
-[[presentation.starlette]]
+[[presentation.web]]
+implementation = "starlette"
 name = "internal"
 host = "127.0.0.1"
 port = 8001

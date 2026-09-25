@@ -350,7 +350,7 @@ class Framework:
         self, context: InstallContext, infrastructure: Any
     ) -> InstallContext:
         try:
-            config = infrastructure.load_toml_config(context["config_file"])
+            config = infrastructure.resource(context["config_file"])
         except Exception as exc:
             raise RuntimeError(
                 f"Errore nel caricare '{context['config_file']}': {exc}"
@@ -398,14 +398,55 @@ class Framework:
             if name != "contract"
         )
         sources.extend(("port", name, path) for name, path in ports.items())
-        sources.extend(
-            (
-                "adapter",
-                f"{port_name}.{adapter_name}",
-                f"src/infrastructure/{port_name}/{adapter_name}.py",
+        adapter_sources = []
+        for port_name, adapter_name in context["enabled_adapters"]:
+            adapter_config = context["config"][port_name][adapter_name]
+            configurations = (
+                adapter_config
+                if isinstance(adapter_config, (list, tuple))
+                else [adapter_config]
             )
-            for port_name, adapter_name in context["enabled_adapters"]
-        )
+            for config in configurations:
+                implementation = (
+                    config.get("implementation")
+                    if isinstance(config, dict)
+                    else None
+                )
+                if implementation is None:
+                    source_path = (
+                        Path("src/infrastructure")
+                        / port_name
+                        / f"{adapter_name}.py"
+                    )
+                else:
+                    if not isinstance(implementation, str) or not implementation:
+                        raise ValueError(
+                            f"Implementazione adapter non valida per "
+                            f"{port_name}.{adapter_name}"
+                        )
+                    implementation_path = Path(implementation)
+                    if (
+                        implementation_path.is_absolute()
+                        or ".." in implementation_path.parts
+                    ):
+                        raise ValueError(
+                            f"Percorso implementazione adapter non valido: "
+                            f"{implementation}"
+                        )
+                    source_path = (
+                        Path("src/infrastructure")
+                        / port_name
+                        / adapter_name
+                        / f"{implementation_path.with_suffix('')}.py"
+                    )
+                adapter_sources.append(
+                    (
+                        "adapter",
+                        f"{port_name}.{adapter_name}",
+                        str(source_path),
+                    )
+                )
+        sources.extend(dict.fromkeys(adapter_sources))
         return {**context, "sources": sources}
 
     def _analyze_install_contracts(self, context: InstallContext) -> InstallContext:

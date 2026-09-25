@@ -29,16 +29,18 @@ presentation:configuration := {
 
 Un adapter non ridefinisce questa configurazione. Dichiara invece `capabilities`, cioè le capacità concrete che supporta rispetto al contratto della Port. Il `Loader` valida le capabilities dell'adapter contro lo schema `<port>_adapter`; il `Defender` raccoglie le capabilities di tutte le implementazioni attive, valida la policy e rifiuta una Port se una delle implementazioni configurate non soddisfa i requisiti.
 
-La configurazione tecnica di ogni istanza resta nel `pyproject.toml`. Per esempio, per Starlette `host`, `port` e `protocol` devono essere definiti nel singolo blocco `[[presentation.starlette]]`. Il TOML può contenere più blocchi dello stesso adapter con valori diversi:
+La configurazione tecnica di ogni istanza resta nel `pyproject.toml`. Per esempio, per Starlette `host`, `port` e `protocol` devono essere definiti nel singolo blocco `[[presentation.web]]`, con `implementation = "starlette"`. Il TOML può contenere più blocchi dello stesso adapter con valori diversi:
 
 ```toml
-[[presentation.starlette]]
+[[presentation.web]]
+implementation = "starlette"
 name = "public"
 host = "127.0.0.1"
 port = 8000
 protocol = "http"
 
-[[presentation.starlette]]
+[[presentation.web]]
+implementation = "starlette"
 name = "internal"
 host = "127.0.0.1"
 port = 8001
@@ -493,7 +495,8 @@ presentation = "presentation.dsl"  # → src/application/policy/presentation/pre
 [manager.defender]
 key = "SECRET_KEY"
 
-[[presentation.starlette]]
+[[presentation.web]]
+implementation = "starlette"
 name = "web"
 host = "127.0.0.1"
 port = 8000

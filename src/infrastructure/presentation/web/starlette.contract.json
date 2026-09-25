@@ -30,6 +30,9 @@
     ],
     "signup": [
       "Adapter.signup"
+    ],
+    "start": [
+      "Adapter.start"
     ]
   },
   "hashes": {
@@ -69,6 +72,10 @@
       "signup": {
         "production": "b71f272e297e2f85344a8c5cc800583ad6cbc21b93fc8738635d6acd18a84f96",
         "test": "b71f272e297e2f85344a8c5cc800583ad6cbc21b93fc8738635d6acd18a84f96"
+      },
+      "start": {
+        "production": "03d038464c9e27f010122faaeeb374da849eef174c2a36215af9026e8213551f",
+        "test": "03d038464c9e27f010122faaeeb374da849eef174c2a36215af9026e8213551f"
       }
     },
     "attrs": {

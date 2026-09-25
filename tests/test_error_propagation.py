@@ -6,7 +6,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -28,8 +28,10 @@ from framework.manager.orchestrator import Manager as Orchestrator
 from framework.manager.presenter import Manager as Presenter
 from framework.manager.storekeeper import Manager as Storekeeper
 from framework.manager.tester import Manager as Tester
+from framework.service.factory import Repository
 from framework.service.route import resolve_route
 import framework.service.template as template_service
+from framework.core.infrastructure import Infrastructure
 from infrastructure.persistence.filesystem.filesystem import (
     Adapter as FilesystemAdapter,
     FileWatcherHandler,
@@ -41,6 +43,100 @@ from framework.port.presentation import Port as PresentationPort
 
 
 class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_dsl_resource_defers_templates_and_expands_policy_includes(self):
+        infrastructure = Infrastructure()
+
+        repository = infrastructure.resource(
+            "src/application/repository/integration_file.dsl"
+        )
+        session_path = "src/application/repository/sessions.dsl"
+        sessions = infrastructure.resource(session_path)
+        presentation = infrastructure.resource(
+            "src/application/policy/presentation/presentation.dsl"
+        )
+
+        self.assertRegex(repository, r"\{\{\s*filter\.eq\.filename\s*\}\}")
+        self.assertRegex(sessions, r"\{\{\s*session\.id\s*\}\}")
+        self.assertIn("route:GET_INDEX", presentation)
+
+        interpreter = Interpreter()
+        await interpreter.load_file(session_path, sessions)
+        runtime_session = interpreter.open_session()
+        async with runtime_session:
+            result = await runtime_session.run(session_path)
+            repository_data = flow.output(result)["repository"]
+        session_repository = Repository(**repository_data)
+        parameters = await session_repository.parameters(
+            provider="workfolder",
+            operation="read",
+            session={"id": "session-test"},
+        )
+        self.assertEqual(
+            parameters["location"], "/tmp/sessions/session-test.json"
+        )
+
+    def test_framework_install_reads_config_via_infrastructure_resource(self):
+        framework = Framework()
+        infrastructure = Infrastructure()
+
+        context = framework._read_install_config(
+            {"config_file": "pyproject.toml"}, infrastructure
+        )
+
+        self.assertEqual(context["config"]["project"]["name"], "cloud.colosso")
+
+    def test_framework_install_uses_adapter_implementation_path(self):
+        framework = Framework()
+        context = {
+            "config": {
+                "presentation": {
+                    "web": {"implementation": "starlette"},
+                },
+            },
+            "enabled_adapters": [("presentation", "web")],
+        }
+
+        install_context = framework._install_sources(context, {}, {}, {})
+
+        self.assertIn(
+            (
+                "adapter",
+                "presentation.web",
+                "src/infrastructure/presentation/web/starlette.py",
+            ),
+            install_context["sources"],
+        )
+
+    async def test_starlette_start_awaits_uvicorn_server(self):
+        adapter = object.__new__(starlette_web.Adapter)
+        adapter.defender = types.SimpleNamespace(
+            get_configuration=lambda _name: {
+                "security_and_waf": {"tls_enabled": False}
+            }
+        )
+        adapter.config = {"host": "127.0.0.1", "port": 8000}
+        adapter.routes_static = []
+        adapter.middleware_static = []
+        adapter.parse_route = AsyncMock()
+        adapter.mount_route = AsyncMock()
+        server_config = types.SimpleNamespace(load=Mock(), ssl=None)
+        server = types.SimpleNamespace(serve=AsyncMock(return_value=None))
+
+        with (
+            patch.object(starlette_web, "Config", return_value=server_config),
+            patch.object(starlette_web, "Server", return_value=server),
+        ):
+            received = await adapter.start(object())
+
+        self.assertTrue(received.is_success)
+        try:
+            server.serve.assert_awaited_once()
+        finally:
+            if not server.serve.await_count:
+                pending = flow.output(received)
+                if hasattr(pending, "close"):
+                    pending.close()
+
     def test_websocket_origin_requires_same_origin_or_explicit_allowlist(self):
         websocket = types.SimpleNamespace(
             url="wss://app.example.test/reactive",

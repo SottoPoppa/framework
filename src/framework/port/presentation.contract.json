@@ -39,6 +39,9 @@
     ],
     "shutdown": [
       "Port.shutdown"
+    ],
+    "storekeeper_render": [
+      "StorekeeperView.render"
     ]
   },
   "hashes": {
@@ -94,6 +97,12 @@
       "shutdown": {
         "production": "92e314167fe712b541cef250cb65bff9660b6c7284a72c082549a40ecb1a773e",
         "test": "92e314167fe712b541cef250cb65bff9660b6c7284a72c082549a40ecb1a773e"
+      }
+    },
+    "StorekeeperView": {
+      "render": {
+        "production": "92d187014f323f52195eb1288a15717d57da576b3647d88887fd5066a443b067",
+        "test": "92d187014f323f52195eb1288a15717d57da576b3647d88887fd5066a443b067"
       }
     }
   },

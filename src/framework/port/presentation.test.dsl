@@ -1,7 +1,32 @@
 imports: {
     'module': import("framework.port.presentation");
-    'session': import("framework.core.session")
+    'session': import("framework.core.session");
+    'mock': import("unittest.mock");
+    'types': import("types")
 };
+
+any:storekeeper_manager := imports.types.SimpleNamespace(
+    gather: imports.mock.AsyncMock(return_value: imports.module.flow.success([]))
+);
+any:storekeeper_markup_adapter := imports.types.SimpleNamespace(
+    loader: imports.types.SimpleNamespace(
+        get_managers: imports.mock.Mock(
+            return_value: {"storekeeper": storekeeper_manager}
+        )
+    ),
+    render_node: imports.mock.AsyncMock(
+        return_value: imports.module.markupsafe.Markup("<span>value</span>")
+    ),
+    mount_tag: imports.mock.Mock(
+        return_value: imports.module.markupsafe.Markup(
+            "<div><span>value</span></div>"
+        )
+    )
+);
+any:storekeeper_view := imports.module.StorekeeperView(storekeeper_markup_adapter);
+any:storekeeper_node := imports.module.dom.parse(
+    "<Storekeeper id='items' operation='gather' repository='task'><Text>value</Text></Storekeeper>"
+);
 
 exports: {
     'initialize': imports.module.Port.initialize;
@@ -17,6 +42,7 @@ exports: {
     'parse_reactive_event': imports.module.Port.parse_reactive_event;
     'resolve_controller_file': imports.module.Port.resolve_controller_file;
     'shutdown': imports.module.Port.shutdown;
+    'storekeeper_render': storekeeper_view.render;
 };
 
 tuple:test_suite := (
@@ -117,5 +143,12 @@ tuple:test_suite := (
         "outputs": none;
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Presentation Port espone un lifecycle di chiusura comune";
+    },
+    {
+        "action": exports.storekeeper_render;
+        "inputs": (none, storekeeper_node, {"id": "items"; "operation": "gather"; "repository": "task"}, {}, {});
+        "outputs": "<div><span>value</span></div>";
+        "assert": @received.is_success == true & @received.output.value == @expected;
+        "note": "Storekeeper renderizza nodi HTML Markup immutabili senza mutarli";
     }
 );

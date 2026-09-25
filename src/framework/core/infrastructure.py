@@ -114,7 +114,7 @@ class Infrastructure:
                     ),
                     autoescape=False,
                     keep_trailing_newline=True,
-                    undefined=template.StrictUndefined,
+                    undefined=template.DeferredUndefined,
                 )
                 return self.render_jinja(content, environment=environment)
             case p if p.endswith(".xml"):

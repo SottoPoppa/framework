@@ -22,5 +22,5 @@ routes: {
     route:GET_USER_PROFILE := { path:"/user/{id}"; method:"GET"; "type":"view"; view:"twitch_channel.xml" };
     route:GET_TRIS := { path:"/tris"; method:"GET"; "type":"view"; view:"tris.xml"; controllers:["tris"] };
     // SCRUM Kanban Board
-    route:GET_KANBAN := { path:"/"; method:"GET"; "type":"view"; view:"kanban.xml"; controllers:["kanban"] };
+    route:GET_KANBAN := { path:"/kanban"; method:"GET"; "type":"view"; view:"kanban.xml"; controllers:["kanban"] };
 }

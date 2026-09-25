@@ -132,9 +132,10 @@ class StorekeeperView:
             for child in dom.children(node)
         ]
         container = self.adapter.mount_tag("container", {"id": alias}, children)
-        container._storekeeper_text = "".join(
-            self._child_text(child) for child in children
-        )
+        if not isinstance(container, str):
+            container._storekeeper_text = "".join(
+                self._child_text(child) for child in children
+            )
         return container
 
 class Tag(Enum):

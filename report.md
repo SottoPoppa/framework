@@ -14,7 +14,7 @@ La diagnostica Pylance iniziale non ha riportato errori. Nel follow-up, `--test 
 
 ## Finding confermati
 
-1. **Alta, con Starlette attivo — Il repository delle sessioni viene renderizzato con una variabile non definita.** [sessions.dsl](src/application/repository/sessions.dsl#L5) usa `{{session.id}}`; [infrastructure.py](src/framework/core/infrastructure.py#L117) renderizza i file `.dsl` con `StrictUndefined` senza passare il contesto della sessione. Il middleware carica o salva il repository durante le richieste, quindi il caricamento può interrompere il percorso web.
+1. **Risolto nel follow-up del 2026-09-25 — Placeholder Jinja nei repository DSL.** Il messaggio specifico `'session' is undefined` non si riproduceva perché `sessions.dsl` proteggeva il placeholder con `raw`; tuttavia `StrictUndefined` faceva fallire altri repository con template runtime non protetti, come `integration_file.dsl`. `Infrastructure.resource()` ora usa `DeferredUndefined` nel primo render DSL: gli `include` della policy vengono ancora espansi e i placeholder restano disponibili per `Repository.parameters()`. Rimossi i wrapper `raw` da `file.dsl` e `sessions.dsl`; verificato il path finale della sessione tramite Interpreter e Repository.
 
 2. **Alta, con Starlette attivo — Viene montata una sola route.** [mount_route](src/infrastructure/presentation/web/starlette.py#L1132) ritorna dentro il ciclo che visita le route; [start](src/infrastructure/presentation/web/starlette.py#L827) la invoca una sola volta. Le route successive non vengono registrate.
 
@@ -56,9 +56,9 @@ La diagnostica Pylance iniziale non ha riportato errori. Nel follow-up, `--test 
 - **Dati della sessione nel markup:** [login.xml](src/application/view/page/login.xml#L3) renderizza l'intero oggetto `session`. Se contiene token o altri dati privati, questi diventano visibili nel markup. La route è attualmente condizionata anche dal problema di montaggio delle route.
 - **Argomenti conservati nei risultati Flow:** `@flow.result()` registra sempre gli argomenti e le keyword argument in `Result.input`. Se il risultato o le sue `transactions` vengono serializzati o esposti, possono includere sessioni, token o altri dati sensibili. La review non ha verificato un'esposizione automatica di questo campo.
 
-## Decisione da confermare
+## Decisione applicata
 
-`GET_INDEX` e `GET_KANBAN` dichiarano entrambi `GET /` ([routes.dsl](src/application/policy/presentation/routes.dsl#L2), [routes.dsl](src/application/policy/presentation/routes.dsl#L25)). La registrazione usa la stessa chiave path/metodo e la definizione successiva sovrascrive la precedente ([route.py](src/framework/service/route.py#L53)); va confermato se Kanban debba sostituire intenzionalmente la pagina Terminal.
+La collisione iniziale è stata risolta: `GET_INDEX` resta su `/` e `GET_KANBAN` usa `/kanban` ([routes.dsl](src/application/policy/presentation/routes.dsl#L2), [routes.dsl](src/application/policy/presentation/routes.dsl#L25)). Il bootstrap e il matching verificano che entrambe le viste siano raggiungibili.
 
 ## Disallineamenti documentali
 

@@ -48,7 +48,8 @@ implementation = "bus"
 #enable_terminal = true
 #token = "{{ env('COPILOT_GITHUB_TOKEN') }}"
 
-#[[presentation.starlette]]
+#[[presentation.web]]
+#implementation = "starlette"
 #name = "web"
 #host = "127.0.0.1"
 #port = 8000

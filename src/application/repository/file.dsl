@@ -2,7 +2,7 @@
 factory:repository := {
     location: {
         "WORKFOLDER": [
-            "{% raw %}{{filter.eq.filename}}{% endraw %}",
+            "{{filter.eq.filename}}",
             "."
         ];
     };

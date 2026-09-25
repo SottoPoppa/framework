@@ -37,6 +37,27 @@ any:failed_authenticate := imports.mock.AsyncMock(return_value: imports.flow.err
 any:failed_authenticator := imports.types.SimpleNamespace(authenticate: failed_authenticate);
 any:failed_auth_adapter := imports.module.Adapter(loader: none, defender: none, presenter: none, messenger: none, authenticator: failed_authenticator, storekeeper: none, manager: {"defender": {"key": "test-key"}});
 any:failed_request := imports.types.SimpleNamespace(method: "GET", query_params: {}, session: {"id": "auth-failure"});
+any:uvicorn_config := imports.types.SimpleNamespace(load: imports.mock.Mock(), ssl: none);
+any:uvicorn_server := imports.types.SimpleNamespace(serve: imports.mock.AsyncMock(return_value: none));
+any:config_factory := imports.mock.Mock(return_value: uvicorn_config);
+any:server_factory := imports.mock.Mock(return_value: uvicorn_server);
+any:config_patch := imports.mock.patch.object(imports.module, "Config", new: config_factory);
+any:server_patch := imports.mock.patch.object(imports.module, "Server", new: server_factory);
+any:start_adapter := imports.types.SimpleNamespace(
+    defender: imports.types.SimpleNamespace(
+        get_configuration: imports.mock.Mock(
+            return_value: {"security_and_waf": {"tls_enabled": false}}
+        )
+    ),
+    config: {"host": "127.0.0.1"; "port": 8000},
+    routes_static: [],
+    middleware_static: [],
+    parse_route: imports.mock.AsyncMock(return_value: none),
+    mount_route: imports.mock.AsyncMock(return_value: none),
+    render_reactive: imports.mock.AsyncMock(),
+    http_exception_handler: imports.mock.AsyncMock()
+);
+any:patched_start := server_patch(config_patch(imports.module.Adapter.start));
 
 exports: {
     'attrs': imports.module.attrs;
@@ -51,6 +72,7 @@ exports: {
     'signaid': imports.module.Adapter.signaid;
     'action': imports.module.Adapter.action;
     'mount_route': imports.module.Adapter.mount_route;
+    'start': patched_start;
     'shutdown': imports.module.Adapter.shutdown;
     'validate_capabilities': imports.module.Adapter.validate_capabilities
 };
@@ -299,6 +321,13 @@ tuple:test_suite := (
         "outputs": none;
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Starlette chiude il lifecycle senza server attivo";
+    },
+    {
+        "action": exports.start;
+        "inputs": (start_adapter, none);
+        "outputs": none;
+        "assert": @received.is_success == true & @received.output.value == @expected & uvicorn_server.serve.await_count == 1;
+        "note": "Starlette attende la coroutine di Uvicorn durante l'avvio";
     },
     html_cases
     |> map_records(add_expected, expected_html)
