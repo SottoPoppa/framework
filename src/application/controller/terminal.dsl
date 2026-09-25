@@ -1,5 +1,5 @@
 {
-    selected: "src/infrastructure/presentation/console.py";
+    selected: "src/infrastructure/presentation/tui/textual.py";
 
     select(
         default: selected,
@@ -31,7 +31,12 @@
         storekeeper.overview(
             session,
             repository: "file",
-            filter: {"eq": {"type": "file"}}
+            filter: {"eq": {"type": "file"}},
+            exclude_dirs: [
+                ".git", ".venv", "venv", "__pycache__", "node_modules",
+                ".pytest_cache", ".mypy_cache", ".ruff_cache",
+                "cloud.colosso.egg-info"
+            ]
         ) |> result();
 
     application_files() ->

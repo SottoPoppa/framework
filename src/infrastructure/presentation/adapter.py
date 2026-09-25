@@ -7,6 +7,7 @@ Questo modulo non importa alcun toolkit UI.
 
 import asyncio
 from abc import ABC, abstractmethod
+from time import perf_counter
 from typing import Any, Dict, List, Optional
 
 import framework.core.flow as flow
@@ -177,12 +178,15 @@ class Adapter(presentation.Port, ABC):
 
     async def render_view(self, url):
         self._prepare_runtime()
+        render_started = perf_counter()
         self.url = url
         logger = getattr(self, "logger", None)
         if logger:
             logger.info("render_view: inizio", url=url)
         async with self._render_lock:
+            mount_started = perf_counter()
             result = await self.mount_view(url)
+            mount_duration_ms = round((perf_counter() - mount_started) * 1000, 2)
             if not flow.check(result):
                 if logger:
                     logger.error("render_view: template fallito", result=flow.output(result))
@@ -190,10 +194,16 @@ class Adapter(presentation.Port, ABC):
             screen = flow.output(result)
             if logger:
                 logger.info("render_view: screen creato", screen=type(screen).__name__)
+            show_started = perf_counter()
             await self._show_screen(screen)
             await self._flush_pending_rebuilds()
             if logger:
-                logger.info("render_view: screen montato")
+                logger.info(
+                    "render_view: screen montato",
+                    mount_duration_ms=mount_duration_ms,
+                    show_and_flush_duration_ms=round((perf_counter() - show_started) * 1000, 2),
+                    total_duration_ms=round((perf_counter() - render_started) * 1000, 2),
+                )
             return result
 
     async def navigate_to(self, url: str, modal: bool = False):

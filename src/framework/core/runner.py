@@ -160,6 +160,16 @@ class DagRunner:
                         return
                     value = flow.output(value)
 
+                if value is None:
+                    error = ValueError(
+                        f"Source node {node_name!r} returned no event; "
+                        "source actions must wait for an event."
+                    )
+                    session.errors[node_name] = error
+                    session.mark(node_name, NodeState.FAILED)
+                    flow._dev_log("dag.source.empty node=%s", node_name)
+                    return
+
                 self._publish(session, node_name, value)
                 flow._dev_log(
                     "dag.source.received node=%s payload_type=%s",

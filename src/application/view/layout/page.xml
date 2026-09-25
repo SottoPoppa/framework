@@ -41,11 +41,22 @@
                 </Action>
                 <Action type="dropdown" tooltip="Notifications">
                     <Media type="icon" src="bi-inbox-fill" />
-                    <Messenger>
-                        <Message type="info" title="Info" >
-                            <Text>This is a toast message.</Text>
-                        </Message>
-                    </Messenger>
+                    {% messenger() as notification %}
+                        {% if notification %}
+                            {% if notification is mapping %}
+                                {% set notification_text = notification.message | default('') %}
+                                {% set notification_title = notification.title | default('Info') %}
+                            {% else %}
+                                {% set notification_text = notification %}
+                                {% set notification_title = 'Info' %}
+                            {% endif %}
+                            {% if notification_text %}
+                                <Message type="info" title="{{ notification_title }}">
+                                    <Text>{{ notification_text }}</Text>
+                                </Message>
+                            {% endif %}
+                        {% endif %}
+                    {% endmessenger %}
                 </Action>
                 <Action type="dropdown" tooltip="Feedback">
                     <Media type="icon" src="bi-bug-fill" />

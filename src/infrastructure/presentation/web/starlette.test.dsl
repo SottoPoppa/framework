@@ -149,6 +149,20 @@ tuple:test_suite := (
     },
     {
         "action": exports.attrs;
+        "inputs": ("action", {"attrs": {"id": "safe-link"; "href": "javascript:alert(1)"}});
+        "outputs": {"class": ""; "id": "safe-link"};
+        "assert": @received.is_success == true & @received.output.value == @expected;
+        "note": "Starlette rimuove gli schemi URL attivi dagli attributi navigabili";
+    },
+    {
+        "action": exports.attrs;
+        "inputs": ("action", {"attrs": {"href": "/tasks"}});
+        "outputs": {"class": ""; "href": "/tasks"};
+        "assert": @received.is_success == true & @received.output.value == @expected;
+        "note": "Starlette conserva i link relativi dopo la validazione URL";
+    },
+    {
+        "action": exports.attrs;
         "inputs": ("row", {"attrs": {"justify": "between"; "align": "center"; "spacing": "12px"; "expand": "true"}});
         "outputs": {"class": " flex justify-between items-center gap-[12px] flex-1"};
         "assert": @received.is_success == true & @received.output.value == @expected;

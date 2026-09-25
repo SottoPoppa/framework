@@ -5,8 +5,10 @@ import sys
 import tempfile
 import types
 import unittest
+from collections import OrderedDict
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
+from jinja2 import Environment
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -30,6 +32,7 @@ from framework.manager.storekeeper import Manager as Storekeeper
 from framework.manager.tester import Manager as Tester
 from framework.service.factory import Repository
 from framework.service.route import resolve_route
+import framework.service.dom as dom_service
 import framework.service.template as template_service
 from framework.core.infrastructure import Infrastructure
 from infrastructure.persistence.filesystem.filesystem import (
@@ -38,11 +41,176 @@ from infrastructure.persistence.filesystem.filesystem import (
 )
 from infrastructure.presentation.adapter import Adapter as PresentationAdapter
 from infrastructure.presentation.web import starlette as starlette_web
-from infrastructure.presentation.tui.widgets import _make_action
+from infrastructure.presentation.tui.widgets import (
+    OptionValue,
+    _make_action,
+    _make_tabbed_content,
+)
+from infrastructure.presentation.tui.widgets import attrs as textual_attrs
+from infrastructure.presentation.tui.textual import (
+    Adapter as TextualAdapter,
+    AppDinamica,
+)
 from framework.port.presentation import Port as PresentationPort
+from textual.geometry import Spacing
+from textual.app import ComposeResult
+from textual.widgets import Select, Static
 
 
 class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_filesystem_query_excludes_requested_directories(self):
+        with tempfile.TemporaryDirectory() as root:
+            included = Path(root, "src", "application", "app.dsl")
+            excluded_venv = Path(root, "venv", "lib", "package.py")
+            excluded_git = Path(root, ".git", "config")
+            for file_path in (included, excluded_venv, excluded_git):
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                file_path.write_text("data", encoding="utf-8")
+
+            adapter = FilesystemAdapter(messenger=None, path=root)
+            result = await adapter.query(
+                filter={"eq": {"type": "file"}},
+                exclude_dirs=("venv", ".git"),
+            )
+
+        self.assertTrue(flow.check(result))
+        records = flow.output(result)
+        self.assertEqual(
+            [record["relative_path"] for record in records],
+            ["src/application/app.dsl"],
+        )
+
+    def test_textual_padding_and_margin_are_numeric_spacing(self):
+        rendered = textual_attrs(
+            Static(), {"padding": "1", "margin": "0,1"}
+        )
+
+        self.assertEqual(rendered.styles.padding, Spacing(1, 1, 1, 1))
+        self.assertEqual(rendered.styles.margin, Spacing(0, 1, 0, 1))
+        self.assertEqual(
+            rendered.styles.padding + rendered.styles.border.spacing,
+            Spacing(1, 1, 1, 1),
+        )
+
+    def test_textual_tabbed_content_uses_configured_initial_value(self):
+        rendered = _make_tabbed_content(
+            {
+                "attrs": {"id": "workspace-editors", "value": "infrastructure"},
+                "inner": [
+                    OptionValue("Infrastructure", "infrastructure", content=[Static()])
+                ],
+            }
+        )
+
+        self.assertEqual(rendered._initial, "infrastructure")
+
+    async def test_textual_select_ignores_initial_change_but_dispatches_user_change(self):
+        messenger = types.SimpleNamespace(send=AsyncMock())
+        adapter = types.SimpleNamespace(
+            messenger=messenger,
+            session=object(),
+            logger=Mock(),
+            log_buffer=object(),
+            render_view=AsyncMock(return_value=flow.success(None)),
+            node_get=Mock(
+                return_value=dom_service.parse(
+                    '<Input id="select" value="initial.py" change="terminal:select"/>'
+                )
+            ),
+        )
+
+        class ProbeApp(AppDinamica):
+            def compose(self) -> ComposeResult:
+                yield Select(
+                    [("initial.py", "initial.py"), ("next.py", "next.py")],
+                    value="initial.py",
+                    id="select",
+                )
+
+        app = ProbeApp(adapter)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            self.assertEqual(messenger.send.await_count, 0)
+
+            app.query_one("#select", Select).value = "next.py"
+            await pilot.pause()
+            self.assertEqual(messenger.send.await_count, 1)
+
+    async def test_textual_storekeeper_cache_reuses_unchanged_files(self):
+        with tempfile.TemporaryDirectory() as root:
+            filename = Path(root, "editor.py")
+            filename.write_text("first", encoding="utf-8")
+            requests = []
+
+            async def gather(_session, **request):
+                requests.append(request)
+                return flow.success({"content": filename.read_text(encoding="utf-8")})
+
+            provider = types.SimpleNamespace(
+                config={"name": "workfolder"}, path=root
+            )
+            storekeeper = types.SimpleNamespace(
+                gather=AsyncMock(side_effect=gather),
+                maked={},
+                persistences=[provider],
+            )
+            adapter = object.__new__(TextualAdapter)
+            adapter._storekeeper_file_cache = OrderedDict()
+            adapter.loader = types.SimpleNamespace(
+                get_managers=Mock(return_value={"storekeeper": storekeeper})
+            )
+            request = {
+                "repository": "file",
+                "filter": {"eq": {"filename": filename.name}},
+            }
+
+            first = await adapter._load_storekeeper(None, request)
+            repeated = await adapter._load_storekeeper(None, request)
+            filename.write_text("updated content", encoding="utf-8")
+            updated = await adapter._load_storekeeper(None, request)
+
+        self.assertEqual(first["content"], "first")
+        self.assertEqual(repeated, first)
+        self.assertEqual(updated["content"], "updated content")
+        self.assertEqual(len(requests), 2)
+
+    async def test_terminal_file_options_are_skipped_during_fragment_refresh(self):
+        source = Path("src/application/view/page/terminal.xml").read_text(
+            encoding="utf-8"
+        )
+        environment = Environment(
+            extensions=(template_service.AsyncBlockExtension,), enable_async=True
+        )
+        environment.filters["check"] = lambda result: result["ok"]
+        environment.filters["value"] = lambda result: result["value"]
+        template = environment.from_string(source)
+        terminal = types.SimpleNamespace(
+            files={"ok": True, "value": [{"relative_path": "src/cache_probe.py"}]},
+            select="src/infrastructure/presentation/tui/textual.py",
+            select_application="",
+            select_framework="",
+            select_infrastructure="",
+            application_files=[],
+            framework_files=[],
+            infrastructure_files=[],
+        )
+        chat = types.SimpleNamespace(
+            copilot_source=types.SimpleNamespace(message="")
+        )
+        context = {"terminal": terminal, "chat": chat}
+
+        initial = await template.render_async(context)
+        refreshed = await template.render_async(
+            context | {"_fragment_refresh": True}
+        )
+
+        self.assertIn('<Option value="src/cache_probe.py"/>', initial)
+        self.assertNotIn('<Option value="src/cache_probe.py"/>', refreshed)
+        self.assertRegex(
+            initial,
+            r'<Group id="workspace-editors" type="tab"[^>]*value="infrastructure"',
+        )
+
     async def test_dsl_resource_defers_templates_and_expands_policy_includes(self):
         infrastructure = Infrastructure()
 
@@ -74,6 +242,270 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             parameters["location"], "/tmp/sessions/session-test.json"
         )
+
+    async def test_storekeeper_block_loads_only_when_branch_renders(self):
+        requests = []
+        payload = "<img src=x onerror=alert(1)>"
+
+        async def gather(runtime_session, **request):
+            requests.append(request)
+            return flow.success([{"title": payload}])
+
+        source = (
+            '<Window type="page">{% if enabled %}'
+            '{% storekeeper(repository="task", filter={"eq":{"status":"backlog"}}) as tasks %}'
+            '<Text>{{ tasks[0].title }}</Text>'
+            "{% endstorekeeper %}{% endif %}</Window>"
+        )
+        storekeeper = types.SimpleNamespace(
+            gather=AsyncMock(side_effect=gather)
+        )
+        adapter = object.__new__(starlette_web.Adapter)
+        adapter.loader = types.SimpleNamespace(
+            infrastructure=Infrastructure(),
+            get_managers=Mock(return_value={"storekeeper": storekeeper}),
+        )
+
+        inactive = await adapter.render_template(None, text=source, enabled=False)
+        self.assertEqual(requests, [])
+        storekeeper.gather.assert_not_awaited()
+
+        active = await adapter.render_template(None, text=source, enabled=True)
+        self.assertEqual(
+            requests,
+            [{"repository": "task", "filter": {"eq": {"status": "backlog"}}}],
+        )
+        html = str(active)
+        self.assertIn("&lt;img src=x onerror=alert(1)&gt;", html)
+        self.assertNotIn("<img src=x onerror=alert(1)>", html)
+
+    def test_starlette_escapes_plain_text_and_preserves_rendered_markup(self):
+        payload = "<img src=x onerror=alert(1)>"
+        rendered_text = starlette_web.Adapter.node_create(
+            None, starlette_web.htpy.span, {}, [payload]
+        )
+        self.assertIn("&lt;img src=x onerror=alert(1)&gt;", str(rendered_text))
+        self.assertNotIn("<img src=x", str(rendered_text))
+
+        rendered_parent = starlette_web.Adapter.node_create(
+            None, starlette_web.htpy.div, {}, [rendered_text]
+        )
+        self.assertIn(str(rendered_text), str(rendered_parent))
+
+    def test_starlette_rejects_scriptable_url_schemes(self):
+        rejected = (
+            ("action", "href", "javascript:alert(1)"),
+            ("action", "href", "java\nscript:alert(1)"),
+            ("media", "src", "data:text/html,<script>alert(1)</script>"),
+        )
+        for tag, name, value in rejected:
+            with self.subTest(tag=tag, name=name, value=value):
+                rendered = starlette_web.attrs(
+                    tag, {"attrs": {name: value, "id": "safe-id"}}
+                )
+                self.assertNotIn(name, rendered)
+                self.assertEqual(rendered["id"], "safe-id")
+
+        for value in ("/tasks", "https://example.test/tasks", "mailto:a@example.test"):
+            with self.subTest(value=value):
+                rendered = starlette_web.attrs(
+                    "action", {"attrs": {"href": value}}
+                )
+                self.assertEqual(rendered["href"], value)
+
+    async def test_storekeeper_template_loader_returns_read_data_only(self):
+        runtime_session = object()
+        rows = [{"id": "task-1"}]
+        storekeeper = types.SimpleNamespace(
+            gather=AsyncMock(return_value=flow.success(rows))
+        )
+        adapter = object.__new__(starlette_web.Adapter)
+        adapter.loader = types.SimpleNamespace(
+            get_managers=Mock(return_value={"storekeeper": storekeeper})
+        )
+
+        result = await adapter._load_storekeeper(
+            runtime_session, {"repository": "task"}
+        )
+
+        self.assertEqual(result, tuple(rows))
+        storekeeper.gather.assert_awaited_once_with(
+            runtime_session, repository="task"
+        )
+        with self.assertRaisesRegex(
+            ValueError, "Operazione Storekeeper non supportata"
+        ):
+            await adapter._load_storekeeper(
+                runtime_session,
+                {"operation": "change", "repository": "task"},
+            )
+
+    async def test_messenger_jinja_block_loads_message_data(self):
+        message = {"message": "A new notification", "domain": "info"}
+        messenger = types.SimpleNamespace(
+            receive=AsyncMock(return_value=flow.success(message))
+        )
+        adapter = object.__new__(starlette_web.Adapter)
+        adapter.messenger = None
+        adapter.loader = types.SimpleNamespace(
+            infrastructure=Infrastructure(),
+            get_managers=Mock(return_value={"messenger": messenger}),
+        )
+        source = (
+            '<Window type="page">{% if enabled %}'
+            '{% messenger(domain="info") as notice %}'
+            '{% if notice %}<Text>{{ notice.message }}</Text>{% endif %}'
+            '{% endmessenger %}'
+            '{% endif %}</Window>'
+        )
+
+        inactive = await adapter.render_template(
+            None, text=source, enabled=False
+        )
+        self.assertNotIn("A new notification", str(inactive))
+        messenger.receive.assert_not_awaited()
+
+        rendered = await adapter.render_template(
+            None, text=source, enabled=True
+        )
+
+        self.assertIn("A new notification", str(rendered))
+        messenger.receive.assert_awaited_once_with(None, domain="info")
+        with self.assertRaisesRegex(ValueError, "solo operazioni di ricezione"):
+            await adapter._load_messenger(
+                None, {"operation": "send", "message": "not from a view"}
+            )
+
+    async def test_layout_renders_messenger_jinja_block(self):
+        messenger = types.SimpleNamespace(
+            receive=AsyncMock(
+                return_value=flow.success(
+                    {"message": "A new notification", "title": "Inbox"}
+                )
+            )
+        )
+        adapter = object.__new__(starlette_web.Adapter)
+        adapter.messenger = None
+        adapter.loader = types.SimpleNamespace(
+            infrastructure=Infrastructure(),
+            get_managers=Mock(return_value={"messenger": messenger}),
+        )
+
+        async def render_dom(_parent, node, _context, runtime_session=None):
+            return dom_service.serialize(node)
+
+        original_get_jinja = template_service.get_jinja
+
+        def get_jinja_with_route(infrastructure=None, **options):
+            environment = original_get_jinja(infrastructure, **options)
+            environment.filters.setdefault(
+                "route", lambda value, *args, **kwargs: value
+            )
+            return environment
+
+        async def load_messenger(request):
+            return await adapter._load_messenger(None, request)
+
+        with patch.object(
+            template_service, "get_jinja", side_effect=get_jinja_with_route
+        ):
+            rendered = await template_service.render(
+                adapter.loader.infrastructure,
+                {},
+                None,
+                render_dom,
+                file="src/application/view/layout/page.xml",
+                async_block_loaders={"messenger": load_messenger},
+                url=types.SimpleNamespace(
+                    path=["dashboard"], query={}
+                ),
+            )
+
+        self.assertIn("A new notification", rendered)
+        self.assertNotIn("<Messenger", rendered)
+        messenger.receive.assert_awaited_once_with(None)
+
+    async def test_terminal_template_skips_missing_companion_files(self):
+        source_file = "src/framework/core/flow.py"
+        available_files = flow.success([{"relative_path": source_file}])
+        terminal = {
+            "files": available_files,
+            "select": source_file,
+            "application_files": (),
+            "framework_files": (source_file,),
+            "infrastructure_files": (),
+            "select_application": "",
+            "select_framework": source_file,
+            "select_infrastructure": "",
+        }
+        requests = []
+
+        async def load_storekeeper(request):
+            filename = request["filter"]["eq"]["filename"]
+            requests.append(filename)
+            return {"content": f"contents of {filename}"}
+
+        async def render_dom(_parent, node, _context, runtime_session=None):
+            return dom_service.serialize(node)
+
+        original_get_jinja = template_service.get_jinja
+
+        def get_jinja_with_filters(infrastructure=None, **options):
+            environment = original_get_jinja(infrastructure, **options)
+            environment.filters.setdefault("check", flow.check)
+            environment.filters.setdefault("value", flow.output)
+            return environment
+
+        with patch.object(
+            template_service, "get_jinja", side_effect=get_jinja_with_filters
+        ):
+            rendered = await template_service.render(
+                Infrastructure(),
+                {},
+                None,
+                render_dom,
+                file="src/application/view/page/terminal.xml",
+                async_block_loaders={"storekeeper": load_storekeeper},
+                terminal=terminal,
+                chat={"copilot_source": {"message": ""}},
+            )
+
+        self.assertEqual(requests, [source_file])
+        self.assertIn(f"contents of {source_file}", rendered)
+
+    async def test_messenger_xml_tag_uses_standard_unknown_tag_error(self):
+        messenger = types.SimpleNamespace(receive=AsyncMock())
+        adapter = object.__new__(starlette_web.Adapter)
+        adapter.DOM = {}
+        adapter.messenger = None
+        adapter.loader = types.SimpleNamespace(
+            infrastructure=Infrastructure(),
+            get_managers=Mock(return_value={"messenger": messenger}),
+        )
+        source = '<Window type="page"><Messenger><Text>legacy</Text></Messenger></Window>'
+
+        with self.assertRaisesRegex(Exception, "Tag messenger non trovato"):
+            await adapter.render_template(None, text=source)
+
+        messenger.receive.assert_not_awaited()
+
+    async def test_storekeeper_xml_tag_uses_standard_unknown_tag_error(self):
+        storekeeper = types.SimpleNamespace(gather=AsyncMock())
+        adapter = object.__new__(starlette_web.Adapter)
+        adapter.DOM = {}
+        adapter.loader = types.SimpleNamespace(
+            infrastructure=Infrastructure(),
+            get_managers=Mock(return_value={"storekeeper": storekeeper}),
+        )
+        source = (
+            '<Window type="page"><Storekeeper id="items" '
+            'repository="task"><Text>legacy</Text></Storekeeper></Window>'
+        )
+
+        with self.assertRaisesRegex(Exception, "Tag storekeeper non trovato"):
+            await adapter.render_template(None, text=source)
+
+        storekeeper.gather.assert_not_awaited()
 
     def test_framework_install_reads_config_via_infrastructure_resource(self):
         framework = Framework()

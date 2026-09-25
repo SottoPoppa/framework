@@ -58,5 +58,18 @@ tuple:test_suite := (
         "outputs": none;
         "assert": @received.is_success == false & @received.output.error != none;
         "note": "send segnala un destinatario senza provider disponibile";
+    },
+    {
+        "action": exports.messenger.receive;
+        "inputs": {
+            "args": (session);
+            "kwargs": {
+                "receiver": "missing";
+                "domain": "info"
+            }
+        };
+        "outputs": none;
+        "assert": @received.is_success == false & @received.output.error != none;
+        "note": "receive termina con errore se il destinatario non ha provider"
     }
 );

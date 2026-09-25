@@ -32,7 +32,7 @@ tuple:test_suite := (
             "kwargs": {"domain": "*"}
         };
         "outputs": none;
-        "assert": @received.is_success == true & @received.output.value == @expected;
-        "note": "Copilot adapter non blocca il test quando la coda e vuota";
+        "assert": @received.is_success == false & @received.output.error != none;
+        "note": "Copilot test mode segnala esplicitamente una coda vuota"
     }
 );

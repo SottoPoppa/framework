@@ -6,7 +6,6 @@ from html import escape
 import uuid
 import untangle
 import markupsafe
-import re
 import itertools
 import os
 from urllib.parse import urlparse, parse_qs, urljoin
@@ -19,124 +18,16 @@ import framework.core.flow as flow
 import framework.service.dom as dom
 import framework.service.scheme as scheme
 from framework.service.route import compile_pattern, match, normalize_path, register, register_many
-from framework.service.template import DeferredUndefined, render
+from framework.service.template import render
 
 
-class StorekeeperView:
-    """Supporto isolato per i nodi Storekeeper dichiarati nelle viste."""
-
-    _OPERATIONS = {
-        "overview": "overview", "view": "overview",
-        "gather": "gather", "read": "gather",
-        "store": "store", "create": "store",
-        "change": "change", "update": "change",
-        "remove": "remove", "delete": "remove",
-    }
-    _JSON_ATTRIBUTES = {"filter", "payload", "sort", "page"}
-
-    def __init__(self, adapter):
-        self.adapter = adapter
-
-    @staticmethod
-    def render_deferred(value, context):
-        if not isinstance(value, str) or "{" not in value:
-            return value
-        if not any(
-            re.search(r"{{\s*" + re.escape(alias) + r"(?:\s*}}|\.|\[)", value)
-            for alias in context
-        ):
-            return value
-        return Environment(undefined=DeferredUndefined).from_string(value).render(context)
-
-    @classmethod
-    def request(cls, attributes):
-        operation = str(attributes.get("operation", "gather")).casefold()
-        method_name = cls._OPERATIONS.get(operation)
-        if method_name is None:
-            raise ValueError(f"Operazione Storekeeper non supportata: {operation}")
-        request = {
-            key: value for key, value in attributes.items()
-            if key not in {"id", "operation", "type"}
-        }
-        for key in cls._JSON_ATTRIBUTES:
-            value = request.get(key)
-            if isinstance(value, str):
-                try:
-                    request[key] = json.loads(value)
-                except json.JSONDecodeError as error:
-                    raise ValueError(
-                        f"Attributo Storekeeper '{key}' non è JSON valido"
-                    ) from error
-        return method_name, request
-
-    async def prepare_context(self, runtime_session, text, context):
-        if runtime_session is None or not isinstance(text, str):
-            return context
-        try:
-            root = dom.parse(text)
-        except dom.parse_error():
-            return context
-
-        storekeeper = self.adapter.loader.get_managers().get("storekeeper")
-        if storekeeper is None:
-            return context
-
-        store = dict(context.get("store", {}))
-        for node in dom.iter_nodes(root):
-            if dom.tag_name(node).casefold() != "storekeeper":
-                continue
-            alias = dom.attributes(node).get("id")
-            if not alias:
-                continue
-            method_name, request = self.request(dom.attributes(node))
-            if method_name not in {"overview", "gather"}:
-                continue
-            result = await getattr(storekeeper, method_name)(runtime_session, **request)
-            if flow.check(result):
-                store[alias] = flow.output(result)
-        return {**context, "store": store}
-
-    @staticmethod
-    def _child_text(child):
-        return str(
-            getattr(child, "_storekeeper_text", None)
-            or getattr(child, "_dsl_text", None)
-            or getattr(child, "content", None)
-            or getattr(child, "label", "")
-        )
-
-    async def render(self, parent, node, attributes, context, runtime_session):
-        storekeeper = self.adapter.loader.get_managers().get("storekeeper")
-        if storekeeper is None:
-            raise RuntimeError("Storekeeper non disponibile per il tag <Storekeeper>")
-        alias = attributes.get("id")
-        if not alias:
-            raise ValueError("Il tag <Storekeeper> richiede l'attributo 'id'")
-
-        child_context = dict(context)
-        store = context.get("_jinja_context", {}).get("store", {})
-        if alias in store:
-            value = store[alias]
-        else:
-            method_name, request = self.request(attributes)
-            result = await getattr(storekeeper, method_name)(runtime_session, **request)
-            value = flow.output(result)
-        child_context["_jinja_context"] = {
-            **context.get("_jinja_context", {}),
-            "store": {**store, alias: value},
-        }
-        children = [
-            await self.adapter.render_node(
-                parent, child, child_context, runtime_session=runtime_session
-            )
-            for child in dom.children(node)
-        ]
-        container = self.adapter.mount_tag("container", {"id": alias}, children)
-        if not isinstance(container, str):
-            container._storekeeper_text = "".join(
-                self._child_text(child) for child in children
-            )
-        return container
+_STOREKEEPER_OPERATIONS = {
+    "overview": "overview",
+    "view": "overview",
+    "gather": "gather",
+    "read": "gather",
+}
+_STOREKEEPER_JSON_ATTRIBUTES = {"filter", "sort", "page"}
 
 class Tag(Enum):
     WINDOW = "window"
@@ -153,9 +44,7 @@ class Tag(Enum):
     STACK = "stack"
     CONTAINER = "container"
     DEFENDER = "defender"
-    MESSENGER = "messenger"
     MESSAGE = "message"
-    STOREKEEPER = "storekeeper"
     PRESENTER = "presenter"
     VIEW = "view"
     DIVIDER = "divider"
@@ -470,9 +359,7 @@ class Port(ABC):
             'column',
             'container',
             'defender',
-            'messenger',
             'message',
-            'storekeeper',
             'presenter',
             'view',
             'divider',
@@ -632,6 +519,52 @@ class Port(ABC):
         register_many(self.routes, routes_cfg)
         return self.routes
 
+    async def _load_storekeeper(self, runtime_session, attributes):
+        storekeeper = self.loader.get_managers().get("storekeeper")
+        if storekeeper is None:
+            raise RuntimeError("Storekeeper non disponibile nel contesto del template")
+
+        request = dict(attributes)
+        operation = str(request.pop("operation", "gather")).casefold()
+        method_name = _STOREKEEPER_OPERATIONS.get(operation)
+        if method_name is None:
+            raise ValueError(f"Operazione Storekeeper non supportata: {operation}")
+        request.pop("id", None)
+        request.pop("type", None)
+        for key in _STOREKEEPER_JSON_ATTRIBUTES:
+            value = request.get(key)
+            if isinstance(value, str):
+                try:
+                    request[key] = json.loads(value)
+                except json.JSONDecodeError as error:
+                    raise ValueError(
+                        f"Attributo Storekeeper '{key}' non è JSON valido"
+                    ) from error
+
+        result = await getattr(storekeeper, method_name)(runtime_session, **request)
+        if not flow.check(result):
+            raise RuntimeError(f"Lettura Storekeeper non riuscita: {flow.output(result)}")
+        return flow.output(result)
+
+    async def _load_messenger(self, runtime_session, attributes):
+        messenger = getattr(self, "messenger", None)
+        if messenger is None:
+            messenger = self.loader.get_managers().get("messenger")
+        if messenger is None:
+            raise RuntimeError("Messenger non disponibile nel contesto del template")
+
+        request = dict(attributes)
+        operation = str(request.pop("operation", "receive")).casefold()
+        if operation not in {"receive", "read"}:
+            raise ValueError("I blocchi Messenger supportano solo operazioni di ricezione")
+
+        result = await messenger.receive(runtime_session, **request)
+        if flow.is_result(result):
+            if not flow.check(result):
+                raise RuntimeError(f"Ricezione Messenger non riuscita: {flow.output(result)}")
+            return flow.output(result)
+        return result
+
     async def render_template(
         self,
         runtime_session,
@@ -650,30 +583,16 @@ class Port(ABC):
             file=file,
             controllers=controllers,
             source_name=source_name,
-            prepare_context=self.prepare_template_context,
+            async_block_loaders={
+                "storekeeper": lambda request: self._load_storekeeper(
+                    runtime_session, request
+                ),
+                "messenger": lambda request: self._load_messenger(
+                    runtime_session, request
+                ),
+            },
             **constants,
         )
-
-    async def prepare_template_context(self, runtime_session, text, context):
-        return await StorekeeperView(self).prepare_context(
-            runtime_session, text, context
-        )
-
-    def _extract_from_xml_string(self, xml_string, target_id):
-        if not xml_string:
-            return None
-
-        try:
-            root = dom.parse(xml_string)
-            element = (
-                root
-                if dom.attributes(root).get("id") == target_id
-                else dom.find_by_id(root, target_id)
-            )
-            return dom.serialize(element).strip() if element is not None else None
-        except dom.parse_error() as error:
-            self.logger.error("Errore durante l'estrazione", exception=error)
-            return None
 
     async def render_node(self, parent, node, context, runtime_session=None):
         """Trasforma ricorsivamente i nodi XML in oggetti del Driver"""
@@ -682,66 +601,8 @@ class Port(ABC):
         if tag.lower() == "svg":
             in_svg = True
 
-        # Il contenuto del nodo Storekeeper viene valutato dopo la chiamata
-        # asincrona, quando il suo alias è disponibile nel contesto Jinja.
-        jinja_context = {
-            **context.get("_jinja_context", {}),
-        }
-        attributes = {
-            key: StorekeeperView.render_deferred(value, jinja_context)
-            for key, value in dom.attributes(node).items()
-        }
-        node_text = StorekeeperView.render_deferred(
-            dom.text(node), jinja_context
-        )
-
-        if tag.lower() == "storekeeper":
-            return await StorekeeperView(self).render(
-                parent,
-                node,
-                attributes,
-                context,
-                runtime_session,
-            )
-
-        if tag.lower() == "messenger":
-            messenger = self.messenger or self.loader.get_managers().get("messenger")
-            if messenger is None:
-                raise RuntimeError("Messenger non disponibile per il tag <Messenger>")
-            operation = attributes.get("operation", "receive").casefold()
-            payload = {
-                key: value for key, value in attributes.items()
-                if key not in {"id", "message", "operation", "type"}
-            }
-            if "type" in attributes:
-                payload["level"] = attributes["type"]
-
-            if operation in {"receive", "read"}:
-                received = flow.output(
-                    await messenger.receive(runtime_session, **payload)
-                )
-                message = received.get("message") if isinstance(received, dict) else received
-                alias = attributes.get("id")
-                if alias:
-                    context = {
-                        **context,
-                        "_jinja_context": {
-                            **context.get("_jinja_context", {}), alias: received,
-                        },
-                    }
-                if not dom.has_children(node):
-                    return self.mount_tag("text", {}, [str(message or "")])
-            elif operation == "send":
-                message = attributes.get("message") or node_text
-                if not message:
-                    raise ValueError("Il tag <Messenger operation='send'> richiede un messaggio")
-                payload = {
-                    **payload,
-                    "message": message,
-                }
-                await messenger.send(runtime_session, **payload)
-            else:
-                raise ValueError(f"Operazione Messenger non supportata: {operation}")
+        attributes = dict(dom.attributes(node))
+        node_text = dom.text(node)
 
         if tag.lower() == "defender":
             defender = self.defender or self.loader.get_managers().get("defender")
@@ -770,7 +631,7 @@ class Port(ABC):
 
         ID = attributes.get('id')
         if isinstance(ID, str):
-            extracted = self._extract_from_xml_string(parent, ID)
+            extracted = dom.serialize(node).strip()
             if extracted:
                 self.DOM[ID] = extracted
 

@@ -50,8 +50,8 @@
         "test": "c2aca2d49fb069135a637c11a5da369ff568bed58a63e45628d1a3f9575c63c4"
       },
       "node_create": {
-        "production": "172ea4084ad3461bbf21f359aa6b902628f628dab264d193985187e36b3cba55",
-        "test": "172ea4084ad3461bbf21f359aa6b902628f628dab264d193985187e36b3cba55"
+        "production": "33364863e1ce243e34979449bfdfbe5cb4b9629269a65b10f2cc3370d6a52ad7",
+        "test": "33364863e1ce243e34979449bfdfbe5cb4b9629269a65b10f2cc3370d6a52ad7"
       },
       "shutdown": {
         "production": "c3fe52e0cf500d1d8c6f80fadc2d8b68e9911ac3ffb8e36d1569b5dbbab2bd32",
@@ -79,8 +79,8 @@
       }
     },
     "attrs": {
-      "production": "67d64e7a9b08c35dfca93d896dae7096e98c3d7d8080cf5825f926c02e02a664",
-      "test": "67d64e7a9b08c35dfca93d896dae7096e98c3d7d8080cf5825f926c02e02a664"
+      "production": "ec05d4dd8a660ad5473585f80bd4d2cd7730d1aeca313d90895848ece1206e44",
+      "test": "ec05d4dd8a660ad5473585f80bd4d2cd7730d1aeca313d90895848ece1206e44"
     }
   },
   "requires": [

@@ -6,10 +6,18 @@
         {{ 'python' if path.endswith('.py') or path.endswith('.dsl') else 'xml' if path.endswith('.xml') else 'json' if path.endswith('.json') else 'toml' if path.endswith('.toml') else 'markdown' -}}
     {%- endmacro %}
 
+    {% set available_file_paths = (terminal.files | value | map(attribute='relative_path') | list) if terminal.files | check else [] %}
+    {% set selected_scope = 'application' %}
+    {% if terminal.select and terminal.select.startswith('src/framework/') %}
+        {% set selected_scope = 'framework' %}
+    {% elif terminal.select and terminal.select.startswith('src/infrastructure/') %}
+        {% set selected_scope = 'infrastructure' %}
+    {% endif %}
+
     <!-- Toolbar -->
     <Row id="toolbar" align="center" justify="between" height="5">
         <Input id="select" height="3" value="{{ terminal.select }}" change="terminal:select" placeholder="Seleziona un file" type="select">
-            {% if terminal.files | check %}
+            {% if not (_fragment_refresh | default(false)) and terminal.files | check %}
                 {% for item in terminal.files | value %}
                     <Option value="{{ item['relative_path'] }}"/>
                 {% endfor %}
@@ -21,7 +29,7 @@
     </Row>
 
     <!-- Main Workspace (Generato dinamicamente per le 3 sezioni) -->
-    <Group id="workspace-editors" type="tab" height="1fr">
+    <Group id="workspace-editors" type="tab" height="1fr" value="{{ selected_scope }}">
         {% set scope_config = [
             ('application', terminal.select_application, terminal.application_files),
             ('framework', terminal.select_framework, terminal.framework_files),
@@ -43,9 +51,11 @@
                     {% endif %}
                     <Option title="{{ sub_type }}" value="{{ scope_id }}-{{ sub_type }}">
                         <Input type="editor" language="{{ editor_language(target_file) }}" id="{{ scope_id }}-{{ sub_type }}-editor" height="1fr">
-                            <Storekeeper id="{{ scope_id }}_{{ sub_type }}_data" operation="gather" repository="file" filter='{{ {"eq": {"filename": target_file}} | tojson }}'>
-                                <Text>{{ store[scope_id + '_' + sub_type + '_data'].content }}</Text>
-                            </Storekeeper>
+                            {% if target_file and target_file in available_file_paths %}
+                                {% storekeeper(repository="file", filter={"eq": {"filename": target_file}}) as file_data %}
+                                    <Text>{{ file_data.content }}</Text>
+                                {% endstorekeeper %}
+                            {% endif %}
                         </Input>
                     </Option>
                     {% endfor %}

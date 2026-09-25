@@ -451,6 +451,21 @@ mapping_attributes = {
     presentation.Attribute.THICKNESS.value: lambda x: f"border-[{x}]" if '%' in x or 'px' in x else f"border-{x}" if 'px' in x else f"border-{x}",
 }
 
+_URL_SCHEMES = {
+    "href": {"http", "https", "mailto", "tel"},
+    "src": {"http", "https"},
+    "action": {"http", "https"},
+    "formaction": {"http", "https"},
+    "xlink:href": {"http", "https"},
+}
+
+
+def _is_safe_url_attribute(name, value):
+    normalized = re.sub(r"[\x00-\x20]+", "", str(value))
+    scheme = urlsplit(normalized).scheme.casefold()
+    return not scheme or scheme in _URL_SCHEMES.get(name, set())
+
+
 def attrs(tag_key, input_data, classe=None):
     # 1. Prendi gli attributi grezzi passati dall'utente
     raw_attrs = dict(input_data.get("attrs", {}))
@@ -513,8 +528,27 @@ def attrs(tag_key, input_data, classe=None):
     
     return {
         "class": classe,
-        **{k: v for k, v in raw_attrs.items() if k != "class"}
+        **{
+            name: value
+            for name, value in raw_attrs.items()
+            if name != "class"
+            and (
+                name.casefold() not in _URL_SCHEMES
+                or _is_safe_url_attribute(name.casefold(), value)
+            )
+        }
     }
+
+def _html_children(inner):
+    if isinstance(inner, (list, tuple)):
+        return [
+            child if isinstance(child, Markup) else markupsafe.escape(child)
+            for child in inner
+        ]
+    if inner is None:
+        return []
+    return inner if isinstance(inner, Markup) else markupsafe.escape(inner)
+
 
 class Adapter(presentation.Port):
     capabilities = {
@@ -1227,14 +1261,14 @@ class Adapter(presentation.Port):
     def node_create(self, tag, attrs=None, inner=None):
         attrs = attrs or {}
         inner = inner or []
+        children = _html_children(inner)
         # Se tag è una funzione (es. un componente funzionale/lambda)
         if callable(tag) and type(tag).__name__ == "function":
-            return str(tag({"inner": inner, "attrs": attrs}))
+            return Markup(str(tag({"inner": children, "attrs": attrs})))
         # Altrimenti trattalo come un elemento htpy standard
-        children = [Markup(i) for i in inner] if isinstance(inner, (list, tuple)) else Markup(inner or "")
         if not hasattr(tag, "__getitem__"):
-            return str(tag(**attrs))
-        return str(tag(**attrs)[children])
+            return Markup(str(tag(**attrs)))
+        return Markup(str(tag(**attrs)[children]))
     
     def node_union(self, node, context):
         pass

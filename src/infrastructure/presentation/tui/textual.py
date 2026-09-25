@@ -1,5 +1,8 @@
 import asyncio
 import re
+from time import perf_counter
+from collections import OrderedDict
+from pathlib import Path
 import framework.core.flow as flow
 import framework.service.dom as dom
 from framework.service.diagnostic import LogBuffer, get_logger
@@ -291,6 +294,7 @@ class AppDinamica(App):
         await self._render_initial_view()
 
     async def _render_initial_view(self) -> None:
+        started = perf_counter()
         try:
             result = await self.adapter.render_view(url="/")
             if not flow.check(result):
@@ -299,11 +303,15 @@ class AppDinamica(App):
                     result=flow.output(result),
                 )
                 raise RuntimeError(flow.output(result))
-            self.adapter.logger.info("Rendering iniziale completato")
+            self.adapter.logger.info(
+                "Rendering iniziale completato",
+                duration_ms=round((perf_counter() - started) * 1000, 2),
+            )
         except Exception as error:
             self.adapter.logger.error(
                 "Eccezione durante il rendering iniziale",
                 exception=error,
+                duration_ms=round((perf_counter() - started) * 1000, 2),
             )
             await self.mount(
                 Static(
@@ -395,6 +403,9 @@ class AppDinamica(App):
 
         if w is not None:
             attrs_tag = dom.attributes_from_tag(w)
+            initial_value = attrs_tag.get("value")
+            if initial_value is not None and str(event.value) == str(initial_value):
+                return
             await self._send_dsl_event(attrs_tag.get("change"), str(event.value))
 
 
@@ -435,10 +446,88 @@ class Adapter(PresentationAdapter):
         super().__init__(loader, defender, messenger, authenticator, **constants)
         self.log_buffer = log_buffer
         self.logger = get_logger("tui")
+        self._storekeeper_file_cache = OrderedDict()
         self.active_screens: Dict[str, Screen] = {}
         self.widgets = self.nodes  # alias compatibile per il runtime Textual
         self.app = AppDinamica(self)
         self.validate_adapter()
+
+    async def _load_storekeeper(self, runtime_session, attributes):
+        request = dict(attributes)
+        filters = request.get("filter")
+        equalities = filters.get("eq") if isinstance(filters, dict) else None
+        filename = equalities.get("filename") if isinstance(equalities, dict) else None
+        is_file_read = (
+            set(request).issubset({"repository", "filter", "operation", "id", "type"})
+            and
+            request.get("repository") == "file"
+            and str(request.get("operation", "gather")).casefold() in {"gather", "read"}
+            and isinstance(filename, str)
+            and bool(filename)
+            and set(filters) == {"eq"}
+            and set(equalities) == {"filename"}
+        )
+        if not is_file_read:
+            return await super()._load_storekeeper(runtime_session, attributes)
+
+        storekeeper = self.loader.get_managers().get("storekeeper")
+        repository = getattr(storekeeper, "maked", {}).get("file")
+        profiles = set(getattr(repository, "location", {}))
+        all_local_providers = [
+            provider
+            for provider in getattr(storekeeper, "persistences", [])
+            if isinstance(getattr(provider, "config", None), dict)
+            and getattr(provider, "path", None) is not None
+        ]
+        providers = [
+            provider
+            for provider in all_local_providers
+            if str(getattr(provider, "config", {}).get("name", "")).casefold()
+            in profiles
+        ]
+        if repository is None and len(all_local_providers) == 1:
+            providers = all_local_providers
+        if len(providers) != 1:
+            return await super()._load_storekeeper(runtime_session, attributes)
+
+        try:
+            root = Path(providers[0].path).resolve()
+            path = Path(filename)
+            path = path if path.is_absolute() else root / path
+            path = path.resolve()
+            path.relative_to(root)
+            current_stat = path.stat()
+        except (OSError, TypeError, ValueError):
+            return await super()._load_storekeeper(runtime_session, attributes)
+        if not path.is_file():
+            return await super()._load_storekeeper(runtime_session, attributes)
+
+        cache_key = (id(runtime_session), str(path.resolve()))
+        file_version = (
+            current_stat.st_mtime_ns,
+            current_stat.st_ctime_ns,
+            current_stat.st_size,
+        )
+        cached = self._storekeeper_file_cache.get(cache_key)
+        if cached is not None and cached[0] == file_version:
+            self._storekeeper_file_cache.move_to_end(cache_key)
+            return cached[1]
+
+        content = await super()._load_storekeeper(runtime_session, attributes)
+        try:
+            updated_stat = path.stat()
+        except OSError:
+            return content
+        if path.is_file() and file_version == (
+            updated_stat.st_mtime_ns,
+            updated_stat.st_ctime_ns,
+            updated_stat.st_size,
+        ):
+            self._storekeeper_file_cache[cache_key] = (file_version, content)
+            self._storekeeper_file_cache.move_to_end(cache_key)
+            if len(self._storekeeper_file_cache) > 32:
+                self._storekeeper_file_cache.popitem(last=False)
+        return content
 
     def _ensure_active_app(self):
         if hasattr(self, 'app') and self.app:
@@ -474,6 +563,7 @@ class Adapter(PresentationAdapter):
         self._ensure_active_app()
 
     async def _show_screen(self, screen):
+        started = perf_counter()
         self.logger.debug(
             "Textual._show_screen: inizio",
             screen=type(screen).__name__,
@@ -487,6 +577,7 @@ class Adapter(PresentationAdapter):
             "Textual._show_screen: completato",
             screen_stack=len(self.app._screen_stack),
             active=type(self.app.screen).__name__,
+            duration_ms=round((perf_counter() - started) * 1000, 2),
         )
 
     async def _push_screen(self, screen):
@@ -535,6 +626,7 @@ class Adapter(PresentationAdapter):
                 session,
                 controllers=getattr(self, "_current_view_controllers", []),
                 text=view_text,
+                _fragment_refresh=True,
             )
 
         xml_fragment = self.DOM.get(node_id)

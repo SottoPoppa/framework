@@ -5,6 +5,7 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Grid, HorizontalGroup, Vertical
+from textual.geometry import Spacing
 from textual.screen import ModalScreen, Screen
 from textual.widgets import (
     Label, Markdown, MarkdownViewer, Pretty, Digits, Log, RichLog,
@@ -92,6 +93,32 @@ def _parse_data(raw) -> List[float]:
     return []
 
 
+def _parse_spacing(raw) -> Spacing | None:
+    parts = str(raw).replace(",", " ").split()
+    values = []
+    for part in parts:
+        if part.endswith("px"):
+            part = part[:-2]
+        try:
+            values.append(int(part))
+        except ValueError:
+            return None
+
+    if len(values) == 1:
+        top = right = bottom = left = values[0]
+    elif len(values) == 2:
+        top = bottom = values[0]
+        right = left = values[1]
+    elif len(values) == 3:
+        top, right, bottom = values
+        left = right
+    elif len(values) == 4:
+        top, right, bottom, left = values
+    else:
+        return None
+    return Spacing(top, right, bottom, left)
+
+
 _NON_STYLE_KEYS = {
     "id", "class", "type", "name", "value", "placeholder", "title", "path",
     "label", "data", "required", "disabled", "readonly", "max", "min",
@@ -113,6 +140,10 @@ def attrs(widget_instance, attrs_dict: Dict[str, Any] = None):
         key_norm = key.lower()
         if key_norm in _NON_STYLE_KEYS:
             continue
+        if key_norm in {"padding", "margin"}:
+            value = _parse_spacing(value)
+            if value is None:
+                continue
         try:
             if key_norm == "overflow":
                 widget_instance.styles.overflow_x = value
@@ -238,7 +269,10 @@ def _make_tabbed_content(x: Dict[str, Any]):
         if not option.content:
             raise ValueError("<Option> di un Group type='tab' richiede contenuto")
         panes.append(TabPane(option.label, *option.content, id=option.value or None))
-    tabbed = TabbedContent(id=_attr(x, "id"))
+    tabbed = TabbedContent(
+        id=_attr(x, "id"),
+        initial=_attr(x, "value", ""),
+    )
     for pane in panes:
         tabbed.compose_add_child(pane)
     return attrs(tabbed, x.get("attrs", {}))

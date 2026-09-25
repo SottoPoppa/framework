@@ -357,8 +357,16 @@ class Adapter(persistence.Port):
             return flow.error(f"La path '{self.path}' non esiste o non è valida.")
         
         all_items = []
+        excluded_dirs = constants.get('exclude_dirs', ())
+        if isinstance(excluded_dirs, str):
+            excluded_dirs = (excluded_dirs,)
+        excluded_dirs = {
+            directory for directory in excluded_dirs
+            if isinstance(directory, str) and directory
+        }
         try:
             for root, dirs, files in os.walk(self.path):
+                dirs[:] = [directory for directory in dirs if directory not in excluded_dirs]
                 relative_root = os.path.relpath(root, self.path)
                 if relative_root == ".":
                     relative_root = ""

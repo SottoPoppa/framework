@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from time import perf_counter
 
 from jinja2 import (
     Environment,
@@ -7,16 +8,19 @@ from jinja2 import (
     StrictUndefined,
     TemplateError,
     TemplateNotFound,
+    TemplateSyntaxError,
     Undefined,
     nodes,
     select_autoescape,
 )
+from jinja2.ext import Extension
 import framework.core.flow as flow
 import framework.service.dom as dom
 import framework.service.scheme as scheme
+from framework.service.diagnostic import get_logger
 
 class DeferredUndefined(Undefined):
-    """Mantiene le espressioni da valutare dopo un nodo dati asincrono."""
+    """Preserva le espressioni Jinja non risolte nel primo passaggio."""
 
     def __init__(self, hint=None, obj=None, name=None, exc=None, expression=None):
         super().__init__(hint=hint, obj=obj, name=name, exc=exc)
@@ -45,6 +49,56 @@ class DeferredUndefined(Undefined):
 
     def __iter__(self):
         return iter(())
+
+
+class AsyncBlockExtension(Extension):
+    tags = {"storekeeper", "messenger"}
+
+    def parse(self, parser):
+        token = next(parser.stream)
+        block_name = token.value
+        args, kwargs, dynamic_args, dynamic_kwargs = parser.parse_call_args()
+        if args or dynamic_args is not None or dynamic_kwargs is not None:
+            raise TemplateSyntaxError(
+                f"{block_name} accetta solo argomenti nominati",
+                token.lineno,
+            )
+        parser.stream.expect("name:as")
+        variable = parser.stream.expect("name").value
+        body = parser.parse_statements(
+            (f"name:end{block_name}",),
+            drop_needle=True,
+        )
+        call = self.call_method(
+            "_render",
+            [nodes.ContextReference(), nodes.Const(block_name)],
+            kwargs=kwargs,
+            lineno=token.lineno,
+        )
+        return nodes.CallBlock(
+            call,
+            [nodes.Name(variable, "param")],
+            [],
+            body,
+        ).set_lineno(token.lineno)
+
+    async def _render(self, context, block_name, caller, **request):
+        loaders = context.get("_async_block_loaders", {})
+        loader = loaders.get(block_name)
+        if not callable(loader):
+            raise RuntimeError(
+                f"Blocco Jinja '{block_name}' non disponibile nel template"
+            )
+        started = perf_counter()
+        value = await loader(request)
+        get_logger("template").debug(
+            "Blocco asincrono completato",
+            block=block_name,
+            operation=request.get("operation", "receive" if block_name == "messenger" else "gather"),
+            repository=request.get("repository"),
+            duration_ms=round((perf_counter() - started) * 1000, 2),
+        )
+        return await caller(value)
 
 
 def _result_output(value):
@@ -164,9 +218,11 @@ async def render(
     file=None,
     controllers=None,
     source_name=None,
-    prepare_context=None,
+    async_block_loaders=None,
     **constants,
 ):
+    logger = get_logger("template")
+    render_started = perf_counter()
     if text is None and file is None:
         raise ValueError("No text or file provided")
     if text is None:
@@ -182,7 +238,10 @@ async def render(
         loader=FileSystemLoader("src/application/view/layout/"),
         autoescape=select_autoescape(["html", "xml"]),
         undefined=DeferredUndefined,
+        extensions=(AsyncBlockExtension,),
+        enable_async=True,
     )
+    compile_started = perf_counter()
     try:
         template = environment.from_string(text)
     except TemplateError as error:
@@ -194,21 +253,45 @@ async def render(
             source_line=line,
             source_function="Jinja template",
         ) from error
+    logger.debug(
+        "Template compilato",
+        source=source_name,
+        duration_ms=round((perf_counter() - compile_started) * 1000, 2),
+    )
     data = {}
     manager_context = {"manager": managers}
     for controller in controllers or []:
+        controller_started = perf_counter()
         run_result = await runtime_session.run(
             controller,
             manager_context,
         )
         data[controller] = flow.unwrap(run_result)
+        logger.info(
+            "Controller di rendering completato",
+            source=source_name,
+            controller=controller,
+            duration_ms=round((perf_counter() - controller_started) * 1000, 2),
+        )
 
     #raise Exception(data)
 
     render_context = constants | data | manager_context
-    if prepare_context is not None:
-        render_context = await prepare_context(runtime_session, text, render_context)
-    content = template.render(render_context)
+    template_context = render_context
+    if async_block_loaders is not None:
+        template_context = {
+            **render_context,
+            "_async_block_loaders": async_block_loaders,
+        }
+    jinja_started = perf_counter()
+    content = await template.render_async(template_context)
+    logger.info(
+        "Jinja render completato",
+        source=source_name,
+        duration_ms=round((perf_counter() - jinja_started) * 1000, 2),
+        characters=len(content),
+    )
+    xml_started = perf_counter()
     try:
         xml = dom.parse(content)
     except dom.parse_error() as error:
@@ -227,9 +310,22 @@ async def render(
                 f"> {line}: {rendered_line}" if line and rendered_line else None
             ),
         ) from error
-    return await render_node(
+    logger.debug(
+        "XML template analizzato",
+        source=source_name,
+        duration_ms=round((perf_counter() - xml_started) * 1000, 2),
+    )
+    widgets_started = perf_counter()
+    rendered = await render_node(
         content,
         xml,
-        {"_jinja_context": render_context},
+        {},
         runtime_session=runtime_session,
     )
+    logger.info(
+        "Widget template costruiti",
+        source=source_name,
+        duration_ms=round((perf_counter() - widgets_started) * 1000, 2),
+        total_duration_ms=round((perf_counter() - render_started) * 1000, 2),
+    )
+    return rendered

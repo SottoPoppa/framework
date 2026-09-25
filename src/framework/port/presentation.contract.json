@@ -39,16 +39,13 @@
     ],
     "shutdown": [
       "Port.shutdown"
-    ],
-    "storekeeper_render": [
-      "StorekeeperView.render"
     ]
   },
   "hashes": {
     "Port": {
       "initialize": {
-        "production": "c17202ab7d9c2214c87c1ce267da8441761634a1941a7b552f3c79a4f9c053c5",
-        "test": "c17202ab7d9c2214c87c1ce267da8441761634a1941a7b552f3c79a4f9c053c5"
+        "production": "bffa3401ae94542422261445447d79fe186fa37278ac745b11ae9f8ec2571bf5",
+        "test": "bffa3401ae94542422261445447d79fe186fa37278ac745b11ae9f8ec2571bf5"
       },
       "mount_css": {
         "production": "d88ddbbf7228fed9edb1a6856ebd17da91b532b82466fa4bc7bee659362dced4",
@@ -97,12 +94,6 @@
       "shutdown": {
         "production": "92e314167fe712b541cef250cb65bff9660b6c7284a72c082549a40ecb1a773e",
         "test": "92e314167fe712b541cef250cb65bff9660b6c7284a72c082549a40ecb1a773e"
-      }
-    },
-    "StorekeeperView": {
-      "render": {
-        "production": "92d187014f323f52195eb1288a15717d57da576b3647d88887fd5066a443b067",
-        "test": "92d187014f323f52195eb1288a15717d57da576b3647d88887fd5066a443b067"
       }
     }
   },

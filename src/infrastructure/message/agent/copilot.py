@@ -136,7 +136,7 @@ class Adapter(message.Port):
         normalized_pattern = self._queue_domain(pattern)
         queue = self._queues[(session_id, normalized_pattern)]
         if self.config.get("test_mode") and queue.empty():
-            return None
+            return flow.error("Copilot test mode has no message available")
         while True:
             item = await queue.get()
             if self._matches(pattern, item.get("domain", "general")):

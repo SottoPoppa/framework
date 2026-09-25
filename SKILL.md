@@ -388,9 +388,11 @@ Dettaglio operativo:
 
 La UI si definisce in XML, renderizzato in HTML/Tailwind dall'adapter di presentazione. Per l'elenco completo di tag e attributi, fai sempre riferimento a `src/application/view.md`.
 
-**Escaping obbligatorio:** `&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`.
+Le viste XML usano l'autoescape Jinja e il driver web esegue l'escaping dei
+figli testuali. Non applicare `|safe` a valori applicativi, persistiti o forniti
+dall'utente; usarlo soltanto per markup DSL composto dal framework.
 
-**Tag principali:** `<Window>`, `<Navigation>`, `<Row>`/`<Column>`, `<Text>` (tipo H1-H6/p/span via attributo `type`), `<Action>`, `<Container>`, `<Divider>`, `<Icon>`, `<SVG>`. Ogni file XML in `view/component/` diventa un tag custom usabile altrove (es. `<MyCard />`), con `{{ inner | safe }}` per iniettare i children.
+**Tag principali:** `<Window>`, `<Navigation>`, `<Row>`/`<Column>`, `<Text>` (tipo H1-H6/p/span via attributo `type`), `<Action>`, `<Container>`, `<Divider>`, `<Icon>`, `<SVG>`. Ogni file XML in `view/component/` diventa un tag custom usabile altrove (es. `<MyCard />`). Se un componente usa `{{ inner | safe }}`, `inner` deve contenere soltanto markup DSL composto dal framework, mai testo non attendibile.
 
 **Attributi comuni (mappati su Tailwind):** `width`/`height`, `padding`/`margin` (valori separati da virgola), `justify`/`align`, `background` (hex o gradiente), `matter` (`glass`, `glass-max`), `font` (`bold`, `mono`, `black`, `extrabold`).
 
@@ -403,51 +405,52 @@ supportare i tag base usati dai wrapper, in particolare `container` e `text`.
 
 #### Storekeeper
 
-`Storekeeper` esegue una lettura o un'altra operazione del manager omonimo e
-renderizza i figli dopo aver ricevuto il risultato. L'attributo `id` identifica
-il widget e contemporaneamente il risultato nel namespace Jinja `store`:
+Le letture nelle viste usano il blocco Jinja asincrono `storekeeper(...)`.
+L'operazione viene eseguita solo quando il flusso Jinja raggiunge il blocco; un
+ramo non renderizzato non effettua letture. Il risultato viene associato al nome
+locale dichiarato con `as`:
 
-```xml
-<Storekeeper id="files" operation="read" repository="file"
-             filter='{{ {"eq": {"filename": selected_file}} | tojson }}'>
-    <Text>{{ store.files.content }}</Text>
-</Storekeeper>
+```jinja
+{% if selected_file %}
+    {% storekeeper(repository="file", filter={"eq": {"filename": selected_file}}) as file_data %}
+        <Text>{{ file_data.content }}</Text>
+    {% endstorekeeper %}
+{% endif %}
 ```
 
-Non usare l'alias direttamente come variabile globale (`files.content`). Il
-namespace `store` evita collisioni con controller, manager e variabili Jinja
-come `terminal.files`. Non aggiungere un attributo `as`: `id` è l'unico nome
-necessario.
+Il blocco consente solo `gather` e `overview` (default `gather`); le scritture
+restano nei controller DSL. Il tag XML `<Storekeeper>` non è supportato e viene
+rifiutato dal renderer: usare il blocco Jinja per ogni lettura dati nella vista.
 
-Il risultato del manager resta isolato nel contesto del nodo e non viene
-trasferito automaticamente tra sessioni. I filtri e gli altri attributi JSON
-devono essere serializzati con `tojson` quando contengono espressioni Jinja.
+Gli argomenti del blocco sono normali espressioni Jinja: passare i filtri come
+oggetti, senza serializzarli con `tojson`. I risultati restano nel contesto della
+renderizzazione corrente e non vengono trasferiti automaticamente tra sessioni.
 
 #### Messenger
 
-Senza `operation`, `Messenger` legge un messaggio dal manager e lo visualizza:
+La ricezione usa il blocco Jinja asincrono `messenger(...)`; il risultato è
+locale al blocco e va controllato prima di renderizzarne i campi:
 
-```xml
-<Messenger id="notice" domain="console:info" />
+```jinja
+{% messenger(domain="console:info") as notice %}
+    {% if notice %}
+        <Text>{{ notice.message }}</Text>
+    {% endif %}
+{% endmessenger %}
 ```
 
-Con figli, il messaggio ricevuto è disponibile attraverso l'alias del tag:
+Gli invii sono effetti collaterali e restano nei controller DSL, non nelle viste:
 
-```xml
-<Messenger id="notice" domain="console:info">
-    <Text>{{ notice.message }}</Text>
-</Messenger>
+```dsl
+notify(entry: false) -> messenger.send(
+    session,
+    receiver: "console",
+    domain: "info",
+    message: "File salvato"
+);
 ```
 
-Per inviare un messaggio usare esplicitamente `operation="send"`:
-
-```xml
-<Messenger operation="send" domain="console:info">
-    File salvato
-</Messenger>
-```
-
-La ricezione avviene durante il rendering iniziale del tag. Un messaggio
+La ricezione avviene durante il rendering iniziale del blocco. Un messaggio
 arrivato dopo il rendering non aggiorna automaticamente la vista: per questo
 serve un flusso reattivo separato, ad esempio un evento DSL e un `rebuild`.
 

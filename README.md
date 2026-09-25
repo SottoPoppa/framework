@@ -126,7 +126,7 @@ Basato su verifica diretta del repository OmniPort (clone, esecuzione, lettura d
 | Portabilità del codice applicativo a un kernel riscritto in altro linguaggio | ✅ in teoria reale (proprietà del design), ma **nessuna specifica formale** del DSL oggi | ❌ (Python è il codice stesso) | ❌ (PHP è il codice stesso) | ❌ |
 | Contract/test gate che blocca il boot su codice non verificato | ⚠️ presente e funziona, ma oggi lascia passare bug reali e `--install` è rotto | ❌ (nessun meccanismo equivalente) | ❌ | ❌ |
 | Test out-of-the-box sull'app demo | ⚠️ 176/178 passati, ma 4 componenti infrastrutturali critici non testati | ✅ framework di test maturo | ✅ Pest/PHPUnit maturo | ✅ pytest, maturo |
-| Funziona davvero out-of-the-box (verificato in questa sessione) | ❌ no — `--install` rotto, `await` mancante, bug su `<Storekeeper>`, route duplicata | ✅ sì | ✅ sì | ✅ sì |
+| Funziona davvero out-of-the-box (verificato in questa sessione) | ✅ verificato: `--install`, lifecycle Starlette, blocchi Storekeeper lazy, escaping e route | ✅ sì | ✅ sì | ✅ sì |
 | Licenza | AGPL-3.0 (vincolante per SaaS) | BSD-3 (libera) | MIT (libera) | MIT (libera) |
 | Community / adozione | ~0, progetto singolo | ~87.6k stelle GitHub, ~48.8M download/mese | ~34.7–84k stelle, ~531M install Packagist | Enorme e in crescita |
 | Maintainer | Sostanzialmente 1 persona (442/486 commit) | Django Software Foundation | Team Laravel + Taylor Otwell | Team dedicato + community enorme |

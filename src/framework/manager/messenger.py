@@ -224,7 +224,7 @@ class Manager(manager.Port):
                 receiver=destination,
                 domain=domain,
             )
-            return None
+            return flow.error("Nessun provider di messaggistica disponibile per la ricezione")
 
         authorized = []
         for provider in matched:
@@ -247,12 +247,14 @@ class Manager(manager.Port):
         ]
 
         if not tasks:
-            self.logger.debug(
+            self.logger.warning(
                 "Messenger: nessun provider autorizzato per la ricezione",
                 receiver=destination,
                 domain=domain,
             )
-            return None
+            return flow.error(
+                "Nessun provider di messaggistica autorizzato per la ricezione"
+            )
 
         try:
             done, _pending = await asyncio.wait(
@@ -291,18 +293,32 @@ class Manager(manager.Port):
                 )
             successful = [result for result in results if result not in failures]
 
-            if successful:
+            message_results = [
+                result
+                for result in successful
+                if (flow.output(result) if flow.is_result(result) else result) is not None
+            ]
+            if message_results:
                 self.logger.debug(
                     "Messenger: ricezione completata",
                     receiver=destination,
                     domain=domain,
                 )
-                return successful[0]
+                return message_results[0]
+            if successful:
+                self.logger.error(
+                    "Messenger: provider ha completato la ricezione senza un messaggio",
+                    receiver=destination,
+                    domain=domain,
+                )
+                return flow.error(
+                    "Il provider di messaggistica ha terminato la lettura senza un messaggio"
+                )
             if failures:
                 return failures[0]
             if errors:
                 return flow.error(errors[0])
-            return None
+            return flow.error("Nessun messaggio ricevuto dai provider")
 
         except Exception as exc:
             self.logger.error("Errore nel loop di ricezione", exception=exc)
