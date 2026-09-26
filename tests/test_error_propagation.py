@@ -136,6 +136,51 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(messenger.send.await_count, 1)
 
+    async def test_textual_click_syncs_matching_select_after_success(self):
+        messenger = types.SimpleNamespace(
+            send=AsyncMock(return_value=flow.success(None))
+        )
+        adapter = types.SimpleNamespace(
+            messenger=messenger,
+            session=object(),
+            logger=Mock(),
+            log_buffer=object(),
+            render_view=AsyncMock(return_value=flow.success(None)),
+            node_get=Mock(
+                return_value=dom_service.parse(
+                    '<Input id="select" value="initial.py" change="terminal:select"/>'
+                )
+            ),
+        )
+        app = AppDinamica(adapter)
+        source = types.SimpleNamespace(
+            _dsl_click="terminal:select",
+            _dsl_value="next.py",
+            parent=None,
+        )
+
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            select = Select(
+                [("Initial", "initial.py"), ("Next", "next.py")],
+                value="initial.py",
+                id="select",
+            )
+            await app.screen.mount(select)
+            await pilot.pause()
+
+            await app.on_click(types.SimpleNamespace(widget=source))
+            await pilot.pause()
+
+            self.assertEqual(select.value, "next.py")
+            messenger.send.assert_awaited_once_with(
+                adapter.session,
+                adapter="dsl",
+                receiver="terminal",
+                domain="select",
+                message="next.py",
+            )
+
     async def test_textual_storekeeper_cache_reuses_unchanged_files(self):
         with tempfile.TemporaryDirectory() as root:
             filename = Path(root, "editor.py")
@@ -206,9 +251,105 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn('<Option value="src/cache_probe.py"/>', initial)
         self.assertNotIn('<Option value="src/cache_probe.py"/>', refreshed)
+        self.assertNotRegex(initial, r'value="\{\{\s*\}\}"')
+        self.assertNotRegex(refreshed, r'value="\{\{\s*\}\}"')
         self.assertRegex(
             initial,
             r'<Group id="workspace-editors" type="tab"[^>]*value="infrastructure"',
+        )
+
+    async def test_template_render_uses_explicit_context_without_running_controllers(self):
+        runtime_session = types.SimpleNamespace(
+            run=AsyncMock(side_effect=AssertionError("controller was re-executed")),
+        )
+
+        async def render_node(parent, node, context, runtime_session=None):
+            return dom_service.serialize(node)
+
+        rendered = await template_service.render(
+            Infrastructure(),
+            {},
+            runtime_session,
+            render_node,
+            text=(
+                "<Window><Text>{{ terminal.selected }}</Text>"
+                "<Text>{{ chat.message }}</Text></Window>"
+            ),
+            controller_context={
+                "terminal": {"selected": "widgets.py"},
+                "chat": {"message": ""},
+            },
+        )
+
+        self.assertIn("widgets.py", rendered)
+        runtime_session.run.assert_not_awaited()
+
+    async def test_route_controller_execution_is_explicit(self):
+        managers = {"presenter": object()}
+        runtime_session = types.SimpleNamespace(
+            run=AsyncMock(
+                side_effect=[
+                    flow.success({"selected": "widgets.py"}),
+                    flow.success({"message": ""}),
+                ]
+            )
+        )
+        adapter = object.__new__(starlette_web.Adapter)
+        adapter.loader = types.SimpleNamespace(
+            get_managers=Mock(return_value=managers)
+        )
+
+        controller_context = await adapter.execute_controllers(
+            runtime_session,
+            ("terminal", "chat"),
+        )
+
+        self.assertEqual(
+            controller_context,
+            {
+                "terminal": {"selected": "widgets.py"},
+                "chat": {"message": ""},
+            },
+        )
+        self.assertEqual(runtime_session.run.await_count, 2)
+        self.assertEqual(
+            [call.args[0] for call in runtime_session.run.await_args_list],
+            ["terminal", "chat"],
+        )
+        self.assertIs(
+            runtime_session.run.await_args_list[0].args[1]["manager"],
+            managers,
+        )
+
+    async def test_textual_replaces_tabbed_content_instead_of_reconciling_it(self):
+        adapter = TextualAdapter(None, None, None, None, None)
+        current = _make_tabbed_content({
+            "attrs": {"id": "workspace-editors", "value": "application"},
+            "inner": [
+                OptionValue(
+                    "application",
+                    "application",
+                    content=[Static("primo")],
+                )
+            ],
+        })
+        rendered = _make_tabbed_content({
+            "attrs": {"id": "workspace-editors", "value": "infrastructure"},
+            "inner": [
+                OptionValue(
+                    "infrastructure",
+                    "infrastructure",
+                    content=[Static("secondo")],
+                )
+            ],
+        })
+
+        self.assertFalse(
+            await adapter._update_widget_in_place(
+                current,
+                rendered,
+                {"id": "workspace-editors"},
+            )
         )
 
     async def test_dsl_resource_defers_templates_and_expands_policy_includes(self):
@@ -1525,32 +1666,18 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(raised.exception.value, "runtime session failed")
 
-    async def test_template_propagates_controller_failure(self):
-        class Template:
-            def render(self, _context):
-                return "<root />"
-
-        class Environment:
-            def from_string(self, _text):
-                return Template()
-
+    async def test_controller_execution_propagates_controller_failure(self):
         class RuntimeSession:
             async def run(self, *_args):
                 return flow.error("controller failed")
 
-        async def render_node(*_args, **_kwargs):
-            return "rendered"
+        adapter = object.__new__(starlette_web.Adapter)
+        adapter.loader = types.SimpleNamespace(
+            get_managers=lambda: {},
+        )
 
-        with patch.object(template_service, "get_jinja", return_value=Environment()):
-            with self.assertRaises(flow.FlowError) as raised:
-                await template_service.render(
-                    None,
-                    {},
-                    RuntimeSession(),
-                    render_node,
-                    text="<root />",
-                    controllers=["kanban"],
-                )
+        with self.assertRaises(flow.FlowError) as raised:
+            await adapter.execute_controllers(RuntimeSession(), ["kanban"])
 
         self.assertEqual(raised.exception.value, "controller failed")
 

@@ -7,16 +7,13 @@
     {%- endmacro %}
 
     {% set available_file_paths = (terminal.files | value | map(attribute='relative_path') | list) if terminal.files | check else [] %}
-    {% set selected_scope = 'application' %}
-    {% if terminal.select and terminal.select.startswith('src/framework/') %}
-        {% set selected_scope = 'framework' %}
-    {% elif terminal.select and terminal.select.startswith('src/infrastructure/') %}
-        {% set selected_scope = 'infrastructure' %}
-    {% endif %}
+    {% set global_file = terminal.select | default('', true) %}
+    {% set selected_scope = terminal.selected_scope | default('application', true) %}
 
     <!-- Toolbar -->
     <Row id="toolbar" align="center" justify="between" height="5">
-        <Input id="select" height="3" value="{{ terminal.select }}" change="terminal:select" placeholder="Seleziona un file" type="select">
+        <Text>File globale</Text>
+        <Input id="select" height="3" value="{{ global_file }}" change="terminal:select" placeholder="Seleziona il file globale" type="select">
             {% if not (_fragment_refresh | default(false)) and terminal.files | check %}
                 {% for item in terminal.files | value %}
                     <Option value="{{ item['relative_path'] }}"/>
@@ -31,14 +28,34 @@
     <!-- Main Workspace (Generato dinamicamente per le 3 sezioni) -->
     <Group id="workspace-editors" type="tab" height="1fr" value="{{ selected_scope }}">
         {% set scope_config = [
-            ('application', terminal.select_application, terminal.application_files),
-            ('framework', terminal.select_framework, terminal.framework_files),
-            ('infrastructure', terminal.select_infrastructure, terminal.infrastructure_files)
+            ('application', 'Applicazione', terminal.application_files),
+            ('framework', 'Framework', terminal.framework_files),
+            ('infrastructure', 'Infrastruttura', terminal.infrastructure_files)
         ] %}
 
-        {% for scope_id, selected_file, file_list in scope_config %}
-        <Option title="{{ scope_id }}" value="{{ scope_id }}">
+        {% for scope_id, scope_label, file_list in scope_config %}
+        {% set scope_files = file_list | default([], true) %}
+        {% set section_selected_file = (
+            terminal.select_application if scope_id == 'application' else
+            terminal.select_framework if scope_id == 'framework' else
+            terminal.select_infrastructure
+        ) | default('', true) %}
+        {% if section_selected_file in scope_files %}
+            {% set selected_file = section_selected_file %}
+        {% elif global_file in scope_files %}
+            {% set selected_file = global_file %}
+        {% elif scope_files %}
+            {% set selected_file = scope_files[0] %}
+        {% else %}
+            {% set selected_file = '' %}
+        {% endif %}
+        <Option title="{{ scope_label }}" value="{{ scope_id }}">
             <Column id="{{ scope_id }}" width="100%"  padding="0,1">
+                <Row align="center" justify="between" height="3">
+                    <Text>File associati al globale</Text>
+                    <Text>{{ scope_files | length }}</Text>
+                </Row>
+                {% if scope_files %}
                 <Group id="{{ scope_id }}-editors" type="tab" height="1fr">
                     {% for sub_type in ['file', 'test', 'contract'] %}
                     {% set current_file = selected_file | default('', true) %}
@@ -61,12 +78,14 @@
                     {% endfor %}
                 </Group>
 
-                <!-- Navigation Tabs -->
                 <Navigation type="tabs" height="5px" value="{{ selected_file }}">
-                    {% for item in file_list %}
+                    {% for item in scope_files %}
                     <Option value="{{ item }}" click="terminal:select_{{ scope_id }}"/>
                     {% endfor %}
                 </Navigation>
+                {% else %}
+                <Text>Nessun file associato al file globale in questa sezione.</Text>
+                {% endif %}
             </Column>
         </Option>
         {% endfor %}

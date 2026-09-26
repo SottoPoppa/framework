@@ -107,6 +107,13 @@ class SessionHandle:
     def execution(self, dag_name: str):
         return self._executions.get(dag_name)
 
+    def controller_context(self, dag_name: str) -> dict[str, Any] | None:
+        """Restituisce il contesto visibile dell'ultima esecuzione di un DAG."""
+        execution = self.execution(dag_name)
+        if execution is None:
+            return None
+        return self._visible_context(execution)
+
     @property
     def context(self) -> Scope:
         return self._context

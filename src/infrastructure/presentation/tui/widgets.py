@@ -2,9 +2,12 @@ import framework.port.presentation as presentation
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from rich.text import Text
+from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Grid, HorizontalGroup, Vertical
+from textual.css.query import NoMatches
+from textual.events import Resize
 from textual.geometry import Spacing
 from textual.screen import ModalScreen, Screen
 from textual.widgets import (
@@ -15,6 +18,7 @@ from textual.widgets import (
     TabbedContent, TabPane, LoadingIndicator, Placeholder, DataTable,
     Tree, DirectoryTree, Sparkline, Collapsible, Header, Footer,
 )
+from textual.widgets._tabs import Underline
 
 
 def _attr(x: Dict[str, Any], key: str, default=None):
@@ -219,6 +223,15 @@ def _collapsible(default_title: str):
     )
 
 
+class DslTabs(Tabs):
+    @on(Resize)
+    def _skip_resize_until_composed(self, event: Resize):
+        try:
+            self.query_one(Underline)
+        except NoMatches:
+            event.prevent_default()
+
+
 def _make_tabs(x):
     tabs = []
     for option in _option_values(x):
@@ -226,7 +239,7 @@ def _make_tabs(x):
         tab._dsl_click = option._dsl_click
         tab._dsl_value = option._dsl_value
         tabs.append(tab)
-    tabs_widget = attrs(Tabs(*tabs, id=_attr(x, "id")), x.get("attrs", {}))
+    tabs_widget = attrs(DslTabs(*tabs, id=_attr(x, "id")), x.get("attrs", {}))
     active = _attr(x, "value")
     if active is not None:
         for tab in tabs_widget._tabs:

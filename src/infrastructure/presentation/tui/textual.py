@@ -12,12 +12,14 @@ from typing import Dict, Any
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import (
-    Button, Input, Select, TextArea, Static, Tab, RichLog,
+    Button, Input, Select, TextArea, Static, Tab, RichLog, Markdown,
+    Checkbox, Link, RadioButton, TabbedContent,
 )
 from textual.containers import Horizontal
 from textual.screen import Screen, ModalScreen
 from textual.events import Click
 from infrastructure.presentation.tui.widgets import (
+    DslTabs,
     tags,
     attrs,
     XmlScreen,
@@ -185,6 +187,7 @@ class AppDinamica(App):
     def __init__(self, adapter, **kwargs):
         super().__init__(**kwargs)
         self.adapter = adapter
+        self._programmatic_select_changes = {}
 
     def _form_payload(self):
         payload = {}
@@ -212,13 +215,59 @@ class AppDinamica(App):
         receiver, domain = event_name.split(":", 1)
         if not receiver or not domain:
             return
-        await self.adapter.messenger.send(
+        result = await self.adapter.messenger.send(
             self.adapter.session,
             adapter="dsl",
             receiver=receiver,
             domain=domain,
             message=message,
         )
+        if flow.is_result(result) and flow.check(result):
+            self._sync_linked_selects(event_name, message)
+            if receiver == "terminal" and domain == "select" and isinstance(message, str):
+                scope = (
+                    "framework" if message.startswith("src/framework/")
+                    else "infrastructure" if message.startswith("src/infrastructure/")
+                    else "application"
+                )
+                scoped_result = await self.adapter.messenger.send(
+                    self.adapter.session,
+                    adapter="dsl",
+                    receiver=receiver,
+                    domain=f"select_{scope}",
+                    message=message,
+                )
+                if flow.is_result(scoped_result) and not flow.check(scoped_result):
+                    return scoped_result
+        return result
+
+    def _sync_linked_selects(self, event_name, value):
+        if not isinstance(value, str):
+            return
+        active_screen = getattr(self, "screen", None)
+        if active_screen is None:
+            return
+        for select in active_screen.query(Select):
+            node = self.adapter.node_get(select.id)
+            if node is None:
+                continue
+            attributes = dom.attributes_from_tag(node)
+            if attributes.get("change") != event_name:
+                continue
+            if value in select._legal_values and str(select.value) != value:
+                self._programmatic_select_changes[select.id] = value
+                select.value = value
+
+        if event_name == "terminal:select":
+            selected_scope = (
+                "framework" if value.startswith("src/framework/")
+                else "infrastructure" if value.startswith("src/infrastructure/")
+                else "application"
+            )
+            for tabbed_content in active_screen.query(TabbedContent):
+                if tabbed_content.id == "workspace-editors":
+                    tabbed_content.active = selected_scope
+                    break
 
     def check_action(self, action, parameters):
         widget = self.focused
@@ -399,6 +448,13 @@ class AppDinamica(App):
 
     @flow.request_boundary
     async def on_select_changed(self, event: Select.Changed) -> None:
+        programmatic_value = self._programmatic_select_changes.pop(
+            event.select.id,
+            None,
+        )
+        if programmatic_value is not None and str(event.value) == programmatic_value:
+            return
+
         w = self.adapter.node_get(event.select.id)
 
         if w is not None:
@@ -590,6 +646,172 @@ class Adapter(PresentationAdapter):
         if isinstance(self.app.screen, ModalScreen):
             self.app.pop_screen()
 
+    def mount_tag(self, tag, attrs=None, inner=None, in_svg=False):
+        widget = super().mount_tag(tag, attrs, inner, in_svg)
+        widget._dsl_attrs = dict(attrs or {})
+        return widget
+
+    @staticmethod
+    def _widget_render_state(widget):
+        if isinstance(widget, Button):
+            return {"label": widget.label}
+        if isinstance(widget, TextArea):
+            return {
+                "text": widget.text,
+                "language": widget.language,
+                "theme": widget.theme,
+            }
+        if isinstance(widget, Input):
+            return {
+                "value": widget.value,
+                "placeholder": widget.placeholder,
+                "password": widget.password,
+            }
+        if isinstance(widget, Select):
+            return {
+                "options": tuple(widget._options),
+                "value": widget.value,
+            }
+        if isinstance(widget, Markdown):
+            return {"markdown": widget._markdown}
+        if isinstance(widget, Link):
+            return {"renderable": widget.content, "url": widget.url}
+        if isinstance(widget, (Checkbox, RadioButton)):
+            return {"label": widget.label, "value": widget.value}
+        if isinstance(widget, Static):
+            return {"renderable": widget.content}
+
+        state = {}
+        for attribute in ("label", "value", "title"):
+            if hasattr(widget, attribute):
+                state[attribute] = getattr(widget, attribute)
+        return state or None
+
+    @staticmethod
+    async def _set_widget_render_state(widget, attribute, value):
+        if attribute == "renderable":
+            result = widget.update(value)
+        elif attribute == "text" and isinstance(widget, TextArea):
+            result = widget.load_text(value)
+        elif attribute == "markdown" and isinstance(widget, Markdown):
+            result = widget.update(value)
+        elif attribute == "options" and isinstance(widget, Select):
+            selected = widget.value
+            options = [
+                option for option in value
+                if option[1] != widget.NULL
+            ]
+            widget.set_options(options)
+            if selected in widget._legal_values:
+                widget.value = selected
+            result = None
+        else:
+            result = setattr(widget, attribute, value)
+        if hasattr(result, "__await__"):
+            await result
+
+    async def _reconcile_widget_children(self, parent, rendered_children):
+        current_children = list(parent.children)
+        unused_children = list(current_children)
+        desired_children = []
+
+        for index, rendered_child in enumerate(rendered_children):
+            rendered_id = getattr(rendered_child, "_dsl_node_id", None)
+            current_child = next(
+                (
+                    child for child in unused_children
+                    if rendered_id
+                    and getattr(child, "_dsl_node_id", None) == rendered_id
+                ),
+                None,
+            )
+            if current_child is None and index < len(current_children):
+                positional_child = current_children[index]
+                current_id = getattr(positional_child, "_dsl_node_id", None)
+                if (
+                    positional_child in unused_children
+                    and rendered_id == current_id
+                ):
+                    current_child = positional_child
+
+            if current_child is not None and await self._update_widget_in_place(
+                current_child,
+                rendered_child,
+                getattr(rendered_child, "_dsl_attrs", {}),
+            ):
+                unused_children.remove(current_child)
+                desired_children.append(current_child)
+                node_id = getattr(current_child, "_dsl_node_id", None)
+                if node_id:
+                    self.widgets.register(node_id, current_child)
+                continue
+
+            if current_child is not None:
+                await current_child.remove()
+                unused_children.remove(current_child)
+                node_id = getattr(current_child, "_dsl_node_id", None)
+                if node_id and self.widgets.get(node_id) is current_child:
+                    self.widgets.forget(node_id)
+            desired_children.append(rendered_child)
+
+        for current_child in unused_children:
+            await current_child.remove()
+            node_id = getattr(current_child, "_dsl_node_id", None)
+            if node_id and self.widgets.get(node_id) is current_child:
+                self.widgets.forget(node_id)
+
+        for index, child in enumerate(desired_children):
+            if child.parent is parent:
+                mounted_children = list(parent.children)
+                if mounted_children[index] is not child:
+                    parent.move_child(child, before=index)
+            else:
+                await parent.mount(child, before=index)
+
+    async def _update_widget_in_place(self, current, rendered, attributes):
+        if type(current) is not type(rendered):
+            return False
+        if isinstance(current, (TabbedContent, DslTabs)):
+            return False
+
+        rendered_state = self._widget_render_state(rendered)
+        pending_children = getattr(rendered, "_pending_children", None)
+        rendered_children = list(pending_children or ())
+        has_children = pending_children is not None or getattr(
+            current, "_dsl_has_children", False
+        )
+        if rendered_state is None and not has_children:
+            return False
+        if pending_children is not None:
+            pending_children.clear()
+
+        if rendered_state is not None:
+            previous_state = getattr(current, "_dsl_render_state", None)
+            if previous_state is None:
+                previous_state = self._widget_render_state(current) or {}
+            for attribute, value in rendered_state.items():
+                if previous_state.get(attribute, value) != value:
+                    await self._set_widget_render_state(current, attribute, value)
+
+        self._apply_node_attrs(current, attributes)
+        current_fields = vars(current)
+        rendered_fields = vars(rendered)
+        for name in set(current_fields) | set(rendered_fields):
+            if not (name.startswith("_dsl_") or name.startswith("_storekeeper_")):
+                continue
+            if name == "_dsl_render_state":
+                continue
+            if name in rendered_fields:
+                setattr(current, name, rendered_fields[name])
+            elif name in current_fields:
+                delattr(current, name)
+
+        current._dsl_render_state = rendered_state
+        if has_children:
+            await self._reconcile_widget_children(current, rendered_children)
+            current._dsl_has_children = bool(rendered_children)
+        return True
+
     async def _rebuild(
         self,
         session,
@@ -622,24 +844,41 @@ class Adapter(PresentationAdapter):
         # in memoria per aggiornare DOM senza sostituire la schermata attiva.
         view_text = getattr(self, "_current_view_text", None)
         if view_text:
+            controller_context = self.get_controller_contexts(
+                session,
+                getattr(self, "_current_view_controllers", []),
+            )
             await self.render_template(
                 session,
-                controllers=getattr(self, "_current_view_controllers", []),
+                controller_context=controller_context,
                 text=view_text,
                 _fragment_refresh=True,
             )
 
-        xml_fragment = self.DOM.get(node_id)
-        if xml_fragment is None:
-            raise LookupError(f"Nodo XML '{node_id}' non trovato nel DOM")
+        rendered_node = None
+        if view_text:
+            candidate = self.widgets.get(node_id)
+            if candidate is not old_widget:
+                rendered_node = candidate
+        if rendered_node is None:
+            xml_fragment = self.DOM.get(node_id)
+            if xml_fragment is None:
+                raise LookupError(f"Nodo XML '{node_id}' non trovato nel DOM")
 
-        fragment_root = ET.fromstring(xml_fragment)
-        protected_fragment = protect_editor_jinja_delimiters(fragment_root)
-        rendered_node = await self.render_template(
-            session,
-            controllers=[],
-            text=protected_fragment,
-        )
+            fragment_root = ET.fromstring(xml_fragment)
+            protected_fragment = protect_editor_jinja_delimiters(fragment_root)
+            rendered_node = await self.render_template(
+                session,
+                text=protected_fragment,
+            )
+
+        if await self._update_widget_in_place(
+            old_widget,
+            rendered_node,
+            getattr(rendered_node, "_dsl_attrs", {}),
+        ):
+            self.widgets.register(node_id, old_widget)
+            return old_widget
 
         parent = old_widget.parent
         if parent is None:
@@ -670,6 +909,11 @@ class Adapter(PresentationAdapter):
         attrs(node, attrs_dict)
 
     def _register_node(self, widget_id: str, node):
+        render_state = self._widget_render_state(node)
+        if render_state is not None:
+            node._dsl_render_state = render_state
+        node._dsl_node_id = widget_id
+        node._dsl_has_children = bool(getattr(node, "_pending_children", ()))
         return self.widgets.register(widget_id, node)
 
     def _forget_node(self, widget_id: str):

@@ -4,28 +4,28 @@
     select(
         default: selected,
         entry: true,
-        on_end: "gg"
+        on_end: "refresh_workspace"
     ) -> selected;
 
-    dependencies(entry: false) -> file_dependencies(select);
-
     select_application(
-        default: application_files.0,
-        deps: ["application_files"],
-        on_end: "update_app"
-    ) -> select_application;
-
-    select_infrastructure(
-        default: infrastructure_files.0,
-        deps: ["infrastructure_files"],
-        on_end: "update_infra"
-    ) -> select_infrastructure;
+        entry: false,
+        on_end: "refresh_application"
+    ) -> selected_application;
 
     select_framework(
-        default: framework_files.0,
-        deps: ["framework_files"],
-        on_end: "update_frame"
-    ) -> select_framework;
+        entry: false,
+        on_end: "refresh_framework"
+    ) -> selected_framework;
+
+    select_infrastructure(
+        entry: false,
+        on_end: "refresh_infrastructure"
+    ) -> selected_infrastructure;
+
+    dependencies(
+        deps: ["select"],
+        entry: false
+    ) -> file_dependencies(select);
 
     files() ->
         storekeeper.overview(
@@ -39,36 +39,57 @@
             ]
         ) |> result();
 
-    application_files() ->
+    application_files(deps: ["dependencies"]) ->
         tuple_filter_tuple(
             dependencies,
             prefix_match("relative_path", "src/application/")
         );
 
-    framework_files() ->
+    framework_files(deps: ["dependencies"]) ->
         tuple_filter_tuple(
             dependencies,
             prefix_match("relative_path", "src/framework/")
         );
 
-    infrastructure_files() ->
+    infrastructure_files(deps: ["dependencies"]) ->
         tuple_filter_tuple(
             dependencies,
             prefix_match("relative_path", "src/infrastructure/")
         );
 
-    gg(entry: false,
-        //deps: ["editor.application", "editor.framework", "editor.infrastructure"]
+    selected_is_framework(deps: ["select"]) ->
+        selected.startswith("src/framework/");
+
+    selected_is_infrastructure(deps: ["select"]) ->
+        selected.startswith("src/infrastructure/");
+
+    selected_is_other_scope(
+        deps: ["selected_is_framework", "selected_is_infrastructure"]
     ) ->
+        selected_is_framework or selected_is_infrastructure;
+
+    selected_is_application(deps: ["selected_is_other_scope"]) ->
+        not selected_is_other_scope;
+
+    selected_scope(deps: [
+        "selected_is_framework",
+        "selected_is_infrastructure",
+        "selected_is_application"
+    ]) ->
+        selected_is_framework * "framework"
+        + selected_is_infrastructure * "infrastructure"
+        + selected_is_application * "application";
+
+    refresh_workspace(entry: false) ->
         presenter.rebuild(session, "workspace-editors", {});
 
-    update_app(entry: false) ->
+    refresh_application(entry: false) ->
         presenter.rebuild(session, "application", {});
 
-    update_frame(entry: false) ->
+    refresh_framework(entry: false) ->
         presenter.rebuild(session, "framework", {});
 
-    update_infra(entry: false) ->
+    refresh_infrastructure(entry: false) ->
         presenter.rebuild(session, "infrastructure", {});
 
     cmd: {

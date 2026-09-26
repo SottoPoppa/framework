@@ -10,6 +10,7 @@ import itertools
 import os
 from urllib.parse import urlparse, parse_qs, urljoin
 from enum import Enum
+from time import perf_counter
 
 import os
 import pathlib
@@ -17,6 +18,7 @@ import pathlib
 import framework.core.flow as flow
 import framework.service.dom as dom
 import framework.service.scheme as scheme
+from framework.service.diagnostic import get_logger
 from framework.service.route import compile_pattern, match, normalize_path, register, register_many
 from framework.service.template import render
 
@@ -239,7 +241,7 @@ _ATTRIBUTES_SCHEMA = {
     Tag.STACK.value: _LAYOUT | _LOCATION | _STYLE, 
     Tag.DIVIDER.value: _LOCATION | _LAYOUT | _STYLE | {Attribute.THICKNESS.value:"thickness"},
     Tag.ICON.value: _IDENTITY | {Attribute.NAME.value:"class", Attribute.SIZE.value:"size", Attribute.COLOR.value:"color"},
-    Tag.GROUP.value: _IDENTITY | _LAYOUT | _LOCATION | _STYLE,
+    Tag.GROUP.value: _IDENTITY | _LAYOUT | _LOCATION | _STYLE | {Attribute.VALUE.value: "value"},
     Tag.ACCORDION.value: _IDENTITY | _LAYOUT | _STYLE,
     Tag.MEDIA.value: _IDENTITY | _MEDIA | _STYLE | _LAYOUT,
     Tag.CARD.value: _IDENTITY | _LAYOUT | _STYLE,
@@ -565,12 +567,51 @@ class Port(ABC):
             return flow.output(result)
         return result
 
+    async def execute_controllers(
+        self,
+        runtime_session,
+        controllers=None,
+        source_name=None,
+    ):
+        logger = get_logger("template")
+        manager_context = {"manager": self.loader.get_managers()}
+        controller_context = {}
+        for controller in controllers or []:
+            controller_started = perf_counter()
+            result = await runtime_session.run(controller, manager_context)
+            controller_context[controller] = flow.unwrap(result)
+            logger.info(
+                "Controller di rendering completato",
+                source=source_name,
+                controller=controller,
+                duration_ms=round((perf_counter() - controller_started) * 1000, 2),
+            )
+        return controller_context
+
+    def get_controller_contexts(self, runtime_session, controllers=None):
+        controllers = tuple(controllers or ())
+        if not controllers:
+            return {}
+
+        context_getter = getattr(runtime_session, "controller_context", None)
+        if not callable(context_getter):
+            raise TypeError(
+                "Runtime session must expose controller_context()"
+            )
+
+        controller_context = {}
+        for controller in controllers:
+            context = context_getter(controller)
+            if context is not None:
+                controller_context[controller] = context
+        return controller_context
+
     async def render_template(
         self,
         runtime_session,
         text=None,
         file=None,
-        controllers=None,
+        controller_context=None,
         source_name=None,
         **constants,
     ):
@@ -581,7 +622,7 @@ class Port(ABC):
             self.render_node,
             text=text,
             file=file,
-            controllers=controllers,
+            controller_context=controller_context,
             source_name=source_name,
             async_block_loaders={
                 "storekeeper": lambda request: self._load_storekeeper(

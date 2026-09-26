@@ -169,9 +169,14 @@ class Adapter(presentation.Port, ABC):
             logger.debug("mount_view: XML caricato", size=len(xml_view))
         self._current_view_text = xml_view
         self._current_view_controllers = controllers
+        controller_context = await self.execute_controllers(
+            self.session,
+            controllers,
+            source_name=view_path,
+        )
         return await self.render_template(
             self.session,
-            controllers=controllers,
+            controller_context=controller_context,
             text=xml_view,
             source_name=view_path,
         )
@@ -223,10 +228,16 @@ class Adapter(presentation.Port, ABC):
 
     async def open_modal(self, view_path: str, **context):
         xml_view = flow.output(await self.loader.resource(view_path))
+        controllers = self.routes[view_path]["GET"].get("controllers", [])
+        controller_context = await self.execute_controllers(
+            self.session,
+            controllers,
+            source_name=view_path,
+        )
         modal = await self.render_template(
             self.session,
             text=xml_view,
-            controllers=self.routes[view_path]["GET"].get("controllers", []),
+            controller_context=controller_context,
             **context,
         )
         await self._push_screen(modal)
@@ -239,7 +250,10 @@ class Adapter(presentation.Port, ABC):
         modal = await self.render_template(
             self.session,
             text=xml_fragment,
-            controllers=getattr(self, "_current_view_controllers", []),
+            controller_context=self.get_controller_contexts(
+                self.session,
+                getattr(self, "_current_view_controllers", []),
+            ),
         )
         await self._push_screen(modal)
         return modal

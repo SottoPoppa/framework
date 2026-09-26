@@ -1062,9 +1062,14 @@ class Adapter(presentation.Port):
 
         session_result = await self.defender.session_create(**session)
         runtime_session = flow.output(session_result)
+        controller_context = await self.execute_controllers(
+            runtime_session,
+            controllers,
+            source_name=view,
+        )
         rendered_html = await self.render_template(
             runtime_session,
-            controllers=controllers,
+            controller_context=controller_context,
             text=xml_view,
             session=session.copy(),
         )

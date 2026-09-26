@@ -216,7 +216,7 @@ async def render(
     render_node,
     text=None,
     file=None,
-    controllers=None,
+    controller_context=None,
     source_name=None,
     async_block_loaders=None,
     **constants,
@@ -258,25 +258,8 @@ async def render(
         source=source_name,
         duration_ms=round((perf_counter() - compile_started) * 1000, 2),
     )
-    data = {}
     manager_context = {"manager": managers}
-    for controller in controllers or []:
-        controller_started = perf_counter()
-        run_result = await runtime_session.run(
-            controller,
-            manager_context,
-        )
-        data[controller] = flow.unwrap(run_result)
-        logger.info(
-            "Controller di rendering completato",
-            source=source_name,
-            controller=controller,
-            duration_ms=round((perf_counter() - controller_started) * 1000, 2),
-        )
-
-    #raise Exception(data)
-
-    render_context = constants | data | manager_context
+    render_context = constants | (controller_context or {}) | manager_context
     template_context = render_context
     if async_block_loaders is not None:
         template_context = {
