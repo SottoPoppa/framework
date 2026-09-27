@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from infrastructure.presentation.tui.textual import Adapter as TextualAdapter
 from infrastructure.presentation.tui.textual import LogBuffer
+from infrastructure.presentation.tui.widgets import OptionValue, _make_tabbed_content
 from infrastructure.presentation.web import starlette
 
 
@@ -59,6 +60,28 @@ class PresentationTextualRebuildTests(unittest.IsolatedAsyncioTestCase):
 			await app.screen.mount(workspace)
 			await pilot.pause()
 			self.assertEqual(workspace.active, "infrastructure")
+
+	async def test_scope_rebuild_id_resolves_to_the_nested_column(self):
+		adapter = TextualAdapter(None, None, None, None, LogBuffer())
+		app = App()
+		adapter.app = app
+		column = adapter.mount_tag(
+			"column",
+			{"id": "framework-panel"},
+			[Static("framework")],
+		)
+		workspace = _make_tabbed_content({
+			"attrs": {"id": "workspace", "value": "framework"},
+			"inner": [
+				OptionValue("Framework", "framework", content=[column])
+			],
+		})
+
+		async with app.run_test() as pilot:
+			await app.screen.mount(workspace)
+			await pilot.pause()
+			self.assertIs(adapter.dom_get("framework-panel"), column)
+			self.assertEqual(type(adapter.dom_get("framework")).__name__, "TabPane")
 
 	async def test_reuses_same_widget_and_preserves_unchanged_input(self):
 		adapter = TextualAdapter(None, None, None, None, LogBuffer())

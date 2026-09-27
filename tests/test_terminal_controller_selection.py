@@ -63,7 +63,7 @@ class TerminalControllerSelectionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(context.get("selected_scope"), scope)
             self.assertEqual(context.get(f"selected_{scope}"), navigation_path)
             self.assertGreater(len(presenter.targets), previous_rebuild_count)
-            self.assertEqual(presenter.targets[-1], scope)
+            self.assertEqual(presenter.targets[-1], f"{scope}-panel")
 
 
 if __name__ == "__main__":

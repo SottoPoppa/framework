@@ -84,13 +84,13 @@
         presenter.rebuild(session, "workspace-editors", {});
 
     refresh_application(entry: false) ->
-        presenter.rebuild(session, "application", {});
+        presenter.rebuild(session, "application-panel", {});
 
     refresh_framework(entry: false) ->
-        presenter.rebuild(session, "framework", {});
+        presenter.rebuild(session, "framework-panel", {});
 
     refresh_infrastructure(entry: false) ->
-        presenter.rebuild(session, "infrastructure", {});
+        presenter.rebuild(session, "infrastructure-panel", {});
 
     cmd: {
         close(entry: false) ->

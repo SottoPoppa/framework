@@ -50,7 +50,7 @@
             {% set selected_file = '' %}
         {% endif %}
         <Option title="{{ scope_label }}" value="{{ scope_id }}">
-            <Column id="{{ scope_id }}" width="100%"  padding="0,1">
+            <Column id="{{ scope_id }}-panel" width="100%"  padding="0,1">
                 <Row align="center" justify="between" height="3">
                     <Text>File associati al globale</Text>
                     <Text>{{ scope_files | length }}</Text>
