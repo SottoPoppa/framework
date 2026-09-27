@@ -35,6 +35,7 @@ from framework.service.route import resolve_route
 import framework.service.dom as dom_service
 import framework.service.template as template_service
 from framework.core.infrastructure import Infrastructure
+from infrastructure.message.agent.copilot import Adapter as CopilotAdapter
 from infrastructure.persistence.filesystem.filesystem import (
     Adapter as FilesystemAdapter,
     FileWatcherHandler,
@@ -54,10 +55,100 @@ from infrastructure.presentation.tui.textual import (
 from framework.port.presentation import Port as PresentationPort
 from textual.geometry import Spacing
 from textual.app import ComposeResult
-from textual.widgets import Select, Static
+from textual.widgets import Markdown, Select, Static
 
 
 class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_copilot_post_returns_while_response_is_pending(self):
+        class DelayedCopilotSession:
+            def __init__(self):
+                self.started = asyncio.Event()
+                self.finish = asyncio.Event()
+                self.prompt = None
+
+            async def send_and_wait(self, prompt, timeout):
+                self.prompt = prompt
+                self.started.set()
+                await self.finish.wait()
+                return {"content": "response"}
+
+        class FakeCopilotClient:
+            def __init__(self, copilot_session):
+                self.copilot_session = copilot_session
+
+            async def create_session(self, **kwargs):
+                return self.copilot_session
+
+        copilot_session = DelayedCopilotSession()
+        adapter = CopilotAdapter(
+            client=FakeCopilotClient(copilot_session),
+            model="test-model",
+        )
+        session = types.SimpleNamespace(id="copilot-test")
+        prompt = "Controlla @file:chat.dsl"
+
+        try:
+            await asyncio.wait_for(
+                adapter.post(session, message=prompt, domain="general"),
+                timeout=0.2,
+            )
+            await asyncio.wait_for(copilot_session.started.wait(), timeout=1)
+            self.assertEqual(copilot_session.prompt, prompt)
+            self.assertFalse(copilot_session.finish.is_set())
+
+            copilot_session.finish.set()
+            response = await asyncio.wait_for(
+                adapter.read(session, domain="general"),
+                timeout=1,
+            )
+            self.assertTrue(flow.check(response))
+            self.assertEqual(flow.output(response)["message"], "response")
+        finally:
+            copilot_session.finish.set()
+            await adapter.close()
+
+    async def test_chat_sends_only_after_send_event(self):
+        framework = Framework()
+        config = Path(__file__).resolve().parents[1] / "pyproject.toml"
+        app = await framework.bootstrap({"config": str(config), "dev": True})
+        managers = app._loader.get_managers()
+        presenter = managers["presenter"].presentations[0]
+        messenger = managers["messenger"]
+        original_dispatch = messenger._dispatch
+        copilot_calls = []
+        prompt = "Controlla @file:chat.dsl"
+
+        async def stub_copilot(session, domain, **constants):
+            if constants.get("receiver") == "copilot":
+                copilot_calls.append({"domain": domain, **constants})
+                return flow.success()
+            return await original_dispatch(session, domain, **constants)
+
+        messenger._dispatch = stub_copilot
+        presenter.session = flow.output(await presenter.defender.session_create())
+        await presenter.parse_route()
+
+        try:
+            async with presenter.app.run_test():
+                message_result = await asyncio.wait_for(
+                    presenter.app._send_dsl_event("chat:message", prompt),
+                    timeout=3,
+                )
+                self.assertTrue(flow.check(message_result))
+                self.assertEqual(copilot_calls, [])
+
+                send_result = await asyncio.wait_for(
+                    presenter.app._send_dsl_event("chat:send", "chat-send"),
+                    timeout=5,
+                )
+
+            self.assertTrue(flow.check(send_result))
+            self.assertEqual(len(copilot_calls), 1)
+            self.assertIn(prompt, str(copilot_calls[0].get("message", "")))
+        finally:
+            await presenter.shutdown()
+            await app.shutdown()
+
     async def test_filesystem_query_excludes_requested_directories(self):
         with tempfile.TemporaryDirectory() as root:
             included = Path(root, "src", "application", "app.dsl")
@@ -90,6 +181,14 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             rendered.styles.padding + rendered.styles.border.spacing,
             Spacing(1, 1, 1, 1),
+        )
+
+    def test_textual_markdown_render_state_uses_initial_content_before_mount(self):
+        markdown = Markdown("RISPOSTA-FINTA-COPILOT")
+
+        self.assertEqual(
+            TextualAdapter._widget_render_state(markdown),
+            {"markdown": "RISPOSTA-FINTA-COPILOT"},
         )
 
     def test_textual_tabbed_content_uses_configured_initial_value(self):

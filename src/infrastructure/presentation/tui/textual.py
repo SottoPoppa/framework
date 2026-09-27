@@ -673,7 +673,10 @@ class Adapter(PresentationAdapter):
                 "value": widget.value,
             }
         if isinstance(widget, Markdown):
-            return {"markdown": widget._markdown}
+            markdown = widget._markdown
+            if not widget.is_mounted and widget._initial_markdown is not None:
+                markdown = widget._initial_markdown
+            return {"markdown": markdown}
         if isinstance(widget, Link):
             return {"renderable": widget.content, "url": widget.url}
         if isinstance(widget, (Checkbox, RadioButton)):

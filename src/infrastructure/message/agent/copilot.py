@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import os
 from collections import defaultdict
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -17,9 +18,11 @@ import framework.port.message as message
 # da GET https://api.githubcopilot.com/models oppure dal model picker
 # dell'editor (VS Code / Copilot CLI / ecc.).
 MODEL_ALIASES: dict[str, str] = {
-    "luna": "gpt-5.6-luna",
-    "gpt-luna": "gpt-5.6-luna",
-    "gpt luna": "gpt-5.6-luna",
+    "luna": "gpt-6-luna",
+    "gpt-luna": "gpt-6-luna",
+    "gpt luna": "gpt-6-luna",
+    "gpt luna 6.0": "gpt-6-luna",
+    "gpt-6.0-luna": "gpt-6-luna",
     "terra": "gpt-5.6-terra",
     "gpt-terra": "gpt-5.6-terra",
     "sol": "gpt-5.6-sol",
@@ -73,26 +76,60 @@ class Adapter(message.Port):
         return True
 
     async def post(self, session: Any, *services: Any, **constants: Any) -> None:
-        client = await self._get_client()
-        if client is None:
-            raise RuntimeError("Copilot adapter requires an injected client or github-copilot-sdk")
-
         session_id = self._session_id(session, constants.get("session_id"))
-        # Il modello si può passare per-chiamata (constants["model"]),
-        # altrimenti si usa quello configurato sull'adapter, altrimenti "auto".
         model = self._resolve_model(constants.get("model"))
-        copilot_session = await self._get_session(session_id, model, client)
         prompt = constants.get("message", constants.get("prompt"))
         if not isinstance(prompt, str) or not prompt.strip():
             raise ValueError("Copilot message must be a non-empty string")
 
-        await self._receive_response(
-            copilot_session,
-            session_id,
-            model,
-            prompt,
-            self._queue_domain(constants.get("domain")),
+        task = asyncio.create_task(
+            self._post_prompt(
+                session_id,
+                model,
+                prompt,
+                self._queue_domain(constants.get("domain")),
+            ),
+            name=f"copilot:{session_id}",
         )
+        self._response_tasks.add(task)
+        task.add_done_callback(self._response_tasks.discard)
+
+    async def _post_prompt(
+        self,
+        session_id: str,
+        model: str,
+        prompt: str,
+        domain: str,
+    ) -> None:
+        try:
+            client = await self._get_client()
+            if client is None:
+                raise RuntimeError(
+                    "Copilot adapter requires an injected client or github-copilot-sdk"
+                )
+            copilot_session = await self._get_session(session_id, model, client)
+            await self._receive_response(
+                copilot_session,
+                session_id,
+                model,
+                prompt,
+                domain,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            flow._dev_log(
+                "copilot.request.error model=%s type=%s error=%r",
+                model,
+                type(exc).__name__,
+                exc,
+            )
+            await self._publish_response(
+                session_id,
+                model,
+                domain,
+                self._friendly_error(model, exc),
+            )
 
     async def _receive_response(
         self,
@@ -119,6 +156,15 @@ class Adapter(message.Port):
                     exc,
                 )
                 content = self._friendly_error(model, exc)
+        await self._publish_response(session_id, model, domain, content)
+
+    async def _publish_response(
+        self,
+        session_id: str,
+        model: str,
+        domain: str,
+        content: str | None,
+    ) -> None:
         if content is not None:
             item = {
                 "domain": domain,
@@ -442,12 +488,13 @@ class Adapter(message.Port):
     def _session_id(session: Any, fallback: Any = None) -> str:
         # L'oggetto CopilotSession reale espone .session_id, non .id.
         # Teniamo .id come fallback per compatibilità con mock/test doubles.
-        return str(
+        session_id = (
             getattr(session, "session_id", None)
             or getattr(session, "id", None)
-            or fallback
-            or "default"
         )
+        if session_id is None and isinstance(session, Mapping):
+            session_id = session.get("session_id") or session.get("id")
+        return str(session_id or fallback or "default")
 
     @staticmethod
     def _response_content(response: Any) -> str | None:
