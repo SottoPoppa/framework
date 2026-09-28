@@ -19,6 +19,10 @@ import framework.service.dom as dom
 import framework.service.scheme as scheme
 from framework.service.diagnostic import get_logger
 
+
+TEMPLATE_RENDER_CONTEXT_KEY = "_template_context"
+
+
 class DeferredUndefined(Undefined):
     """Preserva le espressioni Jinja non risolte nel primo passaggio."""
 
@@ -302,7 +306,7 @@ async def render(
     rendered = await render_node(
         content,
         xml,
-        {"_template_context": render_context},
+        {TEMPLATE_RENDER_CONTEXT_KEY: render_context},
         runtime_session=runtime_session,
     )
     logger.info(

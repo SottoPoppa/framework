@@ -64,7 +64,7 @@ execute_task(entry: false, deps: false, on_end: "refresh_board") -> messenger.se
             + "\nFile correlati calcolati dal framework:\n"
             + str(file_dependencies(load_task_for_work.0.file))
             + "\nQuando hai terminato, riporta i file modificati, i test eseguiti e il risultato.",
-        domain: "kanban.task"
+        domain: "general"
     );
 
 move_to_review(entry: false, on_end: "refresh_board") -> storekeeper.change(
@@ -115,16 +115,39 @@ in_progress_tasks(entry: true) -> storekeeper.gather(
 
 work_tasks(
     entry: false,
-    deps: ["todo_tasks", "in_progress_tasks"]
-) -> messenger.send(
+    deps: false,
+    on_end: "load_todo_tasks_for_work"
+) -> @payload;
+
+load_todo_tasks_for_work(
+    entry: false,
+    deps: false,
+    on_end: "load_in_progress_tasks_for_work"
+) -> storekeeper.gather(
+    session,
+    repository: "task",
+    filter: {eq: {status: "todo"}}
+);
+
+load_in_progress_tasks_for_work(
+    entry: false,
+    deps: false,
+    on_end: "send_work_tasks"
+) -> storekeeper.gather(
+    session,
+    repository: "task",
+    filter: {eq: {status: "in_progress"}}
+);
+
+send_work_tasks(entry: false, deps: false) -> messenger.send(
     session,
     receiver: "copilot",
     message: "File da considerare per primi, ma prima leggi SKILL.md se ancora non lo hai letto! :\n"
         + str(@payload.dependencies)
         + "\n\nTask Kanban in To Do:\n"
-        + str(todo_tasks)
+        + str(load_todo_tasks_for_work.output.value)
         + "\n\nTask Kanban in In Progress:\n"
-        + str(in_progress_tasks)
+        + str(load_in_progress_tasks_for_work.output.value)
         + "\n\nUsa questi task come contesto operativo. Identifica il task tramite il suo ID e non inventare task o stati.\n\nRichiesta dell'utente:\n"
         + str(@payload.request),
     domain: "general"

@@ -20,7 +20,7 @@ import framework.service.dom as dom
 import framework.service.scheme as scheme
 from framework.service.diagnostic import get_logger
 from framework.service.route import compile_pattern, match, normalize_path, register, register_many
-from framework.service.template import render
+from framework.service.template import TEMPLATE_RENDER_CONTEXT_KEY, render
 
 
 _STOREKEEPER_OPERATIONS = {
@@ -709,7 +709,7 @@ class Port(ABC):
                 # 3. Renderizza il componente iniettando l'XML non ancora processato
                 return await self.render_template(
                     runtime_session,
-                    **(context.get("_template_context", {}) | {
+                    **(context.get(TEMPLATE_RENDER_CONTEXT_KEY, {}) | {
                         'file': relative_path,
                         'inner': inner_xml,
                         'component': {
