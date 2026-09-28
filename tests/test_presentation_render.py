@@ -418,3 +418,38 @@ class PresentationTextualRebuildTests(unittest.IsolatedAsyncioTestCase):
 			)
 			self.assertIsNone(old_id_child.parent)
 			self.assertIs(id_container.query_one("#new-id"), new_id_child)
+
+	async def test_reconciles_child_order_and_removes_stale_nodes(self):
+		adapter = TextualAdapter(None, None, None, None, LogBuffer())
+		app = App()
+		children = [
+			adapter.mount_tag("text", {"id": node_id}, [initial_text])
+			for node_id, initial_text in (
+				("first", "First"),
+				("second", "Second"),
+				("third", "Third"),
+			)
+		]
+		container = adapter.mount_tag("container", {"id": "parent"}, children)
+
+		async with app.run_test():
+			await app.screen.mount(container)
+			await adapter._reconcile_widget_children(
+				container,
+				[
+					adapter.mount_tag("text", {"id": "third"}, ["Third updated"]),
+					adapter.mount_tag("text", {"id": "first"}, ["First updated"]),
+					adapter.mount_tag("text", {"id": "fourth"}, ["Fourth"]),
+				],
+			)
+
+			self.assertEqual(
+				[getattr(child, "_dsl_node_id", None) for child in container.children],
+				["third", "first", "fourth"],
+			)
+			self.assertIs(container.children[0], children[2])
+			self.assertIs(container.children[1], children[0])
+			self.assertEqual(str(children[2].content), "Third updated")
+			self.assertEqual(str(children[0].content), "First updated")
+			self.assertIsNone(children[1].parent)
+			self.assertIsNone(adapter.widgets.get("second"))

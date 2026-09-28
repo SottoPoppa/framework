@@ -941,24 +941,33 @@ class Adapter(PresentationAdapter):
 
     async def _reconcile_widget_children(self, parent, rendered_children):
         current_children = list(parent.children)
-        unused_children = list(current_children)
+        unused_children = {id(child): child for child in current_children}
+        children_by_id = {}
+        for child in current_children:
+            child_id = getattr(child, "_dsl_node_id", None)
+            if child_id:
+                children_by_id.setdefault(child_id, []).append(child)
+        child_offsets = {}
         desired_children = []
 
         for index, rendered_child in enumerate(rendered_children):
             rendered_id = getattr(rendered_child, "_dsl_node_id", None)
-            current_child = next(
-                (
-                    child for child in unused_children
-                    if rendered_id
-                    and getattr(child, "_dsl_node_id", None) == rendered_id
-                ),
-                None,
-            )
+            current_child = None
+            if rendered_id:
+                matches = children_by_id.get(rendered_id, ())
+                offset = child_offsets.get(rendered_id, 0)
+                while offset < len(matches):
+                    candidate = matches[offset]
+                    offset += 1
+                    if id(candidate) in unused_children:
+                        current_child = candidate
+                        break
+                child_offsets[rendered_id] = offset
             if current_child is None and index < len(current_children):
                 positional_child = current_children[index]
                 current_id = getattr(positional_child, "_dsl_node_id", None)
                 if (
-                    positional_child in unused_children
+                    id(positional_child) in unused_children
                     and rendered_id == current_id
                 ):
                     current_child = positional_child
@@ -968,7 +977,7 @@ class Adapter(PresentationAdapter):
                 rendered_child,
                 getattr(rendered_child, "_dsl_attrs", {}),
             ):
-                unused_children.remove(current_child)
+                del unused_children[id(current_child)]
                 desired_children.append(current_child)
                 node_id = getattr(current_child, "_dsl_node_id", None)
                 if node_id:
@@ -977,25 +986,40 @@ class Adapter(PresentationAdapter):
 
             if current_child is not None:
                 await current_child.remove()
-                unused_children.remove(current_child)
+                unused_children.pop(id(current_child), None)
                 node_id = getattr(current_child, "_dsl_node_id", None)
                 if node_id and self.widgets.get(node_id) is current_child:
                     self.widgets.forget(node_id)
             desired_children.append(rendered_child)
 
-        for current_child in unused_children:
+        for current_child in current_children:
+            if id(current_child) not in unused_children:
+                continue
             await current_child.remove()
             node_id = getattr(current_child, "_dsl_node_id", None)
             if node_id and self.widgets.get(node_id) is current_child:
                 self.widgets.forget(node_id)
 
+        mounted_children = list(parent.children)
+        mounted_positions = {
+            id(child): index for index, child in enumerate(mounted_children)
+        }
         for index, child in enumerate(desired_children):
             if child.parent is parent:
-                mounted_children = list(parent.children)
-                if mounted_children[index] is not child:
+                current_index = mounted_positions[id(child)]
+                if current_index != index:
                     parent.move_child(child, before=index)
+                    moved_child = mounted_children.pop(current_index)
+                    mounted_children.insert(index, moved_child)
+                    for position in range(
+                        min(current_index, index), len(mounted_children)
+                    ):
+                        mounted_positions[id(mounted_children[position])] = position
             else:
                 await parent.mount(child, before=index)
+                mounted_children.insert(index, child)
+                for position in range(index, len(mounted_children)):
+                    mounted_positions[id(mounted_children[position])] = position
 
     async def _update_widget_in_place(self, current, rendered, attributes):
         if type(current) is not type(rendered):
