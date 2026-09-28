@@ -1,12 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
-<Window type="page" title="Omniport Code Terminal" background="#111827" font="mono" padding="1">
+<Window type="page" title="Omniport Code Terminal" font="mono" padding="1">
     
-    {% macro editor_language(filename) -%}
-        {% set path = (filename or '') | lower -%}
-        {{ 'python' if path.endswith('.py') or path.endswith('.dsl') else 'xml' if path.endswith('.xml') else 'json' if path.endswith('.json') else 'toml' if path.endswith('.toml') else 'markdown' -}}
-    {%- endmacro %}
-
-    {% set available_file_paths = (terminal.files | value | map(attribute='relative_path') | list) if terminal.files | check else [] %}
     {% set global_file = terminal.select | default('', true) %}
     {% set selected_scope = terminal.selected_scope | default('application', true) %}
 
@@ -29,68 +23,26 @@
     <!-- Main Workspace (Generato dinamicamente per le 3 sezioni) -->
     <Group id="workspace-editors" type="tab" height="1fr" value="{{ selected_scope }}">
         {% set scope_config = [
-            ('application', 'Applicazione', terminal.application_files),
-            ('framework', 'Framework', terminal.framework_files),
-            ('infrastructure', 'Infrastruttura', terminal.infrastructure_files)
+            ('application', 'Applicazione'),
+            ('framework', 'Framework'),
+            ('infrastructure', 'Infrastruttura')
         ] %}
 
-        {% for scope_id, scope_label, file_list in scope_config %}
-        {% set scope_files = file_list | default([], true) %}
-        {% set section_selected_file = (
-            terminal.select_application if scope_id == 'application' else
-            terminal.select_framework if scope_id == 'framework' else
-            terminal.select_infrastructure
-        ) | default('', true) %}
-        {% if section_selected_file in scope_files %}
-            {% set selected_file = section_selected_file %}
-        {% elif global_file in scope_files %}
-            {% set selected_file = global_file %}
-        {% elif scope_files %}
-            {% set selected_file = scope_files[0] %}
-        {% else %}
-            {% set selected_file = '' %}
-        {% endif %}
-        <Option title="{{ scope_label }}" value="{{ scope_id }}">
-            <Column id="{{ scope_id }}-panel" width="100%"  padding="0,1">
-                <Row align="center" justify="between" height="3">
-                    <Text>File associati al globale</Text>
-                    <Text>{{ scope_files | length }}</Text>
-                </Row>
-                {% if scope_files %}
-                <Group id="{{ scope_id }}-editors" type="tab" height="1fr">
-                    {% for sub_type in ['file', 'test', 'contract'] %}
-                    {% set current_file = selected_file | default('', true) %}
-                    {% if sub_type == 'test' %}
-                        {% set target_file = current_file.rsplit('.', 1)[0] ~ '.test.dsl' if current_file else '' %}
-                    {% elif sub_type == 'contract' %}
-                        {% set target_file = current_file.rsplit('.', 1)[0] ~ '.contract.json' if current_file else '' %}
-                    {% else %}
-                        {% set target_file = current_file %}
-                    {% endif %}
-                    <Option title="{{ sub_type }}" value="{{ scope_id }}-{{ sub_type }}">
-                        <Input type="editor" language="{{ editor_language(target_file) }}" id="{{ scope_id }}-{{ sub_type }}-editor" height="1fr">
-                            {% if target_file and target_file in available_file_paths %}
-                                {% storekeeper(repository="file", filter={"eq": {"filename": target_file}}) as file_data %}
-                                    <Text>{{ file_data.content }}</Text>
-                                {% endstorekeeper %}
-                            {% endif %}
-                        </Input>
-                    </Option>
-                    {% endfor %}
-                </Group>
-
-                <Navigation type="tabs" height="5px" value="{{ selected_file }}">
-                    {% for item in scope_files %}
-                    <Option value="{{ item }}" click="terminal:select_{{ scope_id }}"/>
-                    {% endfor %}
-                </Navigation>
-                {% else %}
-                <Text>Nessun file associato al file globale in questa sezione.</Text>
-                {% endif %}
-            </Column>
-        </Option>
+        {% for scope_id, scope_label in scope_config %}
+        <TerminalScopePanel scope="{{ scope_id }}" title="{{ scope_label }}" />
         {% endfor %}
     </Group>
+
+    <Navigation type="palette" id="developer-command-palette">
+        <Action route="/ide"><Text>Open IDE</Text></Action>
+        <Action route="/"><Text>Open Kanban</Text></Action>
+        <Action route="#new-task-dialog"><Text>Create task</Text></Action>
+        {% if terminal.files | check %}
+            {% for item in terminal.files | value %}
+                <Action route="/ide" click="terminal:select" value="{{ item['relative_path'] }}"><Text>Open {{ item['relative_path'] }}</Text></Action>
+            {% endfor %}
+        {% endif %}
+    </Navigation>
 
     <NewTaskDialog id="new-task-dialog" default_file="{{ global_file or '__none__' }}">
         {% if terminal.files | check %}
@@ -119,7 +71,6 @@
                     id="chat-send"
                     type="button"
                     click="chat:send"
-                    background="#17202a"
                     color="#ffffff"
                 >
                     <Text>Invia</Text>

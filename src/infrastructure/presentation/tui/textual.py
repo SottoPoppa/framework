@@ -2,6 +2,7 @@ import asyncio
 import re
 from time import perf_counter
 from collections import OrderedDict
+from functools import partial
 from pathlib import Path
 import framework.core.flow as flow
 import framework.service.dom as dom
@@ -9,8 +10,9 @@ from framework.service.diagnostic import LogBuffer, get_logger
 import xml.etree.ElementTree as ET
 from typing import Dict, Any
 
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, SystemCommand
 from textual.binding import Binding
+from textual.command import DiscoveryHit, Hit, Provider
 from textual.widgets import (
     Button, Input, Select, TextArea, Static, Tab, RichLog, Markdown,
     Checkbox, Link, RadioButton, TabbedContent,
@@ -20,6 +22,8 @@ from textual.screen import Screen, ModalScreen
 from textual.events import Click
 from infrastructure.presentation.tui.widgets import (
     DslTabs,
+    PaletteCommand,
+    PaletteSource,
     tags,
     attrs,
     XmlScreen,
@@ -166,7 +170,38 @@ class LogScreen(ModalScreen):
         await self.dismiss()
 
 
+class NavigationCommandProvider(Provider):
+    def _commands(self):
+        return [
+            command
+            for source in self.screen.query(PaletteSource)
+            for command in source._dsl_palette_commands
+        ]
+
+    async def search(self, query: str):
+        matcher = self.matcher(query)
+        for command in self._commands():
+            score = matcher.match(command.label)
+            if score > 0:
+                yield Hit(
+                    score,
+                    command.label,
+                    partial(self.app.activate_palette_command, command),
+                    text=command.label,
+                )
+
+    async def discover(self):
+        for command in self._commands():
+            yield DiscoveryHit(
+                command.label,
+                partial(self.app.activate_palette_command, command),
+                text=command.label,
+            )
+
+
 class AppDinamica(App):
+
+    COMMANDS = {*App.COMMANDS, NavigationCommandProvider}
 
     DEFAULT_CSS = """
     Grid {
@@ -190,6 +225,14 @@ class AppDinamica(App):
         super().__init__(**kwargs)
         self.adapter = adapter
         self._programmatic_select_changes = {}
+
+    def get_system_commands(self, screen):
+        yield from super().get_system_commands(screen)
+        yield SystemCommand(
+            "Open runtime logs",
+            "View recent Textual runtime messages",
+            self.action_show_log,
+        )
 
     def _form_payload(self):
         payload = {}
@@ -281,6 +324,30 @@ class AppDinamica(App):
             return isinstance(widget, Tab)
 
         return True
+
+    async def _dispatch_route(self, route, click=None, value=None):
+        if isinstance(route, str) and route.startswith("#"):
+            await self.adapter.open_registered_modal(route[1:])
+            return
+
+        await self.adapter.navigate_to(route)
+        if click == "terminal:select" and isinstance(value, str) and value:
+            await self._send_dsl_event(click, value)
+
+    @flow.request_boundary
+    async def activate_palette_command(self, command: PaletteCommand):
+        if command.route:
+            await self._dispatch_route(command.route, command.click, command.value)
+            return
+
+        if command.click == "modal:close":
+            self.adapter.close_modal()
+            return
+
+        message = command.value or command.action_id or command.label
+        if command.has_value:
+            message = {"value": message}
+        await self._send_dsl_event(command.click, message)
 
     @flow.request_boundary
     async def action_save(self):
@@ -393,14 +460,11 @@ class AppDinamica(App):
         # Se il pulsante ha un attributo route, naviga a quella URL
         route = route or attrs_tag.get("route")
         if route:
-            if isinstance(route, str) and route.startswith("#"):
-                await self.adapter.open_registered_modal(route[1:])
-                return
-            await self.adapter.navigate_to(route)
-            if click == "terminal:select":
-                selected_file = getattr(event.button, "_dsl_value", None)
-                if isinstance(selected_file, str) and selected_file:
-                    await self._send_dsl_event(click, selected_file)
+            await self._dispatch_route(
+                route,
+                click,
+                getattr(event.button, "_dsl_value", None),
+            )
             return
 
         click = attrs_tag.get("click") or click
@@ -706,6 +770,107 @@ class Adapter(PresentationAdapter):
     def _close_modal_runtime(self):
         if isinstance(self.app.screen, ModalScreen):
             self.app.pop_screen()
+
+    @staticmethod
+    def _palette_command_from_attributes(attributes, label):
+        route = attributes.get("route")
+        click = attributes.get("click")
+        normalized_label = label.strip()
+        if not normalized_label or not (route or click):
+            return None
+
+        value = attributes.get("value")
+        return PaletteCommand(
+            label=normalized_label,
+            route=route,
+            click=click,
+            value=label if value is None else value,
+            has_value=value is not None,
+            action_id=attributes.get("id"),
+        )
+
+    def _palette_text(self, node):
+        if dom.tag_name(node).lower() != "text":
+            return None
+
+        text_factories = self.tags.get("text", {})
+        text_factory = text_factories.get("text")
+        text_type = dom.attributes(node).get("type") or "text"
+        if text_factories.get(text_type, text_factory) is not text_factory:
+            return None
+
+        parts = [dom.text(node) or ""]
+        for child in dom.children(node):
+            child_text = self._palette_text(child)
+            if child_text is None:
+                return None
+            parts.append(child_text)
+            parts.append(child.tail or "")
+        return "".join(parts)
+
+    def _remember_palette_nodes(self, node):
+        node_id = dom.attributes(node).get("id")
+        if isinstance(node_id, str):
+            extracted = dom.serialize(node).strip()
+            if extracted:
+                self.DOM[node_id] = extracted
+        for child in dom.children(node):
+            self._remember_palette_nodes(child)
+
+    def _render_palette_node(self, node):
+        tag = dom.tag_name(node)
+        if tag.lower() != "navigation":
+            return None
+
+        component_path = Path("src/application/view/component") / f"{tag}.xml"
+        if component_path.exists():
+            return None
+
+        attributes = dict(dom.attributes(node))
+        if attributes.get("type") != "palette":
+            return None
+
+        action_factories = self.tags.get("action", {})
+        default_action_factory = action_factories.get("action")
+        commands = []
+        for action in dom.children(node):
+            if dom.tag_name(action).lower() != "action":
+                return None
+            action_attributes = dom.attributes(action)
+            action_type = action_attributes.get("type") or "action"
+            if action_factories.get(action_type, default_action_factory) is not default_action_factory:
+                return None
+
+            label_parts = []
+            for child in dom.children(action):
+                child_text = self._palette_text(child)
+                if child_text is None:
+                    return None
+                label_parts.append(child_text)
+            command = self._palette_command_from_attributes(
+                action_attributes,
+                "".join(label_parts),
+            )
+            if command is not None:
+                commands.append(command)
+
+        self._remember_palette_nodes(node)
+        node_id = attributes.get("id")
+        palette = PaletteSource(commands, id=node_id)
+        self._apply_node_attrs(palette, attributes)
+        palette._dsl_attrs = attributes
+        return self._register_node(node_id, palette)
+
+    async def render_node(self, parent, node, context, runtime_session=None):
+        palette = self._render_palette_node(node)
+        if palette is not None:
+            return palette
+        return await super().render_node(
+            parent,
+            node,
+            context,
+            runtime_session=runtime_session,
+        )
 
     def mount_tag(self, tag, attrs=None, inner=None, in_svg=False):
         widget = super().mount_tag(tag, attrs, inner, in_svg)

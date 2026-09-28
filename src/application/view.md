@@ -128,8 +128,9 @@ Generic icon support (Bootstrap Icons by default).
 
 ### `<Navigation>`
 Navigation bars and menus.
-- **Types**: `navigation`, `bar`, `app`, `breadcrumb`, `tab`
+- **Types**: `navigation`, `bar`, `app`, `breadcrumb`, `tab`, `palette`
 - **Attributes**: Identity + Location + Layout + Style
+- `palette` registers child `<Action>` elements as searchable Textual commands, opened with `Ctrl+P`. Commands use the actions' `route`, `click`, and `value` attributes.
 
 ### `<Group>`
 Grouping elements for UI components.

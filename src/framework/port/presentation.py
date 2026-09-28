@@ -709,7 +709,7 @@ class Port(ABC):
                 # 3. Renderizza il componente iniettando l'XML non ancora processato
                 return await self.render_template(
                     runtime_session,
-                    **(context | {
+                    **(context.get("_template_context", {}) | {
                         'file': relative_path,
                         'inner': inner_xml,
                         'component': {

@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Window type="page" title="SCRUM Task Board" background="#f4f1ea" padding="1px">
+<Window type="page" title="SCRUM Task Board" padding="1px">
     <Column width="full" height="full" spacing="1px">
         <Row width="full" align="center" justify="between">
             <Text type="h1" color="#17202a">Kanban Board</Text>
             <NewTaskButton id="new-task" />
         </Row>
         <Row id="kanban-board" width="full" height="1fr" spacing="1px" overflow="auto">
-            <Column id="backlog-column" width="1fr" background="#ffffff" padding="1px" radius="small">
+            <Column id="backlog-column" width="1fr" padding="1px" radius="small">
                 <Text type="h3" color="#17202a">Backlog</Text>
                 {% storekeeper(repository="task", filter={"eq":{"status":"backlog"}}) as backlog_tasks %}
                     {% for task in backlog_tasks or [] %}
@@ -17,7 +17,7 @@
                     {% else %}<Text color="#64748b">No tasks</Text>{% endfor %}
                 {% endstorekeeper %}
             </Column>
-            <Column id="todo-column" width="1fr" background="#ffffff" padding="1px" radius="small">
+            <Column id="todo-column" width="1fr" padding="1px" radius="small">
                 <Text type="h3" color="#17202a">To Do</Text>
                 {% storekeeper(repository="task", filter={"eq":{"status":"todo"}}) as todo_tasks %}
                     {% for task in todo_tasks or [] %}
@@ -27,7 +27,7 @@
                     {% else %}<Text color="#64748b">No tasks</Text>{% endfor %}
                 {% endstorekeeper %}
             </Column>
-            <Column id="inprogress-column" width="1fr" background="#ffffff" padding="1px" radius="small">
+            <Column id="inprogress-column" width="1fr" padding="1px" radius="small">
                 <Text type="h3" color="#17202a">In Progress</Text>
                 {% storekeeper(repository="task", filter={"eq":{"status":"in_progress"}}) as inprogress_tasks %}
                     {% for task in inprogress_tasks or [] %}
@@ -37,7 +37,7 @@
                     {% else %}<Text color="#64748b">No tasks</Text>{% endfor %}
                 {% endstorekeeper %}
             </Column>
-            <Column id="review-column" width="1fr" background="#ffffff" padding="1px" radius="small">
+            <Column id="review-column" width="1fr" padding="1px" radius="small">
                 <Text type="h3" color="#17202a">Review</Text>
                 {% storekeeper(repository="task", filter={"eq":{"status":"review"}}) as review_tasks %}
                     {% for task in review_tasks or [] %}
@@ -48,7 +48,7 @@
                     {% else %}<Text color="#64748b">No tasks</Text>{% endfor %}
                 {% endstorekeeper %}
             </Column>
-            <Column id="done-column" width="1fr" background="#ffffff" padding="1px" radius="small">
+            <Column id="done-column" width="1fr" padding="1px" radius="small">
                 <Text type="h3" color="#17202a">Done</Text>
                 {% storekeeper(repository="task", filter={"eq":{"status":"done"}}) as done_tasks %}
                     {% for task in done_tasks or [] %}
@@ -59,6 +59,16 @@
                 {% endstorekeeper %}
             </Column>
         </Row>
+        <Navigation type="palette" id="developer-command-palette">
+            <Action route="/ide"><Text>Open IDE</Text></Action>
+            <Action route="/"><Text>Open Kanban</Text></Action>
+            <Action route="#new-task-dialog"><Text>Create task</Text></Action>
+            {% if kanban.files | check %}
+                {% for item in kanban.files | value %}
+                    <Action route="/ide" click="terminal:select" value="{{ item['relative_path'] }}"><Text>Open {{ item['relative_path'] }}</Text></Action>
+                {% endfor %}
+            {% endif %}
+        </Navigation>
         <NewTaskDialog id="new-task-dialog" default_file="__none__">
             {% if kanban.files | check %}
                 {% for item in kanban.files | value %}

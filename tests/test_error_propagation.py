@@ -51,6 +51,7 @@ from infrastructure.presentation.tui.widgets import attrs as textual_attrs
 from infrastructure.presentation.tui.textual import (
     Adapter as TextualAdapter,
     AppDinamica,
+    LogBuffer,
 )
 from framework.port.presentation import Port as PresentationPort
 from textual.geometry import Spacing
@@ -343,6 +344,7 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
         terminal = types.SimpleNamespace(
             files={"ok": True, "value": [{"relative_path": "src/cache_probe.py"}]},
             select="src/infrastructure/presentation/tui/textual.py",
+            selected_scope="infrastructure",
             select_application="",
             select_framework="",
             select_infrastructure="",
@@ -692,38 +694,41 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
         }
         requests = []
 
-        async def load_storekeeper(request):
-            filename = request["filter"]["eq"]["filename"]
-            requests.append(filename)
-            return {"content": f"contents of {filename}"}
+        class FakeInfrastructure:
+            jinja_environments = {}
 
-        async def render_dom(_parent, node, _context, runtime_session=None):
-            return dom_service.serialize(node)
+            def resource(self, path):
+                return Path(path).read_text(encoding="utf-8")
 
-        original_get_jinja = template_service.get_jinja
+        class FakeLoader:
+            infrastructure = FakeInfrastructure()
 
-        def get_jinja_with_filters(infrastructure=None, **options):
-            environment = original_get_jinja(infrastructure, **options)
-            environment.filters.setdefault("check", flow.check)
-            environment.filters.setdefault("value", flow.output)
-            return environment
+            def get_managers(self):
+                return {}
 
-        with patch.object(
-            template_service, "get_jinja", side_effect=get_jinja_with_filters
-        ):
-            rendered = await template_service.render(
-                Infrastructure(),
-                {},
-                None,
-                render_dom,
-                file="src/application/view/page/terminal.xml",
-                async_block_loaders={"storekeeper": load_storekeeper},
-                terminal=terminal,
-                chat={"copilot_source": {"message": ""}},
-            )
+        class RecordingTextualAdapter(TextualAdapter):
+            async def _load_storekeeper(self, _runtime_session, request):
+                filename = request["filter"]["eq"]["filename"]
+                requests.append(filename)
+                return {"content": f"contents of {filename}"}
+
+        adapter = RecordingTextualAdapter(
+            FakeLoader(), None, None, None, LogBuffer()
+        )
+        await adapter.render_template(
+            None,
+            file="src/application/view/page/terminal.xml",
+            controller_context={
+                "terminal": terminal,
+                "chat": {"copilot_source": {"message": ""}},
+            },
+        )
 
         self.assertEqual(requests, [source_file])
-        self.assertIn(f"contents of {source_file}", rendered)
+        self.assertIn(
+            f"contents of {source_file}",
+            adapter.DOM["framework-file-editor"],
+        )
 
     async def test_messenger_xml_tag_uses_standard_unknown_tag_error(self):
         messenger = types.SimpleNamespace(receive=AsyncMock())

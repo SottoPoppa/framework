@@ -1,4 +1,5 @@
 import framework.port.presentation as presentation
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from rich.text import Text
@@ -64,6 +65,23 @@ class OptionValue:
         self._dsl_click = click
         self._dsl_value = value
         self.content = list(content or [])
+
+
+@dataclass(frozen=True)
+class PaletteCommand:
+    label: str
+    route: Optional[str] = None
+    click: Optional[str] = None
+    value: Any = None
+    has_value: bool = False
+    action_id: Optional[str] = None
+
+
+class PaletteSource(Static):
+    def __init__(self, commands: List[PaletteCommand], id: Optional[str] = None):
+        super().__init__("", id=id)
+        self._dsl_palette_commands = tuple(commands)
+        self.styles.display = "none"
 
 
 def _option_values(x: Dict[str, Any]) -> List[OptionValue]:
@@ -269,11 +287,34 @@ def _make_option(x):
 def _make_action(x):
     action = widget(Button, lambda node: ((_text(node),), {"id": _attr(node, "id")}))(x)
     action._dsl_click = _attr(x, "data-click", _attr(x, "click"))
-    action._dsl_route = _attr(x, "route")
+    action._dsl_route = _attr(x, "route", _attr(x, "action"))
     value = _attr(x, "value")
     action._dsl_has_value = value is not None
     action._dsl_value = _text(x) if value is None else value
     return action
+
+
+def _make_palette(x):
+    commands = []
+    for action in _children(x):
+        route = getattr(action, "_dsl_route", None)
+        click = getattr(action, "_dsl_click", None)
+        if not route and not click:
+            continue
+        label = _widget_text(action).strip()
+        if not label:
+            continue
+        commands.append(
+            PaletteCommand(
+                label=label,
+                route=route,
+                click=click,
+                value=getattr(action, "_dsl_value", None),
+                has_value=getattr(action, "_dsl_has_value", False),
+                action_id=getattr(action, "id", None),
+            )
+        )
+    return PaletteSource(commands, id=_attr(x, "id"))
 
 
 def _make_tabbed_content(x: Dict[str, Any]):
@@ -341,6 +382,7 @@ tags = {
         # (es. <Text> dentro <Navigation>) non venissero mai mostrati.
         "navigation": widget(Container, _build(children=True, extra={"id": lambda x: _attr(x, "id", "nav")})),
         "tabs": _make_tabs,
+        "palette": _make_palette,
     },
 
     presentation.Tag.TEXT.value: {

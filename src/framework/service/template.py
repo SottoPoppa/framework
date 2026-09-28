@@ -302,7 +302,7 @@ async def render(
     rendered = await render_node(
         content,
         xml,
-        {},
+        {"_template_context": render_context},
         runtime_session=runtime_session,
     )
     logger.info(

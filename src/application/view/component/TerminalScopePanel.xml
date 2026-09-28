@@ -1,0 +1,68 @@
+{% macro editor_language(filename) -%}
+    {% set path = (filename or '') | lower -%}
+    {{ 'python' if path.endswith('.py') or path.endswith('.dsl') else 'xml' if path.endswith('.xml') else 'json' if path.endswith('.json') else 'toml' if path.endswith('.toml') else 'markdown' -}}
+{%- endmacro %}
+
+{% set scope_id = component.attributes.scope %}
+{% set scope_title = component.attributes.title %}
+{% set scope_files = (
+    terminal.application_files if scope_id == 'application' else
+    terminal.framework_files if scope_id == 'framework' else
+    terminal.infrastructure_files
+) | default([], true) %}
+{% set global_file = terminal.select | default('', true) %}
+{% set available_file_paths = (terminal.files | value | map(attribute='relative_path') | list) if terminal.files | check else [] %}
+{% set section_selected_file = (
+    terminal.select_application if scope_id == 'application' else
+    terminal.select_framework if scope_id == 'framework' else
+    terminal.select_infrastructure
+) | default('', true) %}
+{% if section_selected_file in scope_files %}
+    {% set selected_file = section_selected_file %}
+{% elif global_file in scope_files %}
+    {% set selected_file = global_file %}
+{% elif scope_files %}
+    {% set selected_file = scope_files[0] %}
+{% else %}
+    {% set selected_file = '' %}
+{% endif %}
+
+<Option title="{{ scope_title }}" value="{{ scope_id }}">
+    <Column id="{{ scope_id }}-panel" width="100%" padding="0,1">
+        <Row align="center" justify="between" height="3">
+            <Text>File associati al globale</Text>
+            <Text>{{ scope_files | length }}</Text>
+        </Row>
+        {% if scope_files %}
+        <Group id="{{ scope_id }}-editors" type="tab" height="1fr">
+            {% for sub_type in ['file', 'test', 'contract'] %}
+            {% set current_file = selected_file | default('', true) %}
+            {% if sub_type == 'test' %}
+                {% set target_file = current_file.rsplit('.', 1)[0] ~ '.test.dsl' if current_file else '' %}
+            {% elif sub_type == 'contract' %}
+                {% set target_file = current_file.rsplit('.', 1)[0] ~ '.contract.json' if current_file else '' %}
+            {% else %}
+                {% set target_file = current_file %}
+            {% endif %}
+            <Option title="{{ sub_type }}" value="{{ scope_id }}-{{ sub_type }}">
+                <Input type="editor" language="{{ editor_language(target_file) }}" id="{{ scope_id }}-{{ sub_type }}-editor" height="1fr">
+                    {% if target_file and target_file in available_file_paths %}
+                        {% storekeeper(repository="file", filter={"eq": {"filename": target_file}}) as file_data %}
+                            <Text>{{ file_data.content }}</Text>
+                        {% endstorekeeper %}
+                    {% endif %}
+                </Input>
+            </Option>
+            {% endfor %}
+        </Group>
+
+        <Navigation type="tabs" height="5px" value="{{ selected_file }}">
+            {% for item in scope_files %}
+            <Option value="{{ item }}" click="terminal:select_{{ scope_id }}" />
+            {% endfor %}
+        </Navigation>
+        {% else %}
+        <Text>Nessun file associato al file globale in questa sezione.</Text>
+        {% endif %}
+    </Column>
+</Option>

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 from infrastructure.presentation.adapter import Adapter as PresentationAdapter
 from infrastructure.presentation.tui.textual import Adapter as TuiAdapter
 from infrastructure.presentation.tui.textual import AppDinamica
+from infrastructure.presentation.tui.widgets import PaletteCommand
 from framework.service import dom as dom_service
 from textual.binding import Binding
 from textual.widgets import Button
@@ -69,6 +70,35 @@ class TuiActionNavigationTests(unittest.IsolatedAsyncioTestCase):
                 ("navigate", "/ide"),
                 ("event", "terminal:select", "src/application/view/page/kanban.xml"),
             ],
+        )
+
+    async def test_palette_route_command_selects_file_after_navigation(self):
+        adapter = AdapterSpy()
+        app = AppDinamica(adapter)
+        selected_file = "src/application/view/page/kanban.xml"
+
+        async def send_event(event_name, message):
+            adapter.calls.append(("event", event_name, message))
+
+        with patch.object(
+            app,
+            "_send_dsl_event",
+            new=AsyncMock(side_effect=send_event),
+        ) as dispatch:
+            await app.activate_palette_command(
+                PaletteCommand(
+                    label="Open Kanban source",
+                    route="/ide",
+                    click="terminal:select",
+                    value=selected_file,
+                    has_value=True,
+                )
+            )
+
+        dispatch.assert_awaited_once_with("terminal:select", selected_file)
+        self.assertEqual(
+            adapter.calls,
+            [("navigate", "/ide"), ("event", "terminal:select", selected_file)],
         )
 
     async def test_stale_select_change_does_not_clear_programmatic_selection(self):

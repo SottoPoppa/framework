@@ -9,6 +9,6 @@
         <Input id="task-priority" type="select" name="priority" value="medium">
             <Option value="low" /><Option value="medium" /><Option value="high" /><Option value="critical" />
         </Input>
-        <Action id="create-task" type="button" click="kanban:create_task" form="new-task-dialog" background="#17202a" color="#ffffff"><Text>Create task</Text></Action>
+        <Action id="create-task" type="button" click="kanban:create_task" form="new-task-dialog" color="#ffffff"><Text>Create task</Text></Action>
     </Column>
 </Window>
