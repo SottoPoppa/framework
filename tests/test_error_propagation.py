@@ -7,7 +7,7 @@ import types
 import unittest
 from collections import OrderedDict
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 from jinja2 import Environment
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -272,12 +272,24 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
 
             self.assertEqual(select.value, "next.py")
-            messenger.send.assert_awaited_once_with(
-                adapter.session,
-                adapter="dsl",
-                receiver="terminal",
-                domain="select",
-                message="next.py",
+            self.assertEqual(
+                messenger.send.await_args_list,
+                [
+                    call(
+                        adapter.session,
+                        adapter="dsl",
+                        receiver="terminal",
+                        domain="select",
+                        message="next.py",
+                    ),
+                    call(
+                        adapter.session,
+                        adapter="dsl",
+                        receiver="terminal",
+                        domain="select_application",
+                        message="next.py",
+                    ),
+                ],
             )
 
     async def test_textual_storekeeper_cache_reuses_unchanged_files(self):

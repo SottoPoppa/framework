@@ -15,6 +15,7 @@
                     <Container id="backlog-task-{{ task.id }}" background="#f8fafc" padding="1px" radius="small">
                         <Text type="h4">{{ task.title }}</Text>
                         <Text>{{ task.description or '' }}</Text>
+                        <Action id="backlog-task-{{ task.id }}-ide" type="button" route="/ide" click="terminal:select" value="{{ task.file or '' }}"><Text>{{ task.file or '' }}</Text></Action>
                         <Text color="#64748b">{{ task.priority or 'medium' }}</Text>
                         <Action type="button" click="kanban:move_to_todo" value="{{ task.id }}"><Text>Move to To Do</Text></Action>
                     </Container>

@@ -182,6 +182,8 @@ class AppDinamica(App):
         ("ctrl+c", "quit", "Esci"),
         ("ctrl+s", "save", "Salva"),
         ("ctrl+l", "show_log", "Log"),
+        Binding("ctrl+left", "navigate_back", "Indietro", priority=True),
+        Binding("ctrl+right", "navigate_forward", "Avanti", priority=True),
     ]
 
     def __init__(self, adapter, **kwargs):
@@ -334,6 +336,14 @@ class AppDinamica(App):
             return
         await self.push_screen(LogScreen(self.adapter.log_buffer))
 
+    @flow.request_boundary
+    async def action_navigate_back(self):
+        await self.adapter.navigate_back()
+
+    @flow.request_boundary
+    async def action_navigate_forward(self):
+        await self.adapter.navigate_forward()
+
     async def on_mount(self) -> None:
         self.adapter.logger.debug(
             "Textual.on_mount: iniziato",
@@ -373,19 +383,24 @@ class AppDinamica(App):
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         w = self.adapter.node_get(event.button.id)
         click = getattr(event.button, "_dsl_click", None)
+        route = getattr(event.button, "_dsl_route", None)
 
-        if w is None and not click:
+        if w is None and not click and not route:
             return
 
         attrs_tag = dom.attributes_from_tag(w) if w is not None else {}
 
         # Se il pulsante ha un attributo route, naviga a quella URL
-        route = getattr(event.button, "_dsl_route", None) or attrs_tag.get("route")
+        route = route or attrs_tag.get("route")
         if route:
             if isinstance(route, str) and route.startswith("#"):
                 await self.adapter.open_registered_modal(route[1:])
                 return
             await self.adapter.navigate_to(route)
+            if click == "terminal:select":
+                selected_file = getattr(event.button, "_dsl_value", None)
+                if isinstance(selected_file, str) and selected_file:
+                    await self._send_dsl_event(click, selected_file)
             return
 
         click = attrs_tag.get("click") or click
@@ -448,14 +463,22 @@ class AppDinamica(App):
 
     @flow.request_boundary
     async def on_select_changed(self, event: Select.Changed) -> None:
-        programmatic_value = self._programmatic_select_changes.pop(
-            event.select.id,
-            None,
-        )
-        if programmatic_value is not None and str(event.value) == programmatic_value:
+        widget_id = event.select.id
+        event_value = str(event.value)
+        current_value = str(getattr(event.select, "value", event.value))
+        programmatic_value = self._programmatic_select_changes.get(widget_id)
+
+        if programmatic_value is not None:
+            if event_value == programmatic_value:
+                self._programmatic_select_changes.pop(widget_id, None)
+                return
+            if event_value != current_value:
+                return
+            self._programmatic_select_changes.pop(widget_id, None)
+        elif event_value != current_value:
             return
 
-        w = self.adapter.node_get(event.select.id)
+        w = self.adapter.node_get(widget_id)
 
         if w is not None:
             attrs_tag = dom.attributes_from_tag(w)
@@ -504,6 +527,8 @@ class Adapter(PresentationAdapter):
         self.logger = get_logger("tui")
         self._storekeeper_file_cache = OrderedDict()
         self.active_screens: Dict[str, Screen] = {}
+        self._navigation_history: list[str] = []
+        self._navigation_index = -1
         self.widgets = self.nodes  # alias compatibile per il runtime Textual
         self.app = AppDinamica(self)
         self.validate_adapter()
@@ -635,6 +660,42 @@ class Adapter(PresentationAdapter):
             active=type(self.app.screen).__name__,
             duration_ms=round((perf_counter() - started) * 1000, 2),
         )
+
+    def _record_navigation(self, url: str) -> None:
+        if (
+            self._navigation_index >= 0
+            and self._navigation_history[self._navigation_index] == url
+        ):
+            return
+        del self._navigation_history[self._navigation_index + 1:]
+        self._navigation_history.append(url)
+        self._navigation_index = len(self._navigation_history) - 1
+
+    async def navigate_to(self, url: str, modal: bool = False):
+        if not modal and self._navigation_index < 0:
+            current_url = getattr(self, "url", None)
+            if current_url:
+                self._record_navigation(current_url)
+
+        result = await super().navigate_to(url, modal=modal)
+        if not modal and (not flow.is_result(result) or flow.check(result)):
+            self._record_navigation(url)
+        return result
+
+    async def _navigate_history_to(self, index: int):
+        if index < 0 or index >= len(self._navigation_history):
+            return None
+
+        result = await super().navigate_to(self._navigation_history[index])
+        if not flow.is_result(result) or flow.check(result):
+            self._navigation_index = index
+        return result
+
+    async def navigate_back(self):
+        return await self._navigate_history_to(self._navigation_index - 1)
+
+    async def navigate_forward(self):
+        return await self._navigate_history_to(self._navigation_index + 1)
 
     async def _push_screen(self, screen):
         await self.app.push_screen(screen)

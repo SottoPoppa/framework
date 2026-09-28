@@ -1,5 +1,5 @@
 routes: {
-    route:GET_INDEX := { path:"/"; method:"GET"; "type":"view"; view:"terminal.xml"; controllers:["terminal", "chat"] };
+    route:GET_INDEX := { path:"/ide"; method:"GET"; "type":"view"; view:"terminal.xml"; controllers:["terminal", "chat"] };
     route:GET_CHAT := { path:"/chat"; method:"GET"; "type":"view"; view:"chat.xml"; controllers:["chat"] };
     route:GET_ECOMMERCE := { path:"/shop"; method:"GET"; "type":"view"; view:"ecommerce.xml"; controllers:["catalog"] };
     route:GET_PROFILE := { path:"/profile"; method:"GET"; "type":"view"; view:"profile.xml" };
@@ -22,5 +22,5 @@ routes: {
     route:GET_USER_PROFILE := { path:"/user/{id}"; method:"GET"; "type":"view"; view:"twitch_channel.xml" };
     route:GET_TRIS := { path:"/tris"; method:"GET"; "type":"view"; view:"tris.xml"; controllers:["tris"] };
     // SCRUM Kanban Board
-    route:GET_KANBAN := { path:"/kanban"; method:"GET"; "type":"view"; view:"kanban.xml"; controllers:["kanban"] };
+    route:GET_KANBAN := { path:"/"; method:"GET"; "type":"view"; view:"kanban.xml"; controllers:["kanban"] };
 }
