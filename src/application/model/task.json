@@ -27,6 +27,11 @@
     "required": false,
     "nullable": true
   },
+  "started_at": {
+    "type": "string",
+    "required": false,
+    "nullable": true
+  },
   "priority": {
     "type": "string",
     "required": false,

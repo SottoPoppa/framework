@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import random
 from collections.abc import Mapping
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from framework.service.introspection import Reflection
@@ -77,6 +78,12 @@ def flatten_records(records: Any) -> list:
     return [records] if records else []
 
 
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
+        "+00:00", "Z"
+    )
+
+
 BUILTINS: Dict[str, Any] = {
     "map_records": map_records,
     "tag_variants": tag_variants,
@@ -91,6 +98,7 @@ BUILTINS: Dict[str, Any] = {
     "random": lambda minimum, maximum: random.randint(int(minimum), int(maximum)),
     "format": lambda template, *values: str(template).format(*values),
     "result": lambda value=None: value,
+    "utc_now": utc_now,
     "file_dependencies": Reflection.file_dependencies,
     "prefix_match": prefix_match,
     "tuple_filter_tuple": tuple_filter_tuple,
