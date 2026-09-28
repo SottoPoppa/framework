@@ -3,22 +3,17 @@
     <Column width="full" height="full" spacing="1px">
         <Row width="full" align="center" justify="between">
             <Text type="h1" color="#17202a">Kanban Board</Text>
-            <Action id="new-task" type="button" route="#new-task-dialog" background="#17202a" color="#ffffff">
-                <Text>New task</Text>
-            </Action>
+            <NewTaskButton id="new-task" />
         </Row>
         <Row id="kanban-board" width="full" height="1fr" spacing="1px" overflow="auto">
             <Column id="backlog-column" width="1fr" background="#ffffff" padding="1px" radius="small">
                 <Text type="h3" color="#17202a">Backlog</Text>
                 {% storekeeper(repository="task", filter={"eq":{"status":"backlog"}}) as backlog_tasks %}
                     {% for task in backlog_tasks or [] %}
-                    <Container id="backlog-task-{{ task.id }}" background="#f8fafc" padding="1px" radius="small">
-                        <Text type="h4">{{ task.title }}</Text>
-                        <Text>{{ task.description or '' }}</Text>
-                        <Action id="backlog-task-{{ task.id }}-ide" type="button" route="/ide" click="terminal:select" value="{{ task.file or '' }}"><Text>{{ task.file or '' }}</Text></Action>
+                    <KanbanTaskCard id="backlog-task-{{ task.id }}" title="{{ task.title }}" description="{{ task.description or '' }}" file="{{ task.file or '' }}">
                         <Text color="#64748b">{{ task.priority or 'medium' }}</Text>
                         <Action type="button" click="kanban:move_to_todo" value="{{ task.id }}"><Text>Move to To Do</Text></Action>
-                    </Container>
+                    </KanbanTaskCard>
                     {% else %}<Text color="#64748b">No tasks</Text>{% endfor %}
                 {% endstorekeeper %}
             </Column>
@@ -26,10 +21,9 @@
                 <Text type="h3" color="#17202a">To Do</Text>
                 {% storekeeper(repository="task", filter={"eq":{"status":"todo"}}) as todo_tasks %}
                     {% for task in todo_tasks or [] %}
-                    <Container id="todo-task-{{ task.id }}" background="#f8fafc" padding="1px" radius="small">
-                        <Text type="h4">{{ task.title }}</Text><Text>{{ task.description or '' }}</Text>
+                    <KanbanTaskCard id="todo-task-{{ task.id }}" title="{{ task.title }}" description="{{ task.description or '' }}" file="{{ task.file or '' }}">
                         <Action type="button" click="kanban:move_to_inprogress" value="{{ task.id }}"><Text>Start</Text></Action>
-                    </Container>
+                    </KanbanTaskCard>
                     {% else %}<Text color="#64748b">No tasks</Text>{% endfor %}
                 {% endstorekeeper %}
             </Column>
@@ -37,10 +31,9 @@
                 <Text type="h3" color="#17202a">In Progress</Text>
                 {% storekeeper(repository="task", filter={"eq":{"status":"in_progress"}}) as inprogress_tasks %}
                     {% for task in inprogress_tasks or [] %}
-                    <Container id="inprogress-task-{{ task.id }}" background="#f8fafc" padding="1px" radius="small">
-                        <Text type="h4">{{ task.title }}</Text><Text>{{ task.description or '' }}</Text>
+                    <KanbanTaskCard id="inprogress-task-{{ task.id }}" title="{{ task.title }}" description="{{ task.description or '' }}" file="{{ task.file or '' }}">
                         <Action type="button" click="kanban:move_to_review" value="{{ task.id }}"><Text>Send to Review</Text></Action>
-                    </Container>
+                    </KanbanTaskCard>
                     {% else %}<Text color="#64748b">No tasks</Text>{% endfor %}
                 {% endstorekeeper %}
             </Column>
@@ -48,11 +41,10 @@
                 <Text type="h3" color="#17202a">Review</Text>
                 {% storekeeper(repository="task", filter={"eq":{"status":"review"}}) as review_tasks %}
                     {% for task in review_tasks or [] %}
-                    <Container id="review-task-{{ task.id }}" background="#f8fafc" padding="1px" radius="small">
-                        <Text type="h4">{{ task.title }}</Text><Text>{{ task.description or '' }}</Text>
+                    <KanbanTaskCard id="review-task-{{ task.id }}" title="{{ task.title }}" description="{{ task.description or '' }}" file="{{ task.file or '' }}">
                         <Action type="button" click="kanban:approve_task" value="{{ task.id }}"><Text>Approve</Text></Action>
                         <Action type="button" click="kanban:reject_task" value="{{ task.id }}"><Text>Reject</Text></Action>
-                    </Container>
+                    </KanbanTaskCard>
                     {% else %}<Text color="#64748b">No tasks</Text>{% endfor %}
                 {% endstorekeeper %}
             </Column>
@@ -60,31 +52,19 @@
                 <Text type="h3" color="#17202a">Done</Text>
                 {% storekeeper(repository="task", filter={"eq":{"status":"done"}}) as done_tasks %}
                     {% for task in done_tasks or [] %}
-                    <Container id="done-task-{{ task.id }}" background="#f8fafc" padding="1px" radius="small">
-                        <Text type="h4">{{ task.title }}</Text><Text>{{ task.description or '' }}</Text>
+                    <KanbanTaskCard id="done-task-{{ task.id }}" title="{{ task.title }}" description="{{ task.description or '' }}" file="{{ task.file or '' }}">
                         <Action type="button" click="kanban:reopen_task" value="{{ task.id }}"><Text>Reopen</Text></Action>
-                    </Container>
+                    </KanbanTaskCard>
                     {% else %}<Text color="#64748b">No tasks</Text>{% endfor %}
                 {% endstorekeeper %}
             </Column>
         </Row>
-        <Window id="new-task-dialog" type="modal" title="New Task">
-            <Column padding="1px" spacing="1px">
-                <Input id="task-title" type="text" name="title" placeholder="Task title" required="true" />
-                <Input id="task-description" type="textarea" name="description" placeholder="Description" />
-                <Input id="task-file" type="select" name="file" value="__none__" placeholder="Main file (optional)">
-                    <Option value="__none__" title="No file" />
-                    {% if kanban.files | check %}
-                        {% for item in kanban.files | value %}
-                            <Option value="{{ item['relative_path'] }}" title="{{ item['relative_path'] }}" />
-                        {% endfor %}
-                    {% endif %}
-                </Input>
-                <Input id="task-priority" type="select" name="priority" value="medium">
-                    <Option value="low" /><Option value="medium" /><Option value="high" /><Option value="critical" />
-                </Input>
-                <Action id="create-task" type="button" click="kanban:create_task" form="new-task-dialog" background="#17202a" color="#ffffff"><Text>Create task</Text></Action>
-            </Column>
-        </Window>
+        <NewTaskDialog id="new-task-dialog" default_file="__none__">
+            {% if kanban.files | check %}
+                {% for item in kanban.files | value %}
+                    <Option value="{{ item['relative_path'] }}" title="{{ item['relative_path'] }}" />
+                {% endfor %}
+            {% endif %}
+        </NewTaskDialog>
     </Column>
 </Window>

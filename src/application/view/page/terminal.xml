@@ -20,6 +20,7 @@
                 {% endfor %}
             {% endif %}
         </Input>
+        <NewTaskButton id="new-task" />
         <Action id="open-chat" route="#chat-modal">
             <Text>Chat</Text>
         </Action>
@@ -90,6 +91,14 @@
         </Option>
         {% endfor %}
     </Group>
+
+    <NewTaskDialog id="new-task-dialog" default_file="{{ global_file or '__none__' }}">
+        {% if terminal.files | check %}
+            {% for item in terminal.files | value %}
+                <Option value="{{ item['relative_path'] }}" title="{{ item['relative_path'] }}" />
+            {% endfor %}
+        {% endif %}
+    </NewTaskDialog>
 
     <Window id="chat-modal" type="modal" title="Copilot Chat">
         <Column width="full" height="full">

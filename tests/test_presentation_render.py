@@ -39,6 +39,51 @@ class PresentationRenderTests(unittest.TestCase):
 
 
 class PresentationTextualRebuildTests(unittest.IsolatedAsyncioTestCase):
+	async def test_custom_components_expand_and_keep_slotted_content(self):
+		project_root = Path(__file__).resolve().parents[1]
+
+		class FakeInfrastructure:
+			jinja_environments = {}
+
+			def resource(self, path):
+				return (project_root / path).read_text(encoding="utf-8")
+
+		class FakeLoader:
+			infrastructure = FakeInfrastructure()
+
+			def get_managers(self):
+				return {}
+
+		adapter = TextualAdapter(FakeLoader(), None, None, None, LogBuffer())
+		await adapter.render_template(
+			None,
+			text=(
+				'<Window type="page">'
+				'<NewTaskButton id="new-task" />'
+				'<NewTaskDialog id="new-task-dialog" default_file="src/app.py">'
+				'<Option value="src/app.py" title="src/app.py" />'
+				'</NewTaskDialog>'
+				'<KanbanTaskCard id="task-card" title="Fix task" description="Task description" file="src/app.py">'
+				'<Action type="button" click="kanban:move_to_todo" value="task-1">'
+				'<Text>Move</Text></Action>'
+				'</KanbanTaskCard>'
+				'</Window>'
+			),
+		)
+
+		self.assertIn('route="#new-task-dialog"', adapter.node_get("new-task"))
+		file_select = adapter.node_get("task-file")
+		self.assertIn('value="src/app.py"', file_select)
+		self.assertIn('title="src/app.py"', file_select)
+		task_card = adapter.node_get("task-card")
+		self.assertIn(">Fix task</Text>", task_card)
+		self.assertIn("Task description", task_card)
+		self.assertIn('id="task-card-ide"', task_card)
+		self.assertIn('route="/ide"', task_card)
+		self.assertIn('click="terminal:select"', task_card)
+		self.assertIn('value="src/app.py"', task_card)
+		self.assertIn('click="kanban:move_to_todo"', task_card)
+
 	async def test_group_tab_value_selects_the_initial_pane(self):
 		adapter = TextualAdapter(None, None, None, None, LogBuffer())
 		app = App()

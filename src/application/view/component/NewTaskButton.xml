@@ -1,0 +1,3 @@
+<Action id="{{ component.id }}" type="button" route="#new-task-dialog" background="#17202a" color="#ffffff">
+    <Text>New task</Text>
+</Action>

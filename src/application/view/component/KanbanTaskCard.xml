@@ -1,0 +1,8 @@
+<Container id="{{ component.id }}" background="#f8fafc" padding="1px" radius="small">
+    <Text type="h4">{{ component.attributes.title }}</Text>
+    <Text>{{ component.attributes.description }}</Text>
+    {% if component.attributes.file %}
+    <Action id="{{ component.id }}-ide" type="button" route="/ide" click="terminal:select" value="{{ component.attributes.file }}"><Text>{{ component.attributes.file }}</Text></Action>
+    {% endif %}
+    {{ component.inner | safe }}
+</Container>
