@@ -1,10 +1,12 @@
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
 
 from textual.app import App
 from textual.widgets import Button, Input, Label, Link, RadioButton, Static
+
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -20,6 +22,8 @@ from infrastructure.presentation.tui.widgets import (
 	_make_tabbed_content,
 )
 from infrastructure.presentation.web import starlette
+from infrastructure.presentation.adapter import Adapter as PresentationAdapter
+from framework.manager.presenter import Manager as PresenterManager
 
 
 class PresentationRenderTests(unittest.TestCase):
@@ -46,6 +50,15 @@ class PresentationRenderTests(unittest.TestCase):
 		)
 		self.assertEqual(safe_attributes["HREF"], "https://example.test")
 
+	def test_fractional_dimensions_expand_flex_items(self):
+		width = starlette.attrs("column", {"attrs": {"width": "1fr"}})
+		height = starlette.attrs("row", {"attrs": {"height": "1fr"}})
+		weighted_width = starlette.attrs("column", {"attrs": {"width": "2fr"}})
+
+		self.assertIn("flex-1 min-w-40", width["class"])
+		self.assertIn("flex-1 min-h-0", height["class"])
+		self.assertIn("flex-[2] min-w-40", weighted_width["class"])
+
 	def test_option_tag_renders_value_and_label(self):
 		adapter = starlette.Adapter(
 			None, None, None, None, None,
@@ -56,6 +69,124 @@ class PresentationRenderTests(unittest.TestCase):
 
 		self.assertIn('value="active"', str(option))
 		self.assertIn(">Active</option>", str(option))
+
+	def test_editor_renders_child_content_in_a_textarea(self):
+		adapter = starlette.Adapter(
+			None, None, None, None, None,
+			manager={"defender": {"key": "test-key"}},
+		)
+		source = "def move_to_todo(): pass"
+		editor = adapter.mount_tag(
+			"input",
+			{"type": "editor", "id": "source-editor", "language": "python"},
+			[adapter.mount_tag("text", {}, [source])],
+		)
+		textarea = starlette.BeautifulSoup(str(editor), "html.parser").find(
+			"textarea", id="source-editor"
+		)
+
+		self.assertIsNotNone(textarea)
+		self.assertEqual(textarea.get_text(), source)
+		self.assertEqual(textarea.get("language"), "python")
+
+	def test_select_renders_valid_options_and_marks_the_selected_value(self):
+		adapter = starlette.Adapter(
+			None, None, None, None, None,
+			manager={"defender": {"key": "test-key"}},
+		)
+		select = adapter.mount_tag(
+			"input",
+			{"type": "select", "id": "file-select", "value": "pyproject.toml"},
+			[
+				adapter.mount_tag("option", {"value": "README.md"}),
+				adapter.mount_tag("option", {"value": "pyproject.toml"}),
+				adapter.mount_tag("option", {"value": "src/application/controller/kanban.dsl"}),
+			],
+		)
+		parsed = starlette.BeautifulSoup(str(select), "html.parser")
+		options = parsed.select("select > option")
+
+		self.assertEqual(len(options), 3)
+		self.assertNotIn("type", parsed.select_one("select").attrs)
+		self.assertEqual(options[0].get_text(), "README.md")
+		self.assertTrue(options[1].has_attr("selected"))
+		self.assertEqual(options[1].get_text(), "pyproject.toml")
+		self.assertFalse(options[2].has_attr("selected"))
+		self.assertEqual(options[2].get_text(), "src/application/controller/kanban.dsl")
+
+	def test_action_preserves_form_target_for_event_payload(self):
+		adapter = starlette.Adapter(
+			None, None, None, None, None,
+			manager={"defender": {"key": "test-key"}},
+		)
+		create_action = adapter.mount_tag(
+			"action",
+			{
+				"type": "button",
+				"id": "create-task",
+				"click": "kanban:create_task",
+				"form": "new-task-dialog",
+			},
+			["Create task"],
+		)
+
+		self.assertIn('data-click="kanban:create_task"', str(create_action))
+		self.assertIn('form="new-task-dialog"', str(create_action))
+
+	def test_tab_group_renders_sections_in_valid_panels(self):
+		adapter = starlette.Adapter(
+			None, None, None, None, None,
+			manager={"defender": {"key": "test-key"}},
+		)
+		group = adapter.mount_tag(
+			"group",
+			{"id": "workspace-editors", "type": "tab", "value": "framework"},
+			[
+				adapter.mount_tag(
+					"option",
+					{"title": "Applicazione", "value": "application"},
+					[adapter.mount_tag("container", {"id": "application-panel"}, ["App section"])],
+				),
+				adapter.mount_tag(
+					"option",
+					{"title": "Framework", "value": "framework"},
+					[adapter.mount_tag("container", {"id": "framework-panel"}, ["Framework section"])],
+				),
+			],
+		)
+		parsed = starlette.BeautifulSoup(str(group), "html.parser")
+		tabs = parsed.select('[role="tablist"] [role="tab"]')
+		panels = parsed.select('[role="tabpanel"]')
+
+		self.assertEqual([tab.get_text() for tab in tabs], ["Applicazione", "Framework"])
+		self.assertEqual(tabs[1].get("aria-selected"), "true")
+		self.assertIn("hidden", panels[0].attrs)
+		self.assertNotIn("hidden", panels[1].attrs)
+		self.assertIn("Framework section", panels[1].get_text())
+		self.assertIsNone(parsed.find("option"))
+
+	def test_navigation_tabs_render_as_buttons_and_keep_event_values(self):
+		adapter = starlette.Adapter(
+			None, None, None, None, None,
+			manager={"defender": {"key": "test-key"}},
+		)
+		navigation = adapter.mount_tag(
+			"navigation",
+			{"type": "tabs", "id": "application-files", "value": "src/app.py"},
+			[
+				adapter.mount_tag(
+					"option",
+					{"value": "src/app.py", "click": "terminal:select_application"},
+				),
+			],
+		)
+		parsed = starlette.BeautifulSoup(str(navigation), "html.parser")
+		tab = parsed.select_one('[role="tab"]')
+
+		self.assertIsNotNone(tab)
+		self.assertEqual(tab.get_text(), "src/app.py")
+		self.assertEqual(tab.get("data-click"), "terminal:select_application")
+		self.assertTrue(tab.has_attr("data-tab-event"))
 
 	def test_modal_window_type_renders_targeted_overlay(self):
 		adapter = starlette.Adapter(
@@ -77,6 +208,67 @@ class PresentationRenderTests(unittest.TestCase):
 		self.assertIn('href="#"', html)
 		self.assertIn(">Conferma</h2>", html)
 		self.assertIn("Continua", html)
+
+	def test_page_window_provides_viewport_height_to_its_content(self):
+		adapter = starlette.Adapter(
+			None, None, None, None, None,
+			manager={"defender": {"key": "test-key"}},
+		)
+
+		page = adapter.mount_tag("window", {"type": "page"}, ["Board"])
+
+		self.assertIn('<body class="h-screen', str(page))
+
+	def test_page_runtime_dispatches_action_values_and_routes(self):
+		adapter = starlette.Adapter(
+			None, None, None, None, None,
+			manager={"defender": {"key": "test-key"}},
+		)
+		move_action = adapter.mount_tag(
+			"action",
+			{"type": "button", "click": "kanban:move_to_todo", "value": "task-1"},
+			["Move"],
+		)
+		open_action = adapter.mount_tag(
+			"action",
+			{
+				"type": "button",
+				"route": "/ide",
+				"click": "terminal:select",
+				"value": "src/app.py",
+			},
+			["Open file"],
+		)
+		page = adapter.mount_tag("window", {"type": "page"}, [move_action, open_action])
+		html = str(page)
+
+		self.assertIn('data-click="kanban:move_to_todo"', html)
+		self.assertIn('value="task-1"', html)
+		self.assertIn("const eventPayload = (el, domEvent) =>", html)
+		self.assertIn("const syncTerminalSelection = (value) =>", html)
+		self.assertIn("const payload = eventPayload(el, domEvent)", html)
+		self.assertIn("payload,", html)
+		self.assertIn("location.assign(route)", html)
+
+	def test_navigation_palette_renders_as_a_searchable_dialog(self):
+		adapter = starlette.Adapter(
+			None, None, None, None, None,
+			manager={"defender": {"key": "test-key"}},
+		)
+
+		palette = adapter.mount_tag(
+			"navigation",
+			{"type": "palette", "id": "commands"},
+			["Open IDE"],
+		)
+
+		html = str(palette)
+		self.assertIn('href="#commands"', html)
+		self.assertIn('role="dialog"', html)
+		self.assertIn('data-palette-search=""', html)
+		self.assertIn('data-palette-items=""', html)
+		self.assertIn("Open IDE", html)
+		self.assertNotIn("<nav", html)
 
 	def test_uvicorn_logs_are_forwarded_to_framework_logger(self):
 		framework_logger = Mock()
@@ -104,10 +296,154 @@ class PresentationRenderTests(unittest.TestCase):
 			starlette.logger,
 		)
 		self.assertIn("uvicorn.access", log_config["loggers"])
-		self.assertIn("starlette", log_config["loggers"])
+		self.assertIn("uvicorn.access", log_config["loggers"])
+
+	def test_starlette_uses_the_shared_presentation_adapter(self):
+		self.assertTrue(issubclass(starlette.Adapter, PresentationAdapter))
+
+	def test_presenter_selects_adapter_by_session_id(self):
+		web_session = SimpleNamespace(sid="web-session")
+		tui_session = SimpleNamespace(sid="tui-session")
+		web_adapter = SimpleNamespace(sessions={"web-session": web_session})
+		tui_adapter = SimpleNamespace(sessions={"tui-session": tui_session})
+		presenter = PresenterManager.__new__(PresenterManager)
+		presenter.presentations = [web_adapter, tui_adapter]
+
+		self.assertIs(presenter._get_driver(web_session), web_adapter)
+		self.assertIs(presenter._get_driver(tui_session), tui_adapter)
+
+
+class StarletteRebuildTests(unittest.IsolatedAsyncioTestCase):
+	async def test_rebuild_renders_original_view_and_sends_updated_fragment(self):
+		adapter = starlette.Adapter(
+			None, None, None, None, None,
+			manager={"defender": {"key": "test-key"}},
+		)
+		runtime_session = SimpleNamespace(sid="web-session")
+		source = (
+			"<Window><Row id='kanban-board'>"
+			"{% storekeeper(repository='task') as tasks %}"
+			"{% for task in tasks %}{{ task.title }}{% endfor %}"
+			"{% endstorekeeper %}</Row></Window>"
+		)
+		request_session = {"id": "web-session", "csrf_token": "test-token"}
+		adapter._session_controllers["web-session"] = ["kanban"]
+		adapter._session_views["web-session"] = {
+			"text": source,
+			"source_name": "src/application/view/page/kanban.xml",
+			"session": request_session,
+		}
+		adapter.DOM["kanban-board"] = '<Row id="kanban-board">Old tasks</Row>'
+		adapter.active_websockets["web-session"] = [
+			SimpleNamespace(send_text=AsyncMock())
+		]
+		adapter.get_controller_contexts = Mock(return_value={"kanban": {}})
+		adapter.render_template = AsyncMock(
+			return_value='<div id="kanban-board">Updated task</div>'
+		)
+
+		await adapter.rebuild(runtime_session, "kanban-board", {})
+
+		adapter.render_template.assert_awaited_once_with(
+			runtime_session,
+			text=source,
+			controller_context={"kanban": {}},
+			source_name="src/application/view/page/kanban.xml",
+			session=request_session,
+		)
+		websocket = adapter.active_websockets["web-session"][0]
+		websocket.send_text.assert_awaited_once()
+		frame = starlette.json.loads(websocket.send_text.await_args.args[0])
+		self.assertEqual(frame["type"], "update")
+		self.assertEqual(frame["id"], "kanban-board")
+		self.assertIn("Updated task", frame["html"])
+		self.assertNotIn("Old tasks", frame["html"])
 
 
 class PresentationTextualRebuildTests(unittest.IsolatedAsyncioTestCase):
+	async def test_websocket_dispatches_events_through_dsl_messenger(self):
+		adapter = starlette.Adapter(
+			None, None, None, None, None,
+			manager={"defender": {"key": "test-key"}},
+		)
+		runtime_session = SimpleNamespace(
+			sid="web-session",
+			emit=AsyncMock(return_value=None),
+		)
+		messenger = SimpleNamespace(send=AsyncMock(return_value=None))
+		adapter.messenger = messenger
+		adapter.defender = SimpleNamespace(
+			session_get=lambda _sid: runtime_session,
+		)
+		adapter.sessions["web-session"] = runtime_session
+		adapter.executor = SimpleNamespace(
+			interpreter=SimpleNamespace(
+				runner=SimpleNamespace(
+					nodes={"src/application/controller/kanban.dsl"},
+				)
+			)
+		)
+
+		class FakeWebSocket:
+			headers = {"origin": "http://example.test"}
+			url = "ws://example.test/reactive"
+			session = {"id": "web-session"}
+
+			def __init__(self):
+				self.received = False
+
+			async def accept(self):
+				return None
+
+			async def receive_json(self):
+				if not self.received:
+					self.received = True
+					return {
+						"type": "event",
+						"name": "kanban:move_to_todo",
+						"payload": {"value": "task-1"},
+					}
+				raise starlette.WebSocketDisconnect(code=1000)
+
+		await adapter.render_reactive(FakeWebSocket())
+
+		messenger.send.assert_awaited_once_with(
+			runtime_session,
+			adapter="dsl",
+			receiver="kanban",
+			domain="move_to_todo",
+			message={"value": "task-1"},
+		)
+		runtime_session.emit.assert_not_awaited()
+
+
+	async def test_websocket_disconnect_cleans_session_socket_registry(self):
+		adapter = starlette.Adapter(
+			None, None, None, None, None,
+			manager={"defender": {"key": "test-key"}},
+		)
+		runtime_session = SimpleNamespace(sid="web-session")
+		adapter.sessions["web-session"] = runtime_session
+		adapter.defender = SimpleNamespace(
+			session_get=lambda _sid: runtime_session,
+		)
+
+		class FakeWebSocket:
+			headers = {"origin": "http://example.test"}
+			url = "ws://example.test/reactive"
+			session = {"id": "web-session"}
+
+			async def accept(self):
+				return None
+
+			async def receive_json(self):
+				raise starlette.WebSocketDisconnect(code=1000)
+
+		await adapter.render_reactive(FakeWebSocket())
+
+		self.assertNotIn("web-session", adapter.active_websockets)
+
+
 	async def test_palette_compilation_skips_transient_action_widgets(self):
 		adapter = TextualAdapter(None, None, None, None, LogBuffer())
 

@@ -124,7 +124,7 @@ class Adapter(presentation.Port, ABC):
         )
         self._render_lock = asyncio.Lock()
         self._rebuild_lock = asyncio.Lock()
-        self.sessions: Dict[str, Dict[str, Any]] = {}
+        self.sessions: Dict[str, Any] = {}
         self._pending_rebuilds: Dict[
             str, tuple[Any, Dict[str, Any] | None]
         ] = {}
@@ -141,6 +141,9 @@ class Adapter(presentation.Port, ABC):
             )
         session_result = await self.defender.session_create()
         self.session = flow.output(session_result)
+        session_id = getattr(self.session, "sid", None)
+        if session_id is not None:
+            self.sessions[session_id] = self.session
         if logger:
             logger.debug("Adapter.start: sessione creata")
         await self.parse_route()
@@ -149,9 +152,15 @@ class Adapter(presentation.Port, ABC):
         return await self._run_runtime()
 
     async def shutdown(self):
-        if getattr(self, "session", None) is not None:
-            await self.session.close()
-        await self._shutdown_runtime()
+        try:
+            await self._shutdown_runtime()
+        finally:
+            if getattr(self, "session", None) is not None:
+                await self.session.close()
+            self.sessions.clear()
+
+    async def stop(self, session=None):
+        await self.shutdown()
 
     async def mount_view(self, url):
         self._prepare_runtime()

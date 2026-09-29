@@ -40,6 +40,7 @@ policies: {
 
 rules : {
     "/": [policies.GET_ALLOW_ALL];
+    "/ide": [policies.GET_ALLOW_ALL];
     "/chat": [policies.GET_ALLOW_ALL];
     "/shop": [policies.GET_ALLOW_ALL];
     "/profile": [policies.GET_ALLOW_PATH];

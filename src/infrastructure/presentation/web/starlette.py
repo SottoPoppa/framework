@@ -18,6 +18,7 @@ import secrets
 import framework.port.presentation as presentation
 import framework.core.flow as flow
 import framework.service.route as route
+from infrastructure.presentation.adapter import Adapter as PresentationAdapter
 from framework.service.diagnostic import get_logger
 from framework.service.route import split_url
 from framework.manager.defender import Manager as Defender
@@ -323,6 +324,15 @@ class DefenderMiddleware(BaseHTTPMiddleware):
 
 # --- Configurazione Programmatica Attributi ---
 
+def _fractional_flex(value, minimum_size):
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)fr", str(value))
+    if match is None:
+        return ""
+    factor = match.group(1)
+    flex = "flex-1" if factor == "1" else f"flex-[{factor}]"
+    return f"{flex} {minimum_size}"
+
+
 mapping_attributes = {
     presentation.Attribute.WIDTH.value: lambda x: {
         "full": "w-full",
@@ -331,7 +341,7 @@ mapping_attributes = {
         "1/4": "w-1/4",
         "auto": "w-auto",
         True:f"w-[{x}]"
-    }.get(True if '%' in x or 'px' in x else x, ""),
+    }.get(True if '%' in x or 'px' in x else x, "") or _fractional_flex(x, "min-w-40"),
     presentation.Attribute.HEIGHT.value: lambda x: {
         "full": "h-full",
         "1/2": "h-1/2",
@@ -339,7 +349,7 @@ mapping_attributes = {
         "1/4": "h-1/4",
         "auto": "h-auto",
         True:f"h-[{x}]"
-    }.get(True if '%' in x or 'px' in x else x),
+    }.get(True if '%' in x or 'px' in x else x, "") or _fractional_flex(x, "min-h-0"),
     presentation.Attribute.MAX_HEIGHT.value: lambda x: {
         True:f"max-h-[{x}]"
     }.get(True if '%' in x or 'px' in x else x, ""),
@@ -613,6 +623,134 @@ def _html_children(inner):
     return inner if isinstance(inner, Markup) else markupsafe.escape(inner)
 
 
+def _render_select(x):
+    attributes = attrs("input", x)
+    selected_value = attributes.get("value")
+    options = BeautifulSoup(
+        "".join(str(child) for child in x.get("inner", [])),
+        "html.parser",
+    )
+    for option in options.find_all("option"):
+        value = option.get("value")
+        if not option.get_text(strip=True) and not option.find(True):
+            option.string = option.get("title") or value or ""
+        if selected_value is not None:
+            if value == str(selected_value):
+                option["selected"] = ""
+            else:
+                option.attrs.pop("selected", None)
+    attributes.pop("type", None)
+    return htpy.select(**attributes)[Markup(str(options))]
+
+
+def _render_editor(x):
+    attributes = attrs("input", x, "w-full h-full resize-y font-mono")
+    value = attributes.pop("value", None)
+    content = BeautifulSoup(
+        "".join(str(child) for child in x.get("inner", [])),
+        "html.parser",
+    ).get_text()
+    return htpy.textarea(**attributes)[value if value is not None else content]
+
+
+def _rendered_options(x):
+    rendered = "".join(str(child) for child in x.get("inner", []))
+    return BeautifulSoup(rendered, "html.parser").find_all("option", recursive=False)
+
+
+def _render_tab_group(x):
+    attributes = attrs("tab", x, "flex flex-col min-h-0")
+    selected_value = attributes.pop("value", None)
+    options = _rendered_options(x)
+    if not options:
+        return htpy.div(**attributes)[Markup("".join(str(child) for child in x.get("inner", [])))]
+
+    group_id = attributes.get("id") or f"dsl-tabs-{uuid.uuid4().hex}"
+    values = [option.get("value") or str(index) for index, option in enumerate(options)]
+    if selected_value not in values:
+        selected_value = values[0]
+    attributes.update({"id": group_id, "data-tabs": "", "value": selected_value})
+
+    tabs = []
+    panels = []
+    for index, (option, value) in enumerate(zip(options, values)):
+        active = value == selected_value
+        tab_id = f"{group_id}-tab-{index}"
+        panel_id = f"{group_id}-panel-{index}"
+        tab_class = (
+            "border-blue-600 text-blue-700"
+            if active
+            else "border-transparent text-slate-600 hover:text-slate-900"
+        )
+        tabs.append(
+            htpy.button(
+                type="button",
+                id=tab_id,
+                role="tab",
+                aria_selected=str(active).lower(),
+                aria_controls=panel_id,
+                data_tab_value=value,
+                class_=f"border-b-2 px-3 py-2 text-sm {tab_class}",
+            )[option.get("title") or option.get_text(" ", strip=True) or value]
+        )
+        content = Markup("".join(str(child) for child in option.contents))
+        panels.append(
+            htpy.div(
+                id=panel_id,
+                role="tabpanel",
+                aria_labelledby=tab_id,
+                data_tab_panel=value,
+                hidden=not active,
+                class_="flex-1 min-h-0 overflow-auto",
+            )[content]
+        )
+
+    return htpy.div(**attributes)[
+        htpy.div(role="tablist", class_="flex gap-2 border-b border-gray-200")[tabs],
+        htpy.div(class_="flex-1 min-h-0")[panels],
+    ]
+
+
+def _render_navigation_tabs(x):
+    attributes = attrs("navigation", x, "flex flex-wrap items-center gap-1 border-b border-gray-200")
+    selected_value = attributes.pop("value", None)
+    options = _rendered_options(x)
+    if not options:
+        return htpy.nav(**attributes)[Markup("".join(str(child) for child in x.get("inner", [])))]
+
+    values = [option.get("value") or str(index) for index, option in enumerate(options)]
+    if selected_value not in values:
+        selected_value = values[0]
+    attributes.update({"data-tab-list": "", "role": "tablist", "value": selected_value})
+
+    tabs = []
+    for index, (option, value) in enumerate(zip(options, values)):
+        active = value == selected_value
+        tab_class = (
+            "border-blue-600 text-blue-700"
+            if active
+            else "border-transparent text-slate-600 hover:text-slate-900"
+        )
+        tab_attributes = {
+            "type": "button",
+            "role": "tab",
+            "aria-selected": str(active).lower(),
+            "data-tab-value": value,
+            "value": value,
+            "class": f"border-b-2 px-3 py-2 text-sm {tab_class}",
+        }
+        click = option.get("data-click")
+        if click:
+            tab_attributes["data-click"] = click
+            tab_attributes["data-tab-event"] = ""
+        tabs.append(
+            htpy.button(**tab_attributes)[
+                option.get("title") or option.get_text(" ", strip=True) or value
+            ]
+        )
+    return htpy.nav(**attributes)[tabs]
+
+
 def _render_modal_window(x):
     attrs = x.get("attrs", {})
     modal_id = attrs.get("id", "myModal")
@@ -645,7 +783,63 @@ def _render_modal_window(x):
     ]
 
 
-class Adapter(presentation.Port):
+def _render_navigation_palette(x):
+    attrs = x.get("attrs", {})
+    palette_id = attrs.get("id", "command-palette")
+    title_id = f"{palette_id}-title"
+    return htpy.div(class_="dsl-command-palette")[
+        htpy.a(
+            href=f"#{palette_id}",
+            data_palette_open=palette_id,
+            class_="fixed bottom-4 right-4 z-40 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-lg hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400",
+            aria_label="Apri i comandi",
+        )["Comandi"],
+        htpy.div(
+            class_="dsl-modal fixed inset-0 z-50 hidden items-center justify-center p-4 target:flex",
+            id=palette_id,
+            role="dialog",
+            aria_modal=True,
+            aria_labelledby=title_id,
+        )[
+            htpy.a(
+                href="#",
+                class_="absolute inset-0 bg-black/50",
+                aria_label="Chiudi palette",
+            ),
+            htpy.div(
+                class_="relative z-10 flex max-h-[90vh] w-full max-w-xl flex-col gap-4 overflow-y-auto rounded-md bg-white p-5 text-gray-900 shadow-xl"
+            )[
+                htpy.div(class_="flex items-center justify-between gap-4 border-b border-gray-200 pb-3")[
+                    htpy.h2(class_="text-lg font-semibold", id=title_id)["Comandi"],
+                    htpy.a(
+                        href="#",
+                        class_="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-100",
+                        aria_label="Chiudi",
+                    )["Chiudi"],
+                ],
+                htpy.input(
+                    type="search",
+                    class_="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm",
+                    placeholder="Cerca comandi",
+                    aria_label="Cerca comandi",
+                    autocomplete="off",
+                    data_palette_search="",
+                ),
+                htpy.div(
+                    class_="flex max-h-[65vh] flex-col gap-1 overflow-y-auto",
+                    data_palette_items="",
+                )[[Markup(item) for item in x.get("inner", [])]],
+                htpy.p(
+                    class_="hidden text-sm text-slate-500",
+                    data_palette_empty="",
+                    hidden=True,
+                )["Nessun comando trovato"],
+            ],
+        ],
+    ]
+
+
+class Adapter(PresentationAdapter):
     capabilities = {
         "tls": True,
         "min_tls_version": "TLSv1.2",
@@ -667,7 +861,7 @@ class Adapter(presentation.Port):
                     htpy.link(rel="stylesheet", href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"),
                     htpy.script(src="https://cdn.tailwindcss.com"),
                 ],
-                htpy.body(**attrs(presentation.Tag.WINDOW.value, x))[
+                htpy.body(**attrs(presentation.Tag.WINDOW.value, x, "h-screen"))[
                     [Markup(i) for i in x['inner']],
                     htpy.script(src="static/js/grid.js"),
                     htpy.script(src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"),
@@ -675,15 +869,101 @@ class Adapter(presentation.Port):
 
                     htpy.script[Markup("""
                         (function() {
+                            const selectedScopeFor = (value) => {
+                                if (value.startsWith('src/framework/')) return 'framework';
+                                if (value.startsWith('src/infrastructure/')) return 'infrastructure';
+                                return 'application';
+                            };
+                            const updateTabs = (root, value) => {
+                                if (!root || !value) return;
+                                root.setAttribute('value', value);
+                                root.querySelectorAll('[role="tab"][data-tab-value]').forEach((tab) => {
+                                    if (tab.closest('[data-tabs], [data-tab-list]') !== root) return;
+                                    const active = tab.getAttribute('data-tab-value') === value;
+                                    tab.setAttribute('aria-selected', String(active));
+                                    tab.classList.toggle('border-blue-600', active);
+                                    tab.classList.toggle('text-blue-700', active);
+                                    tab.classList.toggle('border-transparent', !active);
+                                    tab.classList.toggle('text-slate-600', !active);
+                                });
+                                root.querySelectorAll('[data-tab-panel]').forEach((panel) => {
+                                    if (panel.closest('[data-tabs], [data-tab-list]') !== root) return;
+                                    panel.hidden = panel.getAttribute('data-tab-panel') !== value;
+                                });
+                            };
+                            const setWorkspaceScope = (scope) => {
+                                const workspace = document.getElementById('workspace-editors');
+                                if (!workspace || !['application', 'framework', 'infrastructure'].includes(scope)) return;
+                                updateTabs(workspace, scope);
+                            };
+                            const syncTerminalSelection = (value) => {
+                                if (typeof value !== 'string') return;
+                                const select = document.getElementById('select');
+                                const options = select ? Array.from(select.options) : [];
+                                const selectedOption = options.find((option) => option.value === value);
+                                if (selectedOption) {
+                                    options.forEach((option) => {
+                                        const selected = option === selectedOption;
+                                        option.selected = selected;
+                                        if (selected) option.setAttribute('selected', '');
+                                        else option.removeAttribute('selected');
+                                    });
+                                    select.value = selectedOption.value;
+                                    select.setAttribute('value', value);
+                                }
+                                setWorkspaceScope(selectedScopeFor(value));
+                            };
+                            const syncEventSelection = (event) => {
+                                if (event.name !== 'terminal:select') return;
+                                const value = event.payload ?? event.value;
+                                syncTerminalSelection(typeof value === 'string' ? value : value?.value);
+                            };
+                            const initialSelect = document.getElementById('select');
+                            const initialValue = initialSelect && (initialSelect.value || initialSelect.getAttribute('value'));
+                            if (initialValue) {
+                                syncTerminalSelection(initialValue);
+                            } else {
+                                const workspace = document.getElementById('workspace-editors');
+                                if (workspace) setWorkspaceScope(workspace.getAttribute('value'));
+                            }
+
                             const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/reactive`);
+                            ws.addEventListener('open', () => {
+                                const pendingEvent = sessionStorage.getItem('dsl-pending-palette-event');
+                                if (!pendingEvent) return;
+                                sessionStorage.removeItem('dsl-pending-palette-event');
+                                syncEventSelection(JSON.parse(pendingEvent));
+                                ws.send(pendingEvent);
+                            });
                             ws.onmessage = (e) => {
                                 console.log(e.data);
                                 const data = JSON.parse(e.data);
                                 if (data.type === 'update') {
                                     const el = document.getElementById(data.id);
-                                    if (el) el.outerHTML = data.html;
+                                    if (el) {
+                                        el.outerHTML = data.html;
+                                        const updated = document.getElementById(data.id);
+                                        if (data.id === 'workspace-editors') {
+                                            const select = document.getElementById('select');
+                                            const selectedFile = select && select.value;
+                                            setWorkspaceScope(
+                                                selectedFile
+                                                    ? selectedScopeFor(selectedFile)
+                                                    : updated && updated.getAttribute('value'),
+                                            );
+                                        } else if (updated && updated.tagName === 'SELECT') {
+                                            syncTerminalSelection(updated.getAttribute('value') || updated.value);
+                                        }
+                                    }
                                 }
                             };
+
+                            document.addEventListener('click', (e) => {
+                                const tab = e.target.closest('[data-tab-value]');
+                                if (!tab) return;
+                                const root = tab.closest('[data-tabs], [data-tab-list]');
+                                if (root) updateTabs(root, tab.getAttribute('data-tab-value'));
+                            });
 
                             // Mappa eventi DOM -> attributo data-* sul nodo
                             const EVENT_ATTRS = {
@@ -694,30 +974,157 @@ class Adapter(presentation.Port):
                                 'keydown':    'data-keydown',
                                 'keyup':      'data-keyup',
                                 'keypress':   'data-keypress',
+                                'change':     'data-change',
+                            };
+
+                            const eventPayload = (el, domEvent) => {
+                                if (el.hasAttribute('form')) {
+                                    const payload = {};
+                                    const form = document.getElementById(el.getAttribute('form'));
+                                    if (form) {
+                                        form.querySelectorAll('input[id], textarea[id], select[id]').forEach((field) => {
+                                            payload[field.name || field.id] = field.value ?? '';
+                                        });
+                                    }
+                                    return payload;
+                                }
+                                if (el.hasAttribute('data-tab-event')) {
+                                    return el.getAttribute('value') || '';
+                                }
+                                if (domEvent === 'change' || (domEvent !== 'click' && 'value' in el)) {
+                                    return el.value;
+                                }
+                                if (el.hasAttribute('value')) return {value: el.getAttribute('value')};
+                                return el.id || '';
                             };
 
                             Object.entries(EVENT_ATTRS).forEach(([domEvent, dataAttr]) => {
                                 document.addEventListener(domEvent, (e) => {
                                     const el = e.target.closest(`[${dataAttr}]`);
-                                    if (el) {
-                                        const trigger = el.getAttribute(dataAttr);
-                                        console.log(`[${domEvent}] Sending trigger:`, trigger);
-                                        ws.send(JSON.stringify({type: 'event', name: trigger}));
+                                    if (!el || el.closest('[data-palette-items]')) return;
+                                    const trigger = el.getAttribute(dataAttr);
+                                    if (!trigger) return;
+
+                                    if (domEvent === 'click') {
+                                        const route = el.getAttribute('action') ||
+                                            (el.tagName === 'A' ? el.getAttribute('href') : null);
+                                        if (route) {
+                                            if (route.startsWith('#')) return;
+                                            if (trigger === 'terminal:select') {
+                                                const value = el.hasAttribute('value')
+                                                    ? el.getAttribute('value')
+                                                    : el.textContent.trim();
+                                                sessionStorage.setItem(
+                                                    'dsl-pending-palette-event',
+                                                    JSON.stringify({type: 'event', name: trigger, value}),
+                                                );
+                                            }
+                                            e.preventDefault();
+                                            location.assign(route);
+                                            return;
+                                        }
                                     }
+
+                                    const payload = eventPayload(el, domEvent);
+                                    if (trigger === 'terminal:select') {
+                                        syncTerminalSelection(typeof payload === 'string' ? payload : payload?.value);
+                                    }
+                                    ws.send(JSON.stringify({
+                                        type: 'event',
+                                        name: trigger,
+                                        payload,
+                                    }));
                                 });
                             });
 
                             document.addEventListener('click', (e) => {
-                                const el = e.target.closest('button[action^="#"]');
+                                const el = e.target.closest(
+                                    'button[action^="#"], a[data-click][href^="#"]',
+                                );
                                 if (!el) return;
-                                const modal = document.getElementById(el.getAttribute('action').slice(1));
+                                const route = el.getAttribute('action') || el.getAttribute('href');
+                                const modal = document.getElementById(route.slice(1));
                                 if (modal && modal.matches('.dsl-modal')) {
                                     e.preventDefault();
                                     location.hash = modal.id;
                                 }
                             });
 
+                            document.addEventListener('click', (e) => {
+                                const el = e.target.closest('button[action]');
+                                if (!el || el.hasAttribute('data-click') || el.closest('[data-palette-items]')) return;
+                                const route = el.getAttribute('action');
+                                if (!route || route.startsWith('#')) return;
+                                e.preventDefault();
+                                location.assign(route);
+                            });
+
+                            document.addEventListener('click', (e) => {
+                                const command = e.target.closest('[data-palette-items] button');
+                                if (!command) return;
+                                const route = command.getAttribute('action') || command.getAttribute('route');
+                                if (route && route.startsWith('#')) return;
+
+                                const trigger = command.getAttribute('data-click');
+                                const value = command.hasAttribute('value')
+                                    ? command.getAttribute('value')
+                                    : command.textContent.trim();
+                                let event = null;
+                                if (trigger && !route) {
+                                    event = {
+                                        type: 'event',
+                                        name: trigger,
+                                        payload: command.hasAttribute('value') ? {value} : value,
+                                    };
+                                } else if (trigger === 'terminal:select') {
+                                    event = {type: 'event', name: trigger, value};
+                                }
+                                if (route) {
+                                    if (event) {
+                                        sessionStorage.setItem(
+                                            'dsl-pending-palette-event',
+                                            JSON.stringify(event),
+                                        );
+                                    }
+                                    location.assign(route);
+                                } else if (event) {
+                                    syncEventSelection(event);
+                                    ws.send(JSON.stringify(event));
+                                }
+                            });
+
+                            document.addEventListener('click', (e) => {
+                                const trigger = e.target.closest('[data-palette-open]');
+                                if (!trigger) return;
+                                const palette = document.getElementById(trigger.getAttribute('data-palette-open'));
+                                const search = palette && palette.querySelector('[data-palette-search]');
+                                if (search) window.requestAnimationFrame(() => search.focus());
+                            });
+
+                            document.addEventListener('input', (e) => {
+                                const search = e.target.closest('[data-palette-search]');
+                                if (!search) return;
+                                const palette = search.closest('.dsl-modal');
+                                const items = palette && palette.querySelector('[data-palette-items]');
+                                if (!items) return;
+                                const query = search.value.trim().toLocaleLowerCase();
+                                let visibleCount = 0;
+                                Array.from(items.children).forEach((item) => {
+                                    item.hidden = !item.textContent.toLocaleLowerCase().includes(query);
+                                    if (!item.hidden) visibleCount += 1;
+                                });
+                                const empty = palette.querySelector('[data-palette-empty]');
+                                if (empty) empty.hidden = visibleCount > 0;
+                            });
+
                             document.addEventListener('keydown', (e) => {
+                                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+                                    const trigger = document.querySelector('[data-palette-open]');
+                                    if (trigger) {
+                                        e.preventDefault();
+                                        trigger.click();
+                                    }
+                                }
                                 if (e.key === 'Escape' && document.querySelector('.dsl-modal:target')) {
                                     e.preventDefault();
                                     location.hash = '';
@@ -765,7 +1172,8 @@ class Adapter(presentation.Port):
         },
         presentation.Tag.INPUT.value: {
             "input": lambda x: htpy.input(type="text", **attrs("input", x)),
-            "select": lambda x: htpy.select(type="select", **attrs("input", x))[[Markup(htpy.option()[i]) for i in x['inner']]],
+            "select": _render_select,
+            "editor": _render_editor,
             "textarea": lambda x: htpy.textarea(type="textarea", **attrs("input", x)),
             "text": lambda x: htpy.input(type="text", **attrs("input", x)), 
             "password": lambda x: htpy.input(type="password", **attrs("input", x)),
@@ -835,17 +1243,19 @@ class Adapter(presentation.Port):
         },
         presentation.Tag.NAVIGATION.value: {
             "navigation": lambda x: htpy.nav(**attrs("navigation", x,""))[[Markup(i) for i in x['inner']]],
+            "palette": _render_navigation_palette,
             "bar": lambda x: htpy.nav(**attrs("bar", x,"nav"))[[Markup(i) for i in x['inner']]],
             "app": lambda x: htpy.nav(**attrs("app", x,""))[[Markup(i) for i in x['inner']]],
             "breadcrumb": lambda x: htpy.nav(**attrs("breadcrumb", x,"breadcrumb"))[[Markup(i) for i in x['inner']]],
-            "tab": lambda x: htpy.nav(**attrs("tab", x,"nav-tabs"))[[Markup(i) for i in x['inner']]],
+            "tab": _render_navigation_tabs,
+            "tabs": _render_navigation_tabs,
         },
         presentation.Tag.GROUP.value: {
             "input": lambda x: htpy.div(**attrs("input", x,'input-group'))[[Markup(i) for i in x['inner']]],
             "action": lambda x: htpy.div(**attrs("button", x,'btn-group'))[[Markup(i) for i in x['inner']]],
             "card": lambda x: htpy.div(**attrs("card", x,'card-group'))[[Markup(i) for i in x['inner']]],
             "list": lambda x: htpy.ul(**attrs("group", x,'flex-col'))[[Markup(htpy.li[i]) for i in x['inner']]],
-            "tab": lambda x: htpy.ul(**attrs("tab", x,'nav-tabs'))[[Markup(htpy.li('.nav-item')[i]) for i in x['inner']]],
+            "tab": _render_tab_group,
             "dropdown": lambda x: htpy.div(**attrs("dropdown", x,'dropdown'))[[Markup(i) for i in x['inner']]],
         },
         presentation.Tag.CANVAS.value: {
@@ -919,6 +1329,8 @@ class Adapter(presentation.Port):
             #Middleware(CSRFMiddleware, secret=self._session_secret()),
         ]
         self.active_websockets = {} # sid -> [websocket]
+        self._session_controllers = {}
+        self._session_views = {}
         self.validate_adapter()
 
     def configure_port(self, configuration):
@@ -958,9 +1370,8 @@ class Adapter(presentation.Port):
         return JSONResponse({"errore": exc.detail}, status_code=exc.status_code)
         #return HTMLResponse(content=html, status_code=exc.status_code)
         
-    async def start(self, session):
-        self.session = session
-        loop = asyncio.get_event_loop()
+    async def _run_runtime(self):
+        loop = asyncio.get_running_loop()
         security = (self.defender.get_configuration("presentation") or {}).get(
             "security_and_waf", {}
         )
@@ -984,7 +1395,6 @@ class Adapter(presentation.Port):
             raise RuntimeError(
                 "TLS richiesto dalla policy: configurare ssl_keyfile e ssl_certfile"
             )
-        await self.parse_route()
         self.routes_static += [
             WebSocketRoute("/reactive", self.render_reactive, name="reactive")
         ]
@@ -1030,7 +1440,7 @@ class Adapter(presentation.Port):
         self.server = Server(config)
         return await self.server.serve()
 
-    async def shutdown(self):
+    async def _shutdown_runtime(self):
         if hasattr(self, 'server'):
             self.server.should_exit = True
         sockets = [socket for group in self.active_websockets.values() for socket in group]
@@ -1177,6 +1587,14 @@ class Adapter(presentation.Port):
 
         session_result = await self.defender.session_create(**session)
         runtime_session = flow.output(session_result)
+        self.sessions[runtime_session.sid] = runtime_session
+        self._session_controllers[runtime_session.sid] = controllers
+        self._session_views[runtime_session.sid] = {
+            "text": xml_view,
+            "source_name": view,
+            "session": session.copy(),
+        }
+        self._current_view_controllers = controllers
         controller_context = await self.execute_controllers(
             runtime_session,
             controllers,
@@ -1255,6 +1673,9 @@ class Adapter(presentation.Port):
         sid = session_data.get('id')
 
         self.active_websockets.setdefault(sid, []).append(websocket)
+        runtime_session = self.defender.session_get(sid)
+        if runtime_session is not None:
+            self.sessions[sid] = runtime_session
         
         try:
             while True:
@@ -1263,38 +1684,54 @@ class Adapter(presentation.Port):
                 if event:
                     dsl_alias = event['alias']
                     event_name = event['name']
-                    file_path = event['file']
-                    #print(f"Event: {event_full_name}")
-                    #print(f"Data: {data['name']}")
-                    
-                    # Estrazione file e trigger name (es. counter:logic.increment)
-                    # Il file e la sessione sono già inizializzati da mount_view al page load.
-                    # Qui aggiungiamo il file solo se per qualche motivo non fosse ancora caricato
-                    # (es. controller specificato via WS prima del page load HTTP).
-                    if file_path not in self.executor.interpreter.runner.nodes:
-                        try:
-                            content = await self.loader.resource(file_path)
-                            await self.executor.load_file(None, file_path, content)
-                        except Exception as e:
-                            logger.error(
-                                "Errore caricamento file",
-                                exception=e,
-                                resource=file_path,
-                                path=file_path,
-                            )
-                    
-                    #print(f"Emitting {event_name} for {file_path} (SID: {sid})")
                     try:
-                        #print(f"Emitting {event_name} for {file_path} (SID: {sid})")
-                        runtime_session = self.defender.session_get(sid)
+                        runtime_session = self.sessions.get(sid)
+                        if runtime_session is None:
+                            runtime_session = self.defender.session_get(sid)
+                            if runtime_session is not None:
+                                self.sessions[sid] = runtime_session
                         if runtime_session is None:
                             raise RuntimeError("La sessione WebSocket non è disponibile")
                         event_payload = data.get("payload", data.get("value", {}))
-                        await runtime_session.emit(
-                            file_path,
-                            event_name,
-                            payload=event_payload,
+                        result = await self.messenger.send(
+                            runtime_session,
+                            adapter="dsl",
+                            receiver=dsl_alias,
+                            domain=event_name,
+                            message=event_payload,
                         )
+                        if flow.is_result(result) and not flow.check(result):
+                            logger.error(
+                                "Errore durante l'emissione dell'evento",
+                                controller=dsl_alias,
+                                event=event_name,
+                                error=flow.output(result),
+                            )
+                        elif (
+                            dsl_alias == "terminal"
+                            and event_name == "select"
+                            and isinstance(event_payload, str)
+                            and event_payload
+                        ):
+                            selected_scope = (
+                                "framework" if event_payload.startswith("src/framework/")
+                                else "infrastructure" if event_payload.startswith("src/infrastructure/")
+                                else "application"
+                            )
+                            scoped_result = await self.messenger.send(
+                                runtime_session,
+                                adapter="dsl",
+                                receiver=dsl_alias,
+                                domain=f"select_{selected_scope}",
+                                message=event_payload,
+                            )
+                            if flow.is_result(scoped_result) and not flow.check(scoped_result):
+                                logger.error(
+                                    "Errore durante la selezione dello scope",
+                                    controller=dsl_alias,
+                                    event=f"select_{selected_scope}",
+                                    error=flow.output(scoped_result),
+                                )
                     except Exception as e:
                         logger.error("Errore durante l'emissione dell'evento", exception=e)
                              
@@ -1302,34 +1739,59 @@ class Adapter(presentation.Port):
             pass
         finally:
             if sid in self.active_websockets:
-                self.active_websockets[sid].remove(websocket)
+                sockets = self.active_websockets[sid]
+                if websocket in sockets:
+                    sockets.remove(websocket)
+                if not sockets:
+                    self.active_websockets.pop(sid, None)
 
-    async def rebuild(self, node_id, session_id, context, dsl_alias):
-        node = self.DOM.get(node_id)
-        # Invece di usare solo il frammento "context", recuperiamo tutto lo stato aggiornato
-        # in modo che i template possano usare `counter_logic.count` in tutti i casi
-        full_ctx = {}
-        if hasattr(self, 'executor') and self.executor:
-            try:
-                full_ctx = self.executor.interpreter.runner.context(session_id) or {}
-            except Exception as e:
-                logger.error("Errore recupero contesto per rebuild", exception=e, session_id=session_id)
-                
-        # Uniamo i due per sicurezza, dando priorità al context appena passato
-        
-        #final_context = {**full_ctx, **context}
-        final_context = {}
-        final_context[dsl_alias] = full_ctx
-        
-        rendered_node = await self.render_template(text=node, **final_context)
+    async def _rebuild(self, session, node_id, context=None, dsl_alias=None):
+        session_id = getattr(session, "sid", None)
+        controllers = self._session_controllers.get(
+            session_id,
+            getattr(self, "_current_view_controllers", []),
+        )
+        controller_context = self.get_controller_contexts(session, controllers)
+        view = self._session_views.get(session_id)
+        if view is not None:
+            rendered_view = await self.render_template(
+                session,
+                text=view["text"],
+                controller_context=controller_context,
+                source_name=view["source_name"],
+                session=view["session"],
+            )
+            if flow.is_result(rendered_view):
+                if not flow.check(rendered_view):
+                    return rendered_view
+                rendered_view = flow.output(rendered_view)
 
-        if rendered_node:
-             #html = await self.render_node(target_node, context)
-             # Inviamo l'aggiornamento a tutti i websocket attivi per questo SID
-             if session_id in self.active_websockets:
-                msg = json.dumps({'type': 'update', 'id': node_id, 'html': rendered_node})
-                for ws in self.active_websockets[session_id]:
-                    await ws.send_text(msg)
+            document = BeautifulSoup(str(rendered_view), "html.parser")
+            target = document.find(id=node_id)
+            if target is None:
+                raise LookupError(
+                    f"Nodo HTML '{node_id}' non trovato nella view '{view['source_name']}'"
+                )
+            rendered_node = str(target)
+        else:
+            node = self.DOM.get(node_id)
+            if node is None:
+                return None
+            rendered_node = await self.render_template(
+                session,
+                text=node,
+                controller_context=controller_context,
+                source_name=node_id,
+            )
+            if flow.is_result(rendered_node):
+                if not flow.check(rendered_node):
+                    return rendered_node
+                rendered_node = flow.output(rendered_node)
+
+        if rendered_node and session_id in self.active_websockets:
+            message = json.dumps({"type": "update", "id": node_id, "html": rendered_node})
+            for websocket in self.active_websockets[session_id]:
+                await websocket.send_text(message)
 
         return rendered_node
 
@@ -1395,3 +1857,18 @@ class Adapter(presentation.Port):
     
     def node_update(self, node, context):
         pass
+
+    def dom_get(self, widget_id):
+        return self.DOM.get(widget_id)
+
+    def _apply_node_attrs(self, node, attrs_dict):
+        return node
+
+    async def _show_screen(self, screen):
+        return screen
+
+    async def _push_screen(self, screen):
+        return screen
+
+    async def _pop_screen(self):
+        return None

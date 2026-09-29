@@ -55,10 +55,28 @@ class Manager(manager.Port):
 
     @flow.result(inputs=(), outputs=())
     async def get_attribute(self, session, **constants):
-        driver = self._get_driver()
+        driver = self._get_driver(session)
         return await driver.get_attribute(constants.get('widget'),constants.get('field')) if driver else None
 
-    def _get_driver(self):
+    def _get_driver(self, session=None):
+        session_id = getattr(session, "sid", None)
+        if session_id is None:
+            session_data = getattr(session, "session_data", None)
+            if session_data is not None:
+                get_value = getattr(session_data, "get", None)
+                session_id = get_value("id") if callable(get_value) else getattr(session_data, "id", None)
+        if session_id is None:
+            get_value = getattr(session, "get", None)
+            if callable(get_value):
+                session_id = get_value("id")
+
+        if session_id is not None:
+            for presentation in self.presentations:
+                if session_id in getattr(presentation, "sessions", {}):
+                    return presentation
+                adapter_session = getattr(presentation, "session", None)
+                if getattr(adapter_session, "sid", None) == session_id:
+                    return presentation
         return self.presentations[-1] if self.presentations else None
 
     def _runtime_session(self, session):
@@ -76,31 +94,35 @@ class Manager(manager.Port):
 
     @flow.result(inputs=(), outputs=())
     async def selector(self, session, **constants):
-        driver = self._get_driver()
+        driver = self._get_driver(session)
         return await driver.selector(**constants) if driver else None
 
     @flow.result(inputs=(), outputs=())
     async def render(self, session, node_id, context=None):
-        driver = self._get_driver()
+        driver = self._get_driver(session)
         if driver and hasattr(driver, 'rebuild'):
-            return await driver.rebuild(self._runtime_session(session), node_id, context)
+            runtime_session = self._runtime_session(session)
+            driver = self._get_driver(runtime_session) or driver
+            return await driver.rebuild(runtime_session, node_id, context)
         return None
     
     @flow.result(inputs=(), outputs=())
     async def navigate(self, session, **constants):
-        driver = self._get_driver()
+        driver = self._get_driver(session)
         return await driver.apply_route(**constants) if driver else None
         
     @flow.result(inputs=(), outputs=())
     async def rebuild(self, session, node_id, context=None):
-        driver = self._get_driver()
+        driver = self._get_driver(session)
         if driver and hasattr(driver, 'rebuild'):
-            return await driver.rebuild(self._runtime_session(session), node_id, context)
+            runtime_session = self._runtime_session(session)
+            driver = self._get_driver(runtime_session) or driver
+            return await driver.rebuild(runtime_session, node_id, context)
         return None
 
     @flow.result(inputs=(), outputs=())
     async def reload(self, session, path):
-        driver = self._get_driver()
+        driver = self._get_driver(session)
         if driver and hasattr(driver, 'render_view') and hasattr(driver, 'routes') and hasattr(driver, 'url'):
             route_data = driver.routes.get(driver.url, {}).get('GET', {})
             view_path = route_data.get('view')
