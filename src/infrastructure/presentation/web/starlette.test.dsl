@@ -57,7 +57,23 @@ any:start_adapter := imports.types.SimpleNamespace(
     render_reactive: imports.mock.AsyncMock(),
     http_exception_handler: imports.mock.AsyncMock()
 );
-any:patched_start := server_patch(config_patch(imports.module.Adapter.start));
+any:tls_rejection_logger := imports.mock.Mock();
+any:tls_rejection_adapter := imports.types.SimpleNamespace(
+    defender: imports.types.SimpleNamespace(
+        get_configuration: imports.mock.Mock(
+            return_value: {"security_and_waf": {"tls_enabled": true}}
+        )
+    ),
+    config: {"host": "127.0.0.1"; "port": 8000}
+);
+any:tls_logger_patch := imports.mock.patch.object(
+    imports.module,
+    "logger",
+    new: tls_rejection_logger
+);
+any:patched_start := server_patch(
+    config_patch(tls_logger_patch(imports.module.Adapter.start))
+);
 
 exports: {
     'attrs': imports.module.attrs;
@@ -342,6 +358,13 @@ tuple:test_suite := (
         "outputs": none;
         "assert": @received.is_success == true & @received.output.value == @expected & uvicorn_server.serve.await_count == 1;
         "note": "Starlette attende la coroutine di Uvicorn durante l'avvio";
+    },
+    {
+        "action": exports.start;
+        "inputs": (tls_rejection_adapter, none);
+        "outputs": none;
+        "assert": @received.is_success == false & tls_rejection_logger.error.call_count == 1;
+        "note": "Starlette registra il rifiuto quando TLS è obbligatorio e mancano i certificati";
     },
     html_cases
     |> map_records(add_expected, expected_html)

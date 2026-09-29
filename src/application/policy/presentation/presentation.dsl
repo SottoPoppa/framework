@@ -7,7 +7,7 @@ presentation:configuration := {
         "enabled": false;
     };
     "security_and_waf": {
-        "tls_enabled": true;
+        "tls_enabled": false;
         "min_tls_version": "TLSv1.2";
         "enable_hsts": true;
         "csrf_protection": true

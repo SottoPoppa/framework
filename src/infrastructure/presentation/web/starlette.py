@@ -550,6 +550,24 @@ def _html_children(inner):
     return inner if isinstance(inner, Markup) else markupsafe.escape(inner)
 
 
+def _render_modal_window(x):
+    attrs = x.get("attrs", {})
+    return htpy.div(class_="modal fade", id=attrs.get("id", "myModal"), tabindex="-1", aria_hidden="true")[
+        htpy.div(class_="modal-dialog")[
+            htpy.div(class_="modal-content")[
+                htpy.div(class_="modal-header")[
+                    htpy.h5(class_="modal-title")[attrs.get("title", "")],
+                    htpy.button(type="button", class_="btn-close", data_bs_dismiss="modal", aria_label="Close")
+                ],
+                htpy.div(class_="modal-body")[[Markup(i) for i in x["inner"]]],
+                htpy.div(class_="modal-footer")[
+                    htpy.button(type="button", class_="btn btn-secondary", data_bs_dismiss="modal")["Chiudi"]
+                ]
+            ]
+        ]
+    ]
+
+
 class Adapter(presentation.Port):
     capabilities = {
         "tls": True,
@@ -615,20 +633,8 @@ class Adapter(presentation.Port):
                     """)]
                 ]
             ],
-            "dialog": lambda x: htpy.div(class_="modal fade", id=x.get("attrs", {}).get("id", "myModal"), tabindex="-1", aria_hidden="true")[
-                htpy.div(class_="modal-dialog")[
-                    htpy.div(class_="modal-content")[
-                        htpy.div(class_="modal-header")[
-                            htpy.h5(class_="modal-title")[x.get("attrs", {}).get("title", "")],
-                            htpy.button(type="button", class_="btn-close", data_bs_dismiss="modal", aria_label="Close")
-                        ],
-                        htpy.div(class_="modal-body")[[Markup(i) for i in x['inner']]],
-                        htpy.div(class_="modal-footer")[
-                            htpy.button(type="button", class_="btn btn-secondary", data_bs_dismiss="modal")["Chiudi"]
-                        ]
-                    ]
-                ]
-            ],
+            "modal": _render_modal_window,
+            "dialog": _render_modal_window,
             "still": lambda x: htpy.div(class_=f"offcanvas offcanvas-{x.get('attrs', {}).get('alignment-content', 'start')}", tabindex="-1", id=x.get('attrs', {}).get('id', 'offcanvasMenu'), aria_labelledby=f"{x.get('attrs', {}).get('id', 'offcanvasMenu')}Label")[
                 htpy.div(class_="offcanvas-header")[
                     htpy.h5(class_="offcanvas-title", id=f"{x.get('attrs', {}).get('id', 'offcanvasMenu')}Label")[x.get("attrs", {}).get("title", "")],
@@ -640,6 +646,9 @@ class Adapter(presentation.Port):
         },
         presentation.Tag.GRID.value: {
             "grid": lambda x: htpy.div(**attrs("grid", x, "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3"))[[Markup(i) for i in x['inner']]],
+        },
+        presentation.Tag.OPTION.value: {
+            "option": lambda x: htpy.option(**attrs("option", x))[[Markup(i) for i in x['inner']]],
         },
         presentation.Tag.TEXT.value: {
             "text": lambda x: htpy.span(**attrs("text", x,"text-xs"))[[Markup(i) for i in x['inner']]],
@@ -867,6 +876,17 @@ class Adapter(presentation.Port):
             "ssl_keyfile",
             "ssl_certfile",
         }.issubset(self.config):
+            missing_certificates = [
+                setting
+                for setting in ("ssl_keyfile", "ssl_certfile")
+                if setting not in self.config
+            ]
+            logger.error(
+                "Avvio Starlette rifiutato dalla policy TLS",
+                host=self.config.get("host", "127.0.0.1"),
+                port=self.config.get("port", 8000),
+                missing_certificates=missing_certificates,
+            )
             raise RuntimeError(
                 "TLS richiesto dalla policy: configurare ssl_keyfile e ssl_certfile"
             )

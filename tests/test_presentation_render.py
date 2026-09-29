@@ -46,6 +46,34 @@ class PresentationRenderTests(unittest.TestCase):
 		)
 		self.assertEqual(safe_attributes["HREF"], "https://example.test")
 
+	def test_option_tag_renders_value_and_label(self):
+		adapter = starlette.Adapter(
+			None, None, None, None, None,
+			manager={"defender": {"key": "test-key"}},
+		)
+
+		option = adapter.mount_tag("option", {"value": "active"}, ["Active"])
+
+		self.assertIn('value="active"', str(option))
+		self.assertIn(">Active</option>", str(option))
+
+	def test_modal_window_type_renders_bootstrap_modal(self):
+		adapter = starlette.Adapter(
+			None, None, None, None, None,
+			manager={"defender": {"key": "test-key"}},
+		)
+
+		modal = adapter.mount_tag(
+			"window",
+			{"type": "modal", "id": "confirm", "title": "Conferma"},
+			["Continua"],
+		)
+
+		self.assertIn('class="modal fade"', str(modal))
+		self.assertIn('id="confirm"', str(modal))
+		self.assertIn(">Conferma</h5>", str(modal))
+		self.assertIn(">Continua</div>", str(modal))
+
 
 class PresentationTextualRebuildTests(unittest.IsolatedAsyncioTestCase):
 	async def test_palette_compilation_skips_transient_action_widgets(self):

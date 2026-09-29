@@ -49,12 +49,12 @@ working_directory = "."
 enable_terminal = true
 token = "{{ env('COPILOT_GITHUB_TOKEN') }}"
 
-#[[presentation.web]]
-#implementation = "starlette"
-#name = "web"
-#host = "127.0.0.1"
-#port = 8000
-#protocol = "http"
+[[presentation.web]]
+implementation = "starlette"
+name = "web"
+host = "127.0.0.1"
+port = 8000
+protocol = "http"
 #persistence = "workfolder"
 #cors_origins = []
 #cors_credentials = false
