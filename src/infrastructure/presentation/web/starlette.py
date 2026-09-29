@@ -5,6 +5,7 @@ import hmac
 from html import escape
 import re
 import json
+import logging
 import ssl
 from http.cookies import SimpleCookie
 from datetime import datetime
@@ -26,6 +27,68 @@ from framework.manager.storekeeper import Manager as Storekeeper
 from framework.manager.loader import Loader
 
 logger = get_logger("presentation.web")
+
+
+class _FrameworkLogHandler(logging.Handler):
+    def __init__(self, framework_logger):
+        super().__init__()
+        self.framework_logger = framework_logger
+
+    def emit(self, record):
+        try:
+            method_name = {
+                logging.DEBUG: "debug",
+                logging.INFO: "info",
+                logging.WARNING: "warning",
+                logging.ERROR: "error",
+                logging.CRITICAL: "critical",
+            }.get(record.levelno, "info")
+            metadata = {"source_logger": record.name}
+            if record.exc_info:
+                metadata["exception"] = record.exc_info[1]
+            getattr(self.framework_logger, method_name)(
+                record.getMessage(), **metadata
+            )
+        except Exception:
+            self.handleError(record)
+
+
+def _uvicorn_log_config():
+    return {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "()": "uvicorn.logging.DefaultFormatter",
+                "fmt": "%(levelprefix)s %(message)s",
+                "use_colors": None,
+            },
+            "access": {
+                "()": "uvicorn.logging.AccessFormatter",
+                "fmt": '%(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s',
+            },
+        },
+        "handlers": {
+            "framework": {
+                "()": _FrameworkLogHandler,
+                "framework_logger": logger,
+            }
+        },
+        "loggers": {
+            name: {
+                "handlers": ["framework"],
+                "level": "INFO",
+                "propagate": False,
+            }
+            for name in (
+                "uvicorn",
+                "uvicorn.error",
+                "uvicorn.access",
+                "uvicorn.asgi",
+                "starlette",
+            )
+        },
+    }
 
 try:
     from starlette.applications import Starlette
@@ -552,19 +615,33 @@ def _html_children(inner):
 
 def _render_modal_window(x):
     attrs = x.get("attrs", {})
-    return htpy.div(class_="modal fade", id=attrs.get("id", "myModal"), tabindex="-1", aria_hidden="true")[
-        htpy.div(class_="modal-dialog")[
-            htpy.div(class_="modal-content")[
-                htpy.div(class_="modal-header")[
-                    htpy.h5(class_="modal-title")[attrs.get("title", "")],
-                    htpy.button(type="button", class_="btn-close", data_bs_dismiss="modal", aria_label="Close")
-                ],
-                htpy.div(class_="modal-body")[[Markup(i) for i in x["inner"]]],
-                htpy.div(class_="modal-footer")[
-                    htpy.button(type="button", class_="btn btn-secondary", data_bs_dismiss="modal")["Chiudi"]
-                ]
-            ]
-        ]
+    modal_id = attrs.get("id", "myModal")
+    title_id = f"{modal_id}-title"
+    return htpy.div(
+        class_="dsl-modal fixed inset-0 z-50 hidden items-center justify-center p-4 target:flex",
+        id=modal_id,
+        role="dialog",
+        aria_modal="true",
+        aria_labelledby=title_id,
+    )[
+        htpy.a(
+            href="#",
+            class_="absolute inset-0 bg-black/50",
+            aria_label="Chiudi finestra modale",
+        ),
+        htpy.div(
+            class_="relative z-10 flex max-h-[90vh] w-full max-w-xl flex-col gap-4 overflow-y-auto rounded-md bg-white p-5 text-gray-900 shadow-xl"
+        )[
+            htpy.div(class_="flex items-center justify-between gap-4 border-b border-gray-200 pb-3")[(
+                htpy.h2(class_="text-lg font-semibold", id=title_id)[attrs.get("title", "")],
+                htpy.a(
+                    href="#",
+                    class_="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-100",
+                    aria_label="Chiudi",
+                )["Chiudi"],
+            )],
+            htpy.div(class_="min-h-0")[[Markup(i) for i in x["inner"]]],
+        ],
     ]
 
 
@@ -628,6 +705,23 @@ class Adapter(presentation.Port):
                                         ws.send(JSON.stringify({type: 'event', name: trigger}));
                                     }
                                 });
+                            });
+
+                            document.addEventListener('click', (e) => {
+                                const el = e.target.closest('button[action^="#"]');
+                                if (!el) return;
+                                const modal = document.getElementById(el.getAttribute('action').slice(1));
+                                if (modal && modal.matches('.dsl-modal')) {
+                                    e.preventDefault();
+                                    location.hash = modal.id;
+                                }
+                            });
+
+                            document.addEventListener('keydown', (e) => {
+                                if (e.key === 'Escape' && document.querySelector('.dsl-modal:target')) {
+                                    e.preventDefault();
+                                    location.hash = '';
+                                }
                             });
                         })();
                     """)]
@@ -901,6 +995,7 @@ class Adapter(presentation.Port):
         # Parametri di configurazione base per Uvicorn
         uvicorn_config_params = {
             "app": self.app,
+            "log_config": _uvicorn_log_config(),
             "host": self.config.get('host', '127.0.0.1'),
             "port": int(self.config.get('port', 8000)),
             "use_colors": True,

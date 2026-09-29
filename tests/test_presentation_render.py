@@ -1,7 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from textual.app import App
 from textual.widgets import Button, Input, Label, Link, RadioButton, Static
@@ -57,7 +57,7 @@ class PresentationRenderTests(unittest.TestCase):
 		self.assertIn('value="active"', str(option))
 		self.assertIn(">Active</option>", str(option))
 
-	def test_modal_window_type_renders_bootstrap_modal(self):
+	def test_modal_window_type_renders_targeted_overlay(self):
 		adapter = starlette.Adapter(
 			None, None, None, None, None,
 			manager={"defender": {"key": "test-key"}},
@@ -69,10 +69,42 @@ class PresentationRenderTests(unittest.TestCase):
 			["Continua"],
 		)
 
-		self.assertIn('class="modal fade"', str(modal))
-		self.assertIn('id="confirm"', str(modal))
-		self.assertIn(">Conferma</h5>", str(modal))
-		self.assertIn(">Continua</div>", str(modal))
+		html = str(modal)
+		self.assertIn('class="dsl-modal fixed inset-0 z-50 hidden items-center justify-center p-4 target:flex"', html)
+		self.assertIn('id="confirm"', html)
+		self.assertIn('role="dialog"', html)
+		self.assertIn('aria-modal="true"', html)
+		self.assertIn('href="#"', html)
+		self.assertIn(">Conferma</h2>", html)
+		self.assertIn("Continua", html)
+
+	def test_uvicorn_logs_are_forwarded_to_framework_logger(self):
+		framework_logger = Mock()
+		handler = starlette._FrameworkLogHandler(framework_logger)
+		record = starlette.logging.LogRecord(
+			"uvicorn.error",
+			starlette.logging.WARNING,
+			__file__,
+			1,
+			"Request failed: %s",
+			("bad request",),
+			None,
+		)
+
+		handler.emit(record)
+
+		framework_logger.warning.assert_called_once_with(
+			"Request failed: bad request",
+			source_logger="uvicorn.error",
+		)
+		log_config = starlette._uvicorn_log_config()
+		self.assertEqual(set(log_config["formatters"]), {"default", "access"})
+		self.assertIs(
+			log_config["handlers"]["framework"]["framework_logger"],
+			starlette.logger,
+		)
+		self.assertIn("uvicorn.access", log_config["loggers"])
+		self.assertIn("starlette", log_config["loggers"])
 
 
 class PresentationTextualRebuildTests(unittest.IsolatedAsyncioTestCase):
