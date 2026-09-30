@@ -1,0 +1,34 @@
+{
+  "contract_version": 2,
+  "hashes": {
+    "Adapter": {
+      "evaluate_threshold": {
+        "production": "254d2101d1b714b6e40ef0b39dbcbfd65953ebcce68f231e2b861773d8692c70"
+      },
+      "get_context": {
+        "production": "606072902a165a7d950066daf454593b9ba951d23531a252c52a989d13654948"
+      },
+      "listen_for_phrase": {
+        "production": "d8a41b4b95ae22d71606aa6a730acb0231440751199a399cd2143f682a8a06d0"
+      },
+      "perceive": {
+        "production": "fe757d024f689d13a22e571046d22dbee57ea261fb88bfd471d76638fbde5a17"
+      },
+      "process_stream": {
+        "production": "1a7fec6abea743a5d73d2aed186afa98399c00e843edc961da3d547a30011f4a"
+      },
+      "start": {
+        "production": "ed5256b48e9ca7b17156f4121a2d11f3d9d98ec5a2204a37dcfe30d8435c1d88"
+      },
+      "stop": {
+        "production": "9273ac4efc6f7e52f0c8eb8905cefd403cb859bd9b995b8ee7ca85ff9976293f"
+      }
+    }
+  },
+  "requires": [
+    "faster_whisper",
+    "torch",
+    "numpy",
+    "pyaudio"
+  ]
+}

@@ -1,7 +1,0 @@
-{
-  "platform": {
-    "type": "string",
-    "required": true,
-    "empty": false
-  }
-}

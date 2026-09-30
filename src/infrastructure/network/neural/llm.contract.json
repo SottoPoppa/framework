@@ -1,0 +1,56 @@
+{
+  "contract_version": 2,
+  "hashes": {
+    "Adapter": {
+      "add_layer": {
+        "production": "71c68f3c711c43bee7bf830127cd4c77bf35df320299a5006a601780027813fa"
+      },
+      "add_node": {
+        "production": "ed0b772e4a62161a651d522561b07e1553973b67bbe3ebe1e15e621ca30fd9c8"
+      },
+      "compute": {
+        "production": "b40e991377513caa35de13d2737c26f6dec44537f73d60e69de22454aa433d91"
+      },
+      "connect_nodes": {
+        "production": "4b6455f7734ac7d99d757415725303bde6c43376c61ea4abf9b4dfb0a1ab9243"
+      },
+      "deploy": {
+        "production": "8b567481a58359a017ecb3779eb58c3256f76aea6b60406ea5cb4d0419db782d"
+      },
+      "disconnect_nodes": {
+        "production": "8617b7f77832f4773b809e5f780e65699703380537ce43a0cfa0263482a8de59"
+      },
+      "get_topology": {
+        "production": "2a6a171a6dac2dff32d3416e4bce2ca883373c46dab4c9f7cb6210e9e4ce5c85"
+      },
+      "migrate": {
+        "production": "6593435cc1d985f891d651a6c5ecd5b70623d53ca3ddf247db9839f0966e0233"
+      },
+      "monitor": {
+        "production": "8aba308aa3cf9eb900f3a8f9dec05c7c88fa01a94f9b52c5744ec30152fc5b8d"
+      },
+      "provision": {
+        "production": "c817807bae86b901e29a222ead3ef6b3d00a5c499a3079e6fe02c0a684215fa1"
+      },
+      "remove_node": {
+        "production": "2c2df3a9de6343ffe0d632cd199b92d165cfeb05536ccc4bca67f3bb29390ee5"
+      },
+      "route": {
+        "production": "6bedb7af8b5c00874b822e3066175d90b1fcff2dbfeb2325a523ab4ce9562690"
+      },
+      "scale": {
+        "production": "f32ccda99fc1725d1807bcd930fe798ca2d66180e157bfa07ec70d3e5bf0a1ad"
+      },
+      "status": {
+        "production": "7cf03b7ddcfdf7f6b7dbfd2acdbe728b508f8f317e95a93256468f482da15ebe"
+      },
+      "stream": {
+        "production": "92cf5f69a386e6bde83a47dc3d481bb0645a95f15cc34243f11284738d15bc7e"
+      }
+    }
+  },
+  "requires": [
+    "torch",
+    "transformers"
+  ]
+}

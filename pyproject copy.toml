@@ -32,18 +32,49 @@ persistence = "persistence.dsl"
 # ADAPTERS
 # -----------------------------------------------
 
+
+#[[message.console]]
+#persistence = "log"
+#name = "console"
+
 [[message.bus]]
 name = "broker"
 implementation = "bus"
 
-[[sensation.text]]
+[[message.agent]]
 name = "copilot"
-implementation = "voice"
+implementation = "copilot"
+model = "gpt-6-luna"
+working_directory = "."
+enable_terminal = true
+token = "{{ env('COPILOT_GITHUB_TOKEN') }}"
 
-[[network.neural]]
-name = "copilot"
-implementation = "llm"
+[[presentation.web]]
+implementation = "starlette"
+name = "web"
+host = "127.0.0.1"
+port = 8000
+protocol = "http"
+#persistence = "workfolder"
+#cors_origins = []
+#cors_credentials = false
 
-[[actuation.audio]]
-name = "copilot"
-implementation = "voice"
+[[presentation.tui]]
+name = "tui"
+implementation = "textual"
+
+#[[authentication.stub]]
+#name = "stub"
+
+[[persistence.filesystem]]
+name = "workfolder"
+implementation = "filesystem"
+
+#[[persistence.filesystem]]
+#name = "workfolder"
+
+#[[persistence.filesystem]]
+#name = "source"
+#path = "src/"
+#watch = true
+#message = "broker"

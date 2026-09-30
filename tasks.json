@@ -1,0 +1,62 @@
+[
+  {
+    "id": "task-343228",
+    "title": "Interfaccia Miglioramenti per produzione",
+    "description": "### Obiettivo\n\nSemplificare e migliorare l'intera pipeline **Presenter → Port → Adapter**, riducendo la duplicazione di codice e rendendo più semplice supportare implementazioni diverse della stessa interfaccia, come **Web, TUI e future UI/API**.\n\n### Attività\n\n* Analizzare e semplificare la struttura attuale a partire dal **Presenter** fino agli **Adapter**.\n* Individuare codice duplicato tra le diverse implementazioni degli adapter.\n* Spostare nella parte comune tutta la logica che non dipende dalla specifica tecnologia di presentazione.\n* Migliorare gli adapter affinché implementino principalmente le differenze specifiche della tecnologia, riutilizzando il più possibile il comportamento comune.\n* Verificare se le astrazioni attuali (**Presenter, Port, Adapter, View, ecc.**) siano realmente necessarie.\n* Rimuovere le astrazioni che aggiungono complessità senza fornire un reale vantaggio.\n* Introdurre nuove astrazioni solo dove permettono di eliminare duplicazione o disaccoppiare correttamente le implementazioni.\n* Separare chiaramente:\n\n  * logica applicativa comune;\n  * trasformazione dei dati;\n  * gestione dello stato;\n  * rendering/presentazione;\n  * dettagli specifici dell'implementazione.\n* Fare in modo che **Web e TUI utilizzino la stessa logica applicativa e gli stessi componenti comuni**, differenziandosi solamente nel livello necessario alla specifica UI.\n* Rendere semplice aggiungere una nuova implementazione senza dover duplicare la logica esistente.\n\n### Risultato atteso\n\nLa struttura finale dovrebbe seguire il principio:\n\n```text\n                    Application\n                         │\n                      Presenter\n                         │\n                  Presentation Port\n                         │\n              ┌──────────┴──────────┐\n              │                     │\n           Web Adapter          TUI Adapter\n              │                     │\n           Web UI                TUI UI\n```\n\ndove gli adapter condividono il maggior numero possibile di componenti e implementano solamente ciò che è realmente specifico della loro tecnologia.\n\n### Principio guida\n\n> **Condividere la logica, specializzare solo la presentazione.**\n\nL'obiettivo non è creare più livelli di astrazione, ma trovare il **minimo livello di astrazione necessario** per ottenere riuso, disaccoppiamento e facilità di estensione.\n\n### Criteri di completamento\n\n* Riduzione significativa del codice duplicato tra gli adapter.\n* Web e TUI continuano a fornire lo stesso comportamento applicativo.\n* Una nuova implementazione di presentation richiede il minimo codice possibile.\n* Presenter, Port e Adapter hanno responsabilità chiaramente definite e non sovrapposte.\n* Nessuna astrazione viene mantenuta solamente per ragioni architetturali se non porta un vantaggio concreto.\n* La struttura risultante è più semplice da comprendere, testare e mantenere.\n\nnon assumere che l'architettura attuale sia corretta: durante il refactoring è consentito accorpare, spostare o eliminare livelli\n\n\n\n",
+    "file": "src/framework/port/presentation.py",
+    "status": "backlog",
+    "priority": "critical",
+    "created_at": "2026-09-29T13:11:34Z",
+    "updated_at": null,
+    "started_at": null,
+    "completed_at": null
+  },
+  {
+    "id": "task-953881",
+    "title": "Flow miglioramenti per produzione !",
+    "description": "\n### Obiettivo\n\nRivedere e migliorare il modulo **`flow`**, consolidandolo come livello comune per l'esecuzione e l'orchestrazione delle operazioni asincrone del framework.\n\nL'obiettivo è ottenere un sistema più semplice, coerente e riutilizzabile, evitando che funzionalità simili vengano replicate nei vari componenti che utilizzano `flow`.\n\n### Attività\n\n* Analizzare l'implementazione attuale di `flow` e individuare:\n\n  * funzionalità duplicate;\n  * astrazioni inutili;\n  * responsabilità sovrapposte;\n  * API troppo complesse;\n  * gestione dello stato distribuita;\n  * logica che dovrebbe essere centralizzata.\n* Definire chiaramente le responsabilità di `flow`.\n* Consolidare in `flow` la gestione comune di:\n\n  * esecuzione delle operazioni;\n  * composizione delle operazioni;\n  * propagazione dei risultati;\n  * gestione degli errori;\n  * stato dell'esecuzione;\n  * contesto di esecuzione;\n  * operazioni asincrone;\n  * hook/eventi, se realmente necessari.\n* Utilizzare in modo coerente `Result`, `Success`, `Failure` e gli eventuali stati intermedi.\n* Definire chiaramente il comportamento di `Pending` e degli altri stati del flow, evitando semantiche ambigue.\n* Semplificare `pipe()` e le API correlate, mantenendo una composizione naturale delle operazioni.\n* Evitare che `runner`, `manager` o altri componenti reimplementino funzionalità già offerte da `flow`.\n* Integrare correttamente `ExecutionContext` / `FlowContext` se utile, evitando di propagare continuamente dizionari o parametri generici.\n* Rendere `flow` utilizzabile sia direttamente dalle application/action sia da componenti più complessi come il DAG runner.\n* Separare ciò che appartiene al **flow execution engine** da ciò che appartiene all'orchestrazione specifica del `runner`.\n* Verificare la gestione di:\n\n  * coroutine;\n  * funzioni sincrone;\n  * eccezioni;\n  * timeout;\n  * risultati;\n  * cancellazione;\n  * composizione di più step.\n* Ridurre il numero di concetti necessari per utilizzare `flow`.\n\n### Risultato atteso\n\nIl codice applicativo dovrebbe poter esprimere una sequenza di operazioni in modo semplice, ad esempio:\n\n```python\nresult = await flow.pipe(\n    context,\n    validate,\n    load,\n    process,\n    save,\n)\n```\n\ne ottenere un risultato coerente:\n\n```text\nFlow\n │\n ├── Step\n │    ├── Success\n │    ├── Failure\n │    └── Pending\n │\n └── Result\n```\n\nIl `runner` dovrebbe occuparsi principalmente di **orchestrare quando e perché eseguire i flow**, mentre `flow` dovrebbe occuparsi di **come vengono eseguiti e propagati gli step**.\n\n### Principio guida\n\n> **Flow esegue e compone; Runner orchestra.**\n\n`flow` deve diventare il livello comune di esecuzione, evitando che ogni sistema superiore debba reinventare gestione di risultati, errori, contesto e composizione.\n\n### Criteri di completamento\n\n* API di `flow` più semplici e coerenti.\n* Responsabilità di `flow` chiaramente separate da quelle di `runner`.\n* Eliminazione della logica duplicata nei consumer di `flow`.\n* Gestione uniforme di `Success`, `Failure` e `Pending`.\n* Supporto coerente a sync/async.\n* Gestione centralizzata di errori e contesto.\n* Riduzione delle astrazioni non necessarie.\n* Possibilità di utilizzare `flow` indipendentemente dal DAG runner.\n* Il `runner` utilizza `flow` senza duplicarne le funzionalità.\n* Test che coprano composizione, errori, pending, cancellazione e operazioni asincrone.\n\n\n",
+    "file": "src/framework/core/flow.py",
+    "status": "backlog",
+    "priority": "critical",
+    "created_at": "2026-09-29T13:13:09Z",
+    "updated_at": null,
+    "started_at": null,
+    "completed_at": null
+  },
+  {
+    "id": "task-378978",
+    "title": "Miglioramento del sistema di logging",
+    "description": "### Obiettivo\n\nRivedere e migliorare completamente il sistema di **logging del framework**, rendendolo più coerente, leggibile, configurabile e facilmente riutilizzabile da tutti i componenti.\n\n### Attività\n\n* Analizzare l'attuale gestione dei log e individuare:\n\n  * duplicazioni;\n  * `print()` utilizzati impropriamente;\n  * formati incoerenti;\n  * livelli di log non utilizzati correttamente;\n  * log troppo verbosi o poco informativi.\n* Centralizzare la gestione del logging evitando che ogni componente implementi una propria soluzione.\n* Definire una struttura coerente per i livelli:\n\n  * `DEBUG`\n  * `INFO`\n  * `WARNING`\n  * `ERROR`\n  * `CRITICAL`\n* Uniformare il formato dei messaggi di log.\n* Rendere facilmente identificabile il componente che genera il messaggio:\n\n  * framework;\n  * loader;\n  * runner;\n  * flow;\n  * manager;\n  * adapter;\n  * presenter;\n  * ecc.\n* Aggiungere, dove utile, informazioni contestuali come:\n\n  * nome del componente;\n  * operazione eseguita;\n  * sessione;\n  * task/node;\n  * adapter utilizzato;\n  * durata;\n  * eccezione.\n* Separare chiaramente i log destinati allo sviluppatore dai messaggi destinati all'utente.\n* Rendere il logging configurabile senza modificare il codice applicativo.\n* Supportare configurazioni differenti per sviluppo, debug e produzione.\n* Eliminare progressivamente i `print()` utilizzati come sistema di debug.\n* Evitare di introdurre wrapper o astrazioni inutili sopra il logging standard quando non portano un vantaggio concreto.\n\n### Risultato atteso\n\nTutti i componenti del framework devono poter utilizzare un sistema di logging comune mantenendo un'interfaccia semplice, ad esempio:\n\n```python\nlogger.debug(...)\nlogger.info(...)\nlogger.warning(...)\nlogger.error(...)\n```\n\nIl sistema deve permettere di aumentare o ridurre il livello di dettaglio senza modificare il codice dei componenti.\n\n### Principio guida\n\n> **Un solo sistema di logging, comportamento coerente, contesto utile.**\n\nIl logging deve aiutare a capire **cosa sta facendo il framework e dove**, senza trasformarsi in rumore.\n\n### Criteri di completamento\n\n* Eliminazione dei `print()` usati per il logging.\n* Formato coerente in tutto il framework.\n* Configurazione centralizzata.\n* Livelli di log utilizzati correttamente.\n* Contesto sufficiente per diagnosticare problemi complessi.\n* Nessuna duplicazione della logica di logging tra componenti.\n* Possibilità di utilizzare il framework sia con logging minimale sia con logging dettagliato per il debug.\n",
+    "file": "src/framework/service/diagnostic.py",
+    "status": "backlog",
+    "priority": "critical",
+    "created_at": "2026-09-29T13:13:59Z",
+    "updated_at": null,
+    "started_at": null,
+    "completed_at": null
+  },
+  {
+    "id": "task-706321",
+    "title": "Creare test con errori ",
+    "description": "creare dei test che falliscono devono passarlo a log e anche ricevere l'errore !",
+    "file": "src/framework/manager/tester.py",
+    "status": "backlog",
+    "priority": "high",
+    "created_at": "2026-09-29T17:49:15Z",
+    "updated_at": null,
+    "started_at": null,
+    "completed_at": null
+  },
+  {
+    "id": "task-210762",
+    "title": "sistemare gli schemi per tutti ",
+    "description": "sistemare gli schemi per toml e contract , funzioni .",
+    "file": "src/framework/service/scheme.py",
+    "status": "backlog",
+    "priority": "medium",
+    "created_at": "2026-09-30T06:35:57Z",
+    "updated_at": null,
+    "started_at": null,
+    "completed_at": null
+  }
+]

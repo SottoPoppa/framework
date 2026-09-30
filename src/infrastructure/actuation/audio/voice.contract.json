@@ -1,0 +1,30 @@
+{
+  "contract_version": 2,
+  "hashes": {
+    "Adapter": {
+      "execute": {
+        "production": "f1d24c22a717089129b9fc8282fe3100e7721c239a8cf691e86b6837cc548e27"
+      },
+      "get_state": {
+        "production": "01bb4781360fd046981dd2018b675e89fd84994fd23fe4858c68baa7e9ecf245"
+      },
+      "set_state": {
+        "production": "f5d237189bdb66d5119d4ebbb1645e39849b8c843622a5fdbce77c372b957603"
+      },
+      "start": {
+        "production": "3023bb91aa9b1e395895d69bee8292ea3ef960e1e2a7bdf5dbd28fbe179f2c1e"
+      },
+      "stop": {
+        "production": "13dd1f5e49d99a65106b972ddfb91c8a6b6b0e4c9b37183c8c8bb669ca42cdc9"
+      },
+      "toggle_feature": {
+        "production": "940741a2d73fffcf0b3a9764181cf74ba5e49cc2ceb9db3ed18f62aae79b7d30"
+      }
+    }
+  },
+  "requires": [
+    "sounddevice",
+    "edge_tts",
+    "miniaudio"
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "contract_version": {
+    "type": "integer",
+    "required": true
+  },
+  "exports": {
+    "type": "dict",
+    "required": true,
+    "schema": {
+      "type": {
+        "type": "list",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "hashes": {
+    "type": "dict",
+    "required": true,
+    "valueschema": {
+      "type": "dict",
+      "valueschema": {
+        "type": "dict",
+        "schema": {
+          "production": {
+            "type": "string",
+            "required": true
+          },
+          "test": {
+            "type": "string",
+            "required": true
+          }
+        }
+      }
+    }
+  },
+  "requires": {
+    "type": "list",
+    "required": false,
+    "default": [],
+    "schema": {
+      "type": "string"
+    }
+  }
+}

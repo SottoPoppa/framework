@@ -6,6 +6,7 @@
 
 #framework
 .diagnostics/
+tmp/
 
 
 # Byte-compiled / optimized / DLL files

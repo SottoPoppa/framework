@@ -1,83 +1,111 @@
-from typing import Protocol, Any, runtime_checkable
+from typing import Protocol, Any, Dict, AsyncGenerator, runtime_checkable
+from abc import abstractmethod
+import framework.core.flow as flow
+
 
 @runtime_checkable
 class Port(Protocol):
-    '''_method_decorators = {
+    """Porta topologica unificata per Reti Server/SD-WAN, Reti Neurali (RNN/LLM)
+
+    e Architetture a Grafi.
+    """
+
+    capabilities: Dict[str, Any] = {
+        "network_type": "generic",  # 'infrastructure', 'recurrent_neural_network', 'graph'
+        "topological": True,
+        "real_time_stream": False,
+    }
+
+    # Decoratori automatici applicati alle sottoclassi
+    _method_decorators = {
         "provision": flow.result(inputs=("intent",), outputs=("deployment",)),
         "monitor": flow.result(outputs=("status",)),
         "status": flow.result(outputs=("status",)),
-        "route": flow.result(inputs=("application", "requirements"), outputs=("route",)),
+        "route": flow.result(inputs=("payload", "requirements"), outputs=("route",)),
     }
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        for method_name, decorator in port._method_decorators.items():
+        for method_name, decorator in cls._method_decorators.items():
             if method_name in cls.__dict__:
                 original = cls.__dict__[method_name]
-                setattr(cls, method_name, decorator(original))'''
+                setattr(cls, method_name, decorator(original))
 
-    def compute(self, *args):
-        pass
-
-    '''@abstractmethod
-    async def provision(self, intent: dict):
-        pass
+    # ------------------------------------------------------------------
+    # 1. Operazioni di Topologia (Nodi, Connessioni e Layer)
+    # ------------------------------------------------------------------
 
     @abstractmethod
-    async def monitor(self):
-        pass
+    async def add_node(self, node_spec: Dict[str, Any]) -> Dict[str, Any]:
+        """Aggiunge un nodo alla rete (es. Server/Router OPPURE Modello/Agente/Neurone)."""
+        ...
 
     @abstractmethod
-    async def route(self, application: dict, requirements: dict):
-        pass
+    async def remove_node(self, node_id: str) -> Dict[str, Any]:
+        """Rimuove un nodo esistente dalla topologia."""
+        ...
 
     @abstractmethod
-    async def status(self):
-        pass
+    async def connect_nodes(
+        self, src_node_id: str, dst_node_id: str, connection_spec: Dict[str, Any] | None = None
+    ) -> Dict[str, Any]:
+        """Crea un arco o canale tra due nodi (es. Tunnel VPN OPPURE Matrice di Pesi/Synapse)."""
+        ...
 
     @abstractmethod
-    def deploy(self, deploy_spec: Dict[str, Any]) -> Dict[str, Any]:
-        """Deploya l'applicazione sulla rete/hosting adatto (es. container su cloud, static su CDN)."""
-        pass
+    async def disconnect_nodes(self, src_node_id: str, dst_node_id: str) -> Dict[str, Any]:
+        """Rimuove l'arco/connessione tra due nodi."""
+        ...
 
     @abstractmethod
-    def scale(self, scale_spec: Dict[str, Any]) -> Dict[str, Any]:
-        """Scala risorse di hosting (es. aumenta VM, replica container)."""
-        pass
+    async def add_layer(self, layer_spec: Dict[str, Any]) -> Dict[str, Any]:
+        """Aggiunge un livello alla rete (es. Subnet/VLAN OPPURE Neural/Transformer Layer)."""
+        ...
 
     @abstractmethod
-    def migrate(self, migrate_spec: Dict[str, Any]) -> Dict[str, Any]:
-        """Migra l'applicazione tra reti/provider (es. da on-prem a cloud)."""
-        pass
+    async def get_topology(self) -> Dict[str, Any]:
+        """Restituisce il grafo della topologia attuale: { "nodes": [...], "edges": [...] }."""
+        ...
+
+    # ------------------------------------------------------------------
+    # 2. Lifecycle & Management (Deploy, Scale, Migrate)
+    # ------------------------------------------------------------------
 
     @abstractmethod
-    def add_node(self, node_spec: Dict[str, Any]) -> Dict[str, Any]:
-        """Aggiunge un nuovo nodo alla rete."""
-        pass
+    async def deploy(self, deploy_spec: Dict[str, Any]) -> Dict[str, Any]:
+        """Deploya la rete o carica l'architettura (es. Container Cloud OPPURE Pesi LLM)."""
+        ...
 
     @abstractmethod
-    def remove_node(self, node_id: str) -> Dict[str, Any]:
-        """Rimuove un nodo esistente dalla rete."""
-        pass
+    async def scale(self, scale_spec: Dict[str, Any]) -> Dict[str, Any]:
+        """Scala la capacità della rete (es. Aumenta Replica Pod OPPURE Quantizzazione VRAM/RAM)."""
+        ...
 
     @abstractmethod
-    def connect_nodes(self, src_node_id: str, dst_node_id: str, connection_spec: Dict[str, Any]) -> Dict[str, Any]:
-        """Crea una connessione tra due nodi."""
-        pass
-    
-    @abstractmethod
-    def disconnect_nodes(self, src_node_id: str, dst_node_id: str) -> Dict[str, Any]:
-        """Rimuove la connessione tra due nodi."""
-        pass
+    async def migrate(self, migrate_spec: Dict[str, Any]) -> Dict[str, Any]:
+        """Migra nodi/carichi (es. Failover DataCenter OPPURE Device Offloading CPU->GPU)."""
+        ...
+
+    # ------------------------------------------------------------------
+    # 3. Flusso Dati & Invocazione (Route, Provision, Compute, Monitor)
+    # ------------------------------------------------------------------
 
     @abstractmethod
-    def get_topology(self) -> Dict[str, Any]:
-        """Restituisce la topologia attuale della rete (nodi e connessioni)."""
-        pass
-    
-    @abstractmethod
-    def add_layer(self, layer_spec: Dict[str, Any]) -> Dict[str, Any]:
-        """Aggiunge un nuovo layer alla rete."""
-        pass'''
+    async def provision(self, intent: Dict[str, Any]) -> Dict[str, Any]:
+        ...
 
-    
+    @abstractmethod
+    async def route(self, payload: Dict[str, Any], requirements: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        ...
+
+    @abstractmethod
+    async def compute(self, *args, **kwargs) -> Dict[str, Any]:
+        ...
+
+    @abstractmethod
+    async def monitor(self) -> Dict[str, Any]:
+        ...
+
+    @abstractmethod
+    async def status(self) -> Dict[str, Any]:
+        ...

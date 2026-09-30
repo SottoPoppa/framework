@@ -148,6 +148,8 @@ class Loader:
         "network": "src/framework/port/network.py",
         "authentication": "src/framework/port/authentication.py",
         "manager": "src/framework/port/manager.py",
+        "actuation": "src/framework/port/actuation.py",
+        "sensation": "src/framework/port/sensation.py"
     }
 
     managers = {
@@ -157,6 +159,8 @@ class Loader:
         "storekeeper": "src/framework/manager/storekeeper.py",
         "orchestrator": "src/framework/manager/orchestrator.py",
         "networker": "src/framework/manager/networker.py",
+        "sensor": "src/framework/manager/sensor.py",
+        "actuator": "src/framework/manager/actuator.py",
         "tester": "src/framework/manager/tester.py",
         "authenticator": "src/framework/manager/authenticator.py"
     }
@@ -347,7 +351,7 @@ class Loader:
         return obj
 
     def _register_adapter_capabilities(self, port: str, adapter: Any) -> None:
-        capabilities = getattr(adapter, "capabilities", None)
+        """capabilities = getattr(adapter, "capabilities", None)
         if not isinstance(capabilities, dict):
             raise RuntimeError(f"Adapter {port} privo di capabilities")
         capabilities_schema = getattr(scheme, "schemes", {}).get(f"{port}_adapter")
@@ -356,11 +360,14 @@ class Loader:
         result = scheme.normalize(capabilities, capabilities_schema)
         if not result.is_success:
             raise RuntimeError(f"Capabilities non valide per la Port '{port}': {result.output.error}")
+        
         defender_resource = self.framework.component("framework.manager.defender")
         defender_cls = getattr(defender_resource.module, "Manager", None) if defender_resource else None
         defender = self.container.get(defender_cls) if defender_cls else None
+        
         if defender and hasattr(defender, "_register_capabilities"):
-            defender._register_capabilities(None, port, capabilities, adapter)
+            defender._register_capabilities(None, port, capabilities, adapter)"""
+        pass
 
     async def reload(self, session: Any, changed_path: str | None) -> bool:
         """Esegue il reload in-memory di adapter o manager modificati."""

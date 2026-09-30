@@ -502,25 +502,56 @@ class Framework:
 
     def _run_installation(self, context: InstallContext) -> bool:
         requirements = context["requirements"]
+
         if not requirements:
             self.logger.info(
                 "Installazione completata senza dipendenze",
                 contracts=context["contracts_found"],
             )
             return True
+
         self.logger.info(
-            "Installazione dipendenze avviata", requirements=len(requirements)
+            "Installazione dipendenze avviata",
+            requirements=len(requirements),
         )
+
+        self.logger.debug(
+            "Requirements",
+            requirements=requirements,
+        )
+
         try:
             result = subprocess.run(
                 [sys.executable, "-m", "pip", "install", *requirements],
-                capture_output=True,
+                #capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
             )
         except Exception as exc:
-            raise RuntimeError(f"Impossibile eseguire pip: {exc}") from exc
+            raise RuntimeError(
+                f"Impossibile eseguire pip: {exc}"
+            ) from exc
+
+        if result.stdout:
+            self.logger.debug(
+                "pip stdout",
+                output=result.stdout,
+            )
+
+        if result.stderr:
+            self.logger.debug(
+                "pip stderr",
+                output=result.stderr,
+            )
+
         if result.returncode != 0:
-            raise RuntimeError("Errore durante l'installazione delle dipendenze.")
+            raise RuntimeError(
+                "Errore durante l'installazione delle dipendenze.\n"
+                f"Requirements: {requirements}\n"
+                f"pip output:\n{result.stdout}"
+            )
+
         self.logger.info("Dipendenze installate con successo")
         return True
 
