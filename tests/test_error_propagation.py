@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import json
+import signal
 import sys
 import tempfile
 import types
@@ -61,6 +62,76 @@ from textual.widgets import Markdown, Select, Static
 
 
 class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_application_signal_handler_dispatches_shutdown_on_event_loop(self):
+        class Logger:
+            def info(self, *args, **kwargs):
+                pass
+
+            def debug(self, *args, **kwargs):
+                pass
+
+        class FrameworkStub:
+            def get_logger(self, _name):
+                return Logger()
+
+        class Loader:
+            framework = FrameworkStub()
+            kwargs = {}
+
+        app = Application(Loader(), [])
+        loop = asyncio.get_running_loop()
+        handlers = {}
+
+        def register_handler(sig, callback, *args):
+            handlers[sig] = (callback, args)
+
+        with patch.object(loop, "add_signal_handler", side_effect=register_handler):
+            app._install_signal_handlers()
+
+        self.assertIn(signal.SIGINT, handlers)
+        self.assertFalse(app._stop_event.is_set())
+        callback, args = handlers[signal.SIGINT]
+        loop.call_soon(callback, *args)
+        await asyncio.sleep(0)
+
+        self.assertTrue(app._stop_event.is_set())
+
+    async def test_application_signal_handler_fallback_dispatches_shutdown(self):
+        class Logger:
+            def info(self, *args, **kwargs):
+                pass
+
+            def debug(self, *args, **kwargs):
+                pass
+
+        class FrameworkStub:
+            def get_logger(self, _name):
+                return Logger()
+
+        class Loader:
+            framework = FrameworkStub()
+            kwargs = {}
+
+        app = Application(Loader(), [])
+        loop = asyncio.get_running_loop()
+        handlers = {}
+
+        with patch.object(
+            loop,
+            "add_signal_handler",
+            side_effect=NotImplementedError,
+        ), patch.object(
+            signal,
+            "signal",
+            side_effect=lambda sig, handler: handlers.__setitem__(sig, handler),
+        ):
+            app._install_signal_handlers()
+
+        handlers[signal.SIGINT](signal.SIGINT, None)
+        await asyncio.wait_for(app._stop_event.wait(), timeout=0.1)
+
+        self.assertTrue(app._stop_event.is_set())
+
     async def test_copilot_post_returns_while_response_is_pending(self):
         class DelayedCopilotSession:
             def __init__(self):

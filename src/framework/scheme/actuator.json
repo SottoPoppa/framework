@@ -1,0 +1,73 @@
+{
+  "operation": {
+    "type": "string",
+    "required": true,
+    "default": "execute_command",
+    "allowed": [
+      "execute_command",
+      "set_state",
+      "set_maintenance_mode",
+      "toggle_feature",
+      "control_data_stream",
+      "run_task"
+    ]
+  },
+  "device_id": {
+    "type": "string",
+    "required": false,
+    "empty": false
+  },
+  "command": {
+    "type": "string",
+    "required": false,
+    "nullable": true,
+    "empty": false
+  },
+  "payload": {
+    "type": "dict",
+    "required": false,
+    "default": {},
+    "nullable": true
+  },
+  "state": {
+    "type": "dict",
+    "required": false,
+    "default": {},
+    "nullable": true
+  },
+  "enabled": {
+    "type": "boolean",
+    "required": false
+  },
+  "feature_name": {
+    "type": "string",
+    "required": false,
+    "empty": false
+  },
+  "stream_id": {
+    "type": "string",
+    "required": false,
+    "empty": false
+  },
+  "action": {
+    "type": "string",
+    "required": false,
+    "allowed": [
+      "start",
+      "resume",
+      "stop",
+      "pause"
+    ]
+  },
+  "task_name": {
+    "type": "string",
+    "required": false,
+    "empty": false
+  },
+  "parameters": {
+    "type": "dict",
+    "required": false,
+    "default": {},
+    "nullable": true
+  }
+}

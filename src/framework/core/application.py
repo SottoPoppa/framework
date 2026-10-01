@@ -17,6 +17,8 @@ class Application:
         self._running_tasks: list[asyncio.Task] = []
         self._session = session
         self._previous_signal_handlers: dict[signal.Signals, Any] = {}
+        self._signal_loop: asyncio.AbstractEventLoop | None = None
+        self._loop_signal_handlers: set[signal.Signals] = set()
         self._shutdown_started = False
         self._shutdown_result: flow.Result | None = None
         self._background_errors: list[BaseException] = []
@@ -25,6 +27,14 @@ class Application:
         """Riceve un segnale OS e risveglia il ciclo di vita applicativo."""
         self._logger.info("Segnale di arresto ricevuto", signal=sig.name)
         self._stop_event.set()
+
+    def _handle_os_signal(self, signum: int, _frame: Any) -> None:
+        loop = self._signal_loop
+        if loop is not None and not loop.is_closed():
+            loop.call_soon_threadsafe(
+                self._request_shutdown,
+                signal.Signals(signum),
+            )
 
     def _handle_task_completion(self, task: asyncio.Task) -> None:
         if task.cancelled():
@@ -48,22 +58,26 @@ class Application:
 
     def _install_signal_handlers(self) -> None:
         """Installa i segnali dopo il wiring, quando i manager hanno finito lo startup."""
+        loop = asyncio.get_running_loop()
+        self._signal_loop = loop
         for sig in (signal.SIGINT, signal.SIGTERM):
             try:
                 if sig not in self._previous_signal_handlers:
                     self._previous_signal_handlers[sig] = signal.getsignal(sig)
 
-                def handle_signal(_signum, _frame, current_signal=sig):
-                    self._request_shutdown(current_signal)
-
-                signal.signal(sig, handle_signal)
+                loop.add_signal_handler(sig, self._request_shutdown, sig)
+                self._loop_signal_handlers.add(sig)
                 self._logger.debug("Signal handler installato", signal=sig.name)
-            except (NotImplementedError, RuntimeError, ValueError, OSError) as exc:
-                self._logger.warning(
-                    "Impossibile installare il signal handler",
-                    signal=sig.name,
-                    exception=exc,
-                )
+            except (NotImplementedError, RuntimeError, ValueError, OSError):
+                try:
+                    signal.signal(sig, self._handle_os_signal)
+                    self._logger.debug("Signal handler installato", signal=sig.name)
+                except (NotImplementedError, RuntimeError, ValueError, OSError) as fallback_exc:
+                    self._logger.warning(
+                        "Impossibile installare il signal handler",
+                        signal=sig.name,
+                        exception=fallback_exc,
+                    )
 
     async def _message_consumer_worker(self):
         """Worker in background per la gestione degli eventi di reload."""
@@ -207,6 +221,16 @@ class Application:
                         )
 
             for sig, handler in self._previous_signal_handlers.items():
+                if self._signal_loop is not None and sig in self._loop_signal_handlers:
+                    try:
+                        self._signal_loop.remove_signal_handler(sig)
+                    except Exception as exc:
+                        errors.append(exc)
+                        self._logger.error(
+                            "Rimozione del signal handler fallita",
+                            signal=sig.name,
+                            exception=exc,
+                        )
                 try:
                     signal.signal(sig, handler)
                 except Exception as exc:
@@ -217,6 +241,8 @@ class Application:
                         exception=exc,
                     )
             self._previous_signal_handlers.clear()
+            self._loop_signal_handlers.clear()
+            self._signal_loop = None
 
             if errors:
                 self._logger.error("Framework spento con errori", errors=errors)

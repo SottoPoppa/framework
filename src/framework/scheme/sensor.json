@@ -1,0 +1,53 @@
+{
+  "operation": {
+    "type": "string",
+    "required": true,
+    "default": "read",
+    "allowed": [
+      "read",
+      "read_all",
+      "calibrate",
+      "set_threshold"
+    ]
+  },
+  "sensor_id": {
+    "type": "string",
+    "required": false,
+    "empty": false
+  },
+  "field": {
+    "type": "string",
+    "required": false,
+    "nullable": true,
+    "empty": false
+  },
+  "offset": {
+    "type": [
+      "integer",
+      "float"
+    ],
+    "required": false
+  },
+  "min_value": {
+    "type": [
+      "integer",
+      "float"
+    ],
+    "required": false,
+    "nullable": true
+  },
+  "max_value": {
+    "type": [
+      "integer",
+      "float"
+    ],
+    "required": false,
+    "nullable": true
+  },
+  "parameters": {
+    "type": "dict",
+    "required": false,
+    "default": {},
+    "nullable": true
+  }
+}

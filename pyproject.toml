@@ -40,9 +40,9 @@ implementation = "bus"
 name = "copilot"
 implementation = "voice"
 
-[[network.neural]]
-name = "copilot"
-implementation = "llm"
+#[[network.neural]]
+#name = "copilot"
+#implementation = "llm"
 
 [[actuation.audio]]
 name = "copilot"
