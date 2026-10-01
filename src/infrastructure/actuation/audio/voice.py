@@ -1,186 +1,616 @@
-import asyncio
-import io
-import inspect
-import sounddevice as sd
-import edge_tts  # Libreria di sintesi vocale alta qualità leggera
+"""
+framework.adapter.actuation.audio
+=================================
 
-import framework.port.actuation as actuation
+Adapter TTS per output audio.
+
+Backend supportati:
+- paplay      -> PulseAudio / PipeWire
+- sounddevice -> PortAudio
+
+Il backend ``paplay`` è preferito su Linux quando l'audio passa
+attraverso PulseAudio/PipeWire, ad esempio in sessioni RDP.
+
+Dipendenze:
+    edge-tts
+    miniaudio
+
+Opzionali:
+    sounddevice
+"""
+
+from __future__ import annotations
+
+import asyncio
+import shutil
+import subprocess
+from typing import Any
+
+import edge_tts
+import miniaudio
+
 import framework.core.flow as flow
+import framework.port.actuation as actuation
 
 
 class Adapter(actuation.Port):
-    """Adapter di attuazione per la Sintesi Vocale (Text-to-Speech).
-    
-    Converte il testo fornito in audio e lo riproduce sugli altoparlanti 
-    o restituisce i byte generati.
+    """
+    Text-to-Speech audio actuator.
     """
 
     capabilities = {
         "feedback_loop": False,
         "async_execution": True,
         "emergency_stop": True,
-        "protocols": ["AUDIO-OUT", "PCM", "TTS"],
+        "startup_announcement": True,
+        "protocols": [
+            "AUDIO-OUT",
+            "PCM",
+            "TTS",
+        ],
+        "backends": [
+            "paplay",
+            "sounddevice",
+        ],
     }
 
     def __init__(
         self,
-        name = "tts_voice_actuator",
-        voice = "it-IT-DiegoNeural",  # Voce italiana naturale (Edge-TTS)
-        rate = "+0%",                 # Velocità (+10%, -10%, etc.)
-        volume = "+0%",
-        **kwargs
+        name="tts_voice_actuator",
+        voice="it-IT-ElsaNeural",
+        rate="+0%",
+        volume="+0%",
+        announce_start=True,
+        audio_backend="paplay",
+        **kwargs,
     ):
         self.name = name
         self.voice = voice
         self.rate = rate
         self.volume = volume
+        self.announce_start = announce_start
+
+        # auto | paplay | sounddevice
+        self.audio_backend = audio_backend
+
         self._kwargs = kwargs
+        self._last_state: dict[str, Any] = {}
+        self._current_task: asyncio.Task | None = None
 
-        self._last_state: dict = {}
-        self._current_task: asyncio.Task = None
-
-        asyncio.create_task(self.start())
+        self._speaking_enabled = True
+        self._started = False
 
     # ------------------------------------------------------------------
-    # Ciclo di Vita (Start / Stop)
+    # Lifecycle
     # ------------------------------------------------------------------
 
-    
-    async def start(self, *services, **constants):
-        """Inizializza l'adapter e annuncia l'avvio."""
-       
-        startup_message = constants.get(
-            "startup_message",
-            "Adapter vocale avviato."
-        )
+    async def start(self, session) -> bool:
+        """
+        Avvia l'adapter.
 
-        # Annuncio vocale all'avvio
-        await self.execute(
+        Se ``announce_start`` è attivo, pronuncia il messaggio iniziale.
+        """
+
+        if self._started:
+            return True
+
+        self._started = True
+
+        if not self.announce_start:
+            return True
+
+        if not self._speaking_enabled:
+            return True
+
+        startup_message = "Ciao! Sono il tuo assistente virtuale. "
+
+        if not startup_message:
+            return True
+
+        result = await self.execute(
             text=startup_message,
             play_audio=True,
         )
 
-        return True
+        if flow.is_result(result):
+            result = flow.unwrap(result)
 
+        return isinstance(result, dict) and result.get("status") == "success"
 
-    async def stop(self, *services, **constants):
-        """Interrompe eventuale riproduzione audio in corso."""
-        await self._stop_current_speech()
-        return True
-
-    # ------------------------------------------------------------------
-    # Implementazione del Contratto Actuator.Port
-    # ------------------------------------------------------------------
-
-    async def execute(self, *services, **constants):
-        """Sintetizza e legge un testo ad alta voce.
-        
-        Parametri accettati in **constants:
-        - text / command: Il testo da pronunciare.
-        - voice: Sovrascrivi temporaneamente la voce.
-        - play_audio: bool (default True) se riprodurre dagli altoparlanti.
+    async def stop(
+        self,
+        *services: Any,
+        **constants: Any,
+    ) -> bool:
         """
-        text = constants.get("text") or constants.get("command")
-        voice = constants.get("voice", self.voice)
-        play_audio = constants.get("play_audio", True)
+        Ferma l'eventuale riproduzione audio.
+        """
+
+        await self._stop_current_speech()
+
+        self._started = False
+
+        return True
+
+    # ------------------------------------------------------------------
+    # Execution
+    # ------------------------------------------------------------------
+
+    async def execute(
+        self,
+        *services: Any,
+        **constants: Any,
+    ) -> dict[str, Any]:
+        """
+        Sintetizza e riproduce il testo.
+
+        Parametri supportati:
+
+            text
+            command
+            voice
+            rate
+            volume
+            play_audio
+            audio_backend
+        """
+
+        text = (
+            constants.get("text")
+            or constants.get("command")
+        )
+
+        voice = constants.get(
+            "voice",
+            self.voice,
+        )
+
+        rate = constants.get(
+            "rate",
+            self.rate,
+        )
+
+        volume = constants.get(
+            "volume",
+            self.volume,
+        )
+
+        play_audio = constants.get(
+            "play_audio",
+            True,
+        )
+
+        backend = constants.get(
+            "audio_backend",
+            self.audio_backend,
+        )
 
         if not text:
-            return {"status": "error", "message": "Nessun testo fornito per la sintesi vocale."}
+            return {
+                "status": "error",
+                "message": (
+                    "Nessun testo fornito "
+                    "per la sintesi vocale."
+                ),
+            }
 
-        # Ferma eventuale audio ancora in riproduzione
+        if not self._speaking_enabled:
+            return {
+                "status": "disabled",
+                "message": (
+                    "Sintesi vocale disabilitata."
+                ),
+            }
+
         await self._stop_current_speech()
 
         try:
-            # 1. Generazione dello stream di byte dell'audio sintetizzato
             communicate = edge_tts.Communicate(
                 text=text,
                 voice=voice,
-                rate=self.rate,
-                volume=self.volume
+                rate=rate,
+                volume=volume,
             )
-            
-            audio_bytes = b""
+
+            audio_bytes = bytearray()
+
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
-                    audio_bytes += chunk["data"]
+                    audio_bytes.extend(
+                        chunk["data"]
+                    )
 
-            # 2. Riproduzione hardware degli altoparlanti (se richiesto)
-            if play_audio and audio_bytes:
-                self._current_task = asyncio.create_task(
-                    self._play_audio_bytes(audio_bytes)
+            audio_bytes = bytes(audio_bytes)
+
+            if not audio_bytes:
+                return {
+                    "status": "error",
+                    "message": (
+                        "Edge-TTS non ha prodotto audio."
+                    ),
+                }
+
+            if play_audio:
+                await self._play_audio_bytes(
+                    audio_bytes,
+                    backend=backend,
                 )
-                await self._current_task
 
             execution_payload = {
                 "status": "success",
                 "text_spoken": text,
                 "voice_used": voice,
-                "audio_bytes_len": len(audio_bytes)
+                "rate_used": rate,
+                "volume_used": volume,
+                "audio_bytes_len": len(audio_bytes),
+                "audio_played": play_audio,
+                "audio_backend": backend,
             }
+
             self._last_state = execution_payload
+
             return execution_payload
 
-        except Exception as e:
-            return {
+        except asyncio.CancelledError:
+            raise
+
+        except Exception as exc:
+            error = {
                 "status": "error",
-                "message": f"Errore durante la sintesi vocale: {str(e)}"
+                "message": (
+                    "Errore durante la sintesi vocale: "
+                    f"{exc}"
+                ),
+                "audio_backend": backend,
             }
 
-    async def set_state(self, *services, **constants):
-        """Modifica la configurazione della voce o del volume a runtime."""
-        if "voice" in constants:
-            self.voice = constants["voice"]
-        if "rate" in constants:
-            self.rate = constants["rate"]
-        if "volume" in constants:
-            self.volume = constants["volume"]
-            
+            self._last_state = error
+
+            return error
+
+    # ------------------------------------------------------------------
+    # Audio
+    # ------------------------------------------------------------------
+
+    async def _play_audio_bytes(
+        self,
+        mp3_bytes: bytes,
+        *,
+        backend: str = "paplay",
+    ) -> None:
+        """
+        Decodifica MP3 -> PCM e riproduce l'audio.
+
+        ``paplay``:
+            usa direttamente PulseAudio/PipeWire.
+
+        ``sounddevice``:
+            usa PortAudio.
+        """
+
+        if not mp3_bytes:
+            return
+
+        loop = asyncio.get_running_loop()
+
+        decoded = miniaudio.decode(mp3_bytes)
+
+        if not decoded.samples:
+            raise RuntimeError(
+                "La decodifica non ha prodotto samples."
+            )
+
+        if backend == "auto":
+            backend = self._detect_audio_backend()
+
+        if backend == "paplay":
+            await loop.run_in_executor(
+                None,
+                self._play_with_paplay,
+                decoded,
+            )
+
+        elif backend == "sounddevice":
+            await loop.run_in_executor(
+                None,
+                self._play_with_sounddevice,
+                decoded,
+            )
+
+        else:
+            raise ValueError(
+                f"Backend audio non supportato: "
+                f"{backend!r}. "
+                "Usare 'paplay', 'sounddevice' "
+                "oppure 'auto'."
+            )
+
+    # ------------------------------------------------------------------
+    # paplay
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _play_with_paplay(decoded: Any) -> None:
+        """
+        Riproduce PCM tramite PulseAudio/PipeWire.
+
+        Non utilizza PortAudio e quindi non dipende
+        dall'enumerazione dei device di sounddevice.
+        """
+
+        paplay = shutil.which("paplay")
+
+        if not paplay:
+            raise RuntimeError(
+                "Comando 'paplay' non trovato. "
+                "Installare pulseaudio-utils."
+            )
+
+        sample_width = decoded.sample_width
+
+        if sample_width in (1, 2):
+            sample_format = "s16le"
+        elif sample_width == 4:
+            sample_format = "s32le"
+        else:
+            raise RuntimeError(
+                "Sample width non supportato da paplay: "
+                f"{sample_width} bytes"
+            )
+
+        command = [
+            paplay,
+            "--raw",
+            f"--rate={decoded.sample_rate}",
+            f"--channels={decoded.nchannels}",
+            f"--format={sample_format}",
+        ]
+
+        process = subprocess.run(
+            command,
+            input=bytes(decoded.samples),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+        if process.returncode != 0:
+            stderr = (
+                process.stderr.decode(
+                    "utf-8",
+                    errors="replace",
+                ).strip()
+            )
+
+            raise RuntimeError(
+                "paplay ha restituito "
+                f"exit code {process.returncode}: "
+                f"{stderr}"
+            )
+
+    # ------------------------------------------------------------------
+    # sounddevice
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _play_with_sounddevice(
+        decoded: Any,
+    ) -> None:
+        """
+        Backend PortAudio/sounddevice.
+        """
+
+        try:
+            import sounddevice as sd
+        except ImportError as exc:
+            raise RuntimeError(
+                "sounddevice non è installato."
+            ) from exc
+
+        sd.play(
+            decoded.samples,
+            decoded.sample_rate,
+        )
+
+        sd.wait()
+
+    # ------------------------------------------------------------------
+    # Backend detection
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _detect_audio_backend() -> str:
+        """
+        Determina automaticamente il backend.
+
+        Priorità:
+            1. paplay
+            2. sounddevice
+        """
+
+        if shutil.which("paplay"):
+            return "paplay"
+
+        try:
+            import sounddevice as sd
+
+            devices = sd.query_devices()
+
+            if devices:
+                return "sounddevice"
+
+        except Exception:
+            pass
+
+        raise RuntimeError(
+            "Nessun backend audio disponibile. "
+            "Installare paplay/pulseaudio-utils "
+            "oppure sounddevice."
+        )
+
+    # ------------------------------------------------------------------
+    # Speech control
+    # ------------------------------------------------------------------
+
+    async def _stop_current_speech(self) -> None:
+        """
+        Ferma l'eventuale task di sintesi/riproduzione.
+        """
+
+        task = self._current_task
+
+        if task is None:
+            return
+
+        if task.done():
+            self._current_task = None
+            return
+
+        task.cancel()
+
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self._current_task = None
+
+    def enable_speech(self) -> None:
+        """
+        Abilita la sintesi vocale.
+        """
+
+        self._speaking_enabled = True
+
+    def disable_speech(self) -> None:
+        """
+        Disabilita la sintesi vocale.
+        """
+
+        self._speaking_enabled = False
+
+    # ------------------------------------------------------------------
+    # State
+    # ------------------------------------------------------------------
+
+    def set_state(
+        self,
+        state: dict[str, Any],
+    ) -> None:
+        """
+        Aggiorna lo stato dell'adapter.
+        """
+
+        if not isinstance(state, dict):
+            raise TypeError(
+                "state deve essere un dict."
+            )
+
+        self._last_state.update(state)
+
+    def get_state(self) -> dict[str, Any]:
+        """
+        Restituisce l'ultimo stato.
+        """
+
         return {
-            "status": "updated",
+            **self._last_state,
+            "name": self.name,
             "voice": self.voice,
             "rate": self.rate,
-            "volume": self.volume
+            "volume": self.volume,
+            "audio_backend": self.audio_backend,
+            "speaking_enabled": (
+                self._speaking_enabled
+            ),
+            "started": self._started,
         }
 
-    async def get_state(self, *services, **constants):
-        """Restituisce lo stato dell'ultima riproduzione e i parametri attuali."""
-        return {
-            "last_spoken": self._last_state,
-            "current_voice": self.voice,
-            "rate": self.rate,
-            "volume": self.volume
+    # ------------------------------------------------------------------
+    # Configuration
+    # ------------------------------------------------------------------
+
+    def set_backend(
+        self,
+        backend: str,
+    ) -> None:
+        """
+        Cambia il backend audio.
+
+        Valori:
+            paplay
+            sounddevice
+            auto
+        """
+
+        valid = {
+            "paplay",
+            "sounddevice",
+            "auto",
         }
 
-    async def toggle_feature(self, *services, **constants):
-        """Interrompe o sblocca la riproduzione vocale."""
-        enabled = constants.get("enabled", True)
-        if not enabled:
-            await self._stop_current_speech()
-        return {"status": "success", "speaking_enabled": enabled}
+        if backend not in valid:
+            raise ValueError(
+                f"Backend non valido: {backend!r}. "
+                f"Valori supportati: {sorted(valid)}"
+            )
+
+        self.audio_backend = backend
 
     # ------------------------------------------------------------------
-    # Helper interni per il playback audio
+    # Feature
     # ------------------------------------------------------------------
 
-    async def _play_audio_bytes(self, mp3_bytes: bytes):
-        """Decodifica e riproduce i byte MP3/WAV sugli altoparlanti."""
-        import miniaudio  # Oppure decodifica tramite pydub/soundfile
-        
-        loop = asyncio.get_event_loop()
+    def toggle_feature(
+        self,
+        feature: str,
+        enabled: bool | None = None,
+    ) -> bool:
+        """
+        Abilita/disabilita una feature dell'adapter.
 
-        def _play():
-            decoded = miniaudio.decode(mp3_bytes)
-            sd.play(decoded.samples, decoded.sample_rate)
-            sd.wait()
+        Feature supportate:
+            speech
+            tts
+            speaking
+            startup_announcement
 
-        await loop.run_in_executor(None, _play)
+        Se ``enabled`` è None, la feature viene invertita.
 
-    async def _stop_current_speech(self):
-        """Annulla il task di riproduzione audio in corso se l'utente interrompe."""
-        if self._current_task and not self._current_task.done():
-            self._current_task.cancel()
-            sd.stop()
-            try:
-                await self._current_task
-            except asyncio.CancelledError:
-                pass
+        Ritorna lo stato finale.
+        """
+
+        aliases = {
+            "speech": "speech",
+            "tts": "speech",
+            "speaking": "speech",
+            "startup_announcement": "startup_announcement",
+        }
+
+        feature = aliases.get(
+            feature,
+            feature,
+        )
+
+        if feature == "speech":
+            if enabled is None:
+                enabled = not self._speaking_enabled
+
+            self._speaking_enabled = bool(enabled)
+
+            return self._speaking_enabled
+
+        if feature == "startup_announcement":
+            if enabled is None:
+                enabled = not self.announce_start
+
+            self.announce_start = bool(enabled)
+
+            return self.announce_start
+
+        raise ValueError(
+            f"Feature non supportata: {feature!r}. "
+            "Feature disponibili: "
+            "'speech', 'tts', 'speaking', "
+            "'startup_announcement'."
+        )

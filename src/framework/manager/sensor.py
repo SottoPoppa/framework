@@ -16,7 +16,7 @@ from framework.manager.loader import Loader
 import framework.core.framework as framework_module
 
 
-class Sensor(manager.Port):
+class Manager(manager.Port):
     def __init__(
         self,
         sensors: list[sensation.Port],
@@ -60,9 +60,32 @@ class Sensor(manager.Port):
     async def shutdown(self, session):
         """Arresta le letture e chiude le connessioni ai sensori."""
         self.logger.info("Arresto in corso per i sensori...")
-        for sensor_adapter in self.sensors:
-            if hasattr(sensor_adapter, "stop"):
-                await sensor_adapter.stop(session)
+        errors = []
+        for sensor_adapter in reversed(self.sensors):
+            stop = getattr(sensor_adapter, "stop", None)
+            if not callable(stop):
+                continue
+            try:
+                result = await stop(session)
+            except Exception as exc:
+                errors.append(exc)
+                self.logger.error(
+                    "Arresto sensor adapter fallito",
+                    adapter=getattr(sensor_adapter, "name", type(sensor_adapter).__name__),
+                    exception=exc,
+                )
+                continue
+            if flow.is_result(result) and not flow.check(result):
+                error = flow.output(result)
+                errors.append(error)
+                self.logger.error(
+                    "Arresto sensor adapter fallito",
+                    adapter=getattr(sensor_adapter, "name", type(sensor_adapter).__name__),
+                    error=error,
+                )
+        if errors:
+            return flow.error(errors)
+        return flow.success(None)
 
     # ------------------------------------------------------------------
     # 1. Acquisizione Dati (Lettura e Streaming)

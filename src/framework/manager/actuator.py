@@ -15,7 +15,7 @@ from framework.manager.loader import Loader
 import framework.core.framework as framework_module
 
 
-class Actuator(manager.Port):
+class Manager(manager.Port):
     def __init__(
         self,
         actuators: list[actuation.Port],
@@ -60,9 +60,32 @@ class Actuator(manager.Port):
     async def shutdown(self, session):
         """Spegne in modo sicuro tutti i dispositivi/adapter attivi."""
         self.logger.info("Arresto in corso per gli attuatori...")
-        for actuator in self.actuators:
-            if hasattr(actuator, "stop"):
-                await actuator.stop(session)
+        errors = []
+        for actuator in reversed(self.actuators):
+            stop = getattr(actuator, "stop", None)
+            if not callable(stop):
+                continue
+            try:
+                result = await stop(session)
+            except Exception as exc:
+                errors.append(exc)
+                self.logger.error(
+                    "Arresto actuator adapter fallito",
+                    adapter=getattr(actuator, "name", type(actuator).__name__),
+                    exception=exc,
+                )
+                continue
+            if flow.is_result(result) and not flow.check(result):
+                error = flow.output(result)
+                errors.append(error)
+                self.logger.error(
+                    "Arresto actuator adapter fallito",
+                    adapter=getattr(actuator, "name", type(actuator).__name__),
+                    error=error,
+                )
+        if errors:
+            return flow.error(errors)
+        return flow.success(None)
 
     # ------------------------------------------------------------------
     # 1. Controllo Dispositivi Fisici & Hardware

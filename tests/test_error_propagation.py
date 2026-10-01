@@ -40,6 +40,7 @@ from infrastructure.persistence.filesystem.filesystem import (
     Adapter as FilesystemAdapter,
     FileWatcherHandler,
 )
+from infrastructure.sensation.text.voice import Adapter as VoiceSensorAdapter
 from infrastructure.presentation.adapter import Adapter as PresentationAdapter
 from infrastructure.presentation.web import starlette as starlette_web
 from infrastructure.presentation.tui.widgets import (
@@ -1883,6 +1884,160 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(received.is_success)
         self.assertTrue(provider.stopped)
+
+    async def test_voice_sensor_reports_missing_input_and_closes_pyaudio(self):
+        class FakePyAudio:
+            def __init__(self):
+                self.terminated = False
+                self.open_kwargs = None
+
+            def open(self, **kwargs):
+                self.open_kwargs = kwargs
+                raise OSError("No Default Input Device Available")
+
+            def terminate(self):
+                self.terminated = True
+
+        fake_pyaudio = FakePyAudio()
+        pyaudio_stub = types.SimpleNamespace(
+            PyAudio=lambda: fake_pyaudio,
+            paInt16=8,
+        )
+        adapter = VoiceSensorAdapter(input_device_index=3, audio_backend="pyaudio")
+
+        try:
+            with patch("infrastructure.sensation.text.voice.pyaudio", pyaudio_stub):
+                with self.assertRaisesRegex(RuntimeError, "non rileva un ingresso audio"):
+                    await adapter.listen_for_phrase()
+
+            self.assertEqual(fake_pyaudio.open_kwargs["input_device_index"], 3)
+            self.assertTrue(fake_pyaudio.terminated)
+            self.assertFalse(adapter._is_listening)
+        finally:
+            adapter._executor.shutdown(wait=False)
+
+    async def test_voice_sensor_uses_wslg_pulse_capture(self):
+        class FakeStdout:
+            async def readexactly(self, size):
+                adapter._is_listening = False
+                return b"\x00" * size
+
+        class FakeProcess:
+            def __init__(self):
+                self.stdout = FakeStdout()
+                self.returncode = None
+                self.terminated = False
+
+            def terminate(self):
+                self.terminated = True
+                self.returncode = -15
+
+            async def wait(self):
+                return self.returncode
+
+        adapter = VoiceSensorAdapter(audio_backend="auto", pulse_source="RDPSource")
+        adapter.vad_model = lambda *_args: types.SimpleNamespace(
+            item=lambda: 0.0
+        )
+        process = FakeProcess()
+
+        async def spawn(*command, **_kwargs):
+            return process
+
+        try:
+            with (
+                patch(
+                    "infrastructure.sensation.text.voice.shutil.which",
+                    return_value="/usr/bin/parec",
+                ),
+                patch(
+                    "infrastructure.sensation.text.voice.asyncio.create_subprocess_exec",
+                    new=AsyncMock(side_effect=spawn),
+                ) as create_process,
+                patch.dict("os.environ", {"PULSE_SERVER": "unix:/mnt/wslg/PulseServer"}),
+            ):
+                await adapter.listen_for_phrase()
+
+            command = create_process.await_args.args
+            self.assertEqual(command[0], "/usr/bin/parec")
+            self.assertIn("--device=RDPSource", command)
+            self.assertIn("--format=s16le", command)
+            self.assertIn("--rate=16000", command)
+            self.assertTrue(process.terminated)
+        finally:
+            adapter._executor.shutdown(wait=False)
+
+    async def test_voice_sensor_returns_transcription_with_vad_pre_roll(self):
+        class FakeStdout:
+            def __init__(self, chunks):
+                self.chunks = iter(chunks)
+
+            async def readexactly(self, size):
+                chunk = next(self.chunks)
+                self.asserted_size = size
+                return chunk
+
+        class FakeProcess:
+            def __init__(self, chunks):
+                self.stdout = FakeStdout(chunks)
+                self.returncode = None
+
+            def terminate(self):
+                self.returncode = -15
+
+            async def wait(self):
+                return self.returncode
+
+        frame = b"\x00\x00" * 512
+        chunks = [frame] + [b"\x01\x00" * 512] + [frame] * 25
+        probabilities = iter([0.0, 0.9] + [0.0] * 25)
+        adapter = VoiceSensorAdapter(audio_backend="pulse")
+        adapter.vad_model = lambda *_args: types.SimpleNamespace(
+            item=lambda: next(probabilities)
+        )
+        adapter._start_pulse_capture = AsyncMock(
+            return_value=FakeProcess(chunks)
+        )
+        adapter.perceive = AsyncMock(
+            return_value=flow.success({"perceived_text": "ciao"})
+        )
+
+        try:
+            text = await adapter.listen_for_phrase()
+
+            self.assertEqual(text, "ciao")
+            audio_file = adapter.perceive.await_args.kwargs["audio_file"]
+            import io
+            import wave
+
+            with wave.open(io.BytesIO(audio_file), "rb") as audio:
+                self.assertEqual(audio.getnframes(), 27 * 512)
+        finally:
+            adapter._executor.shutdown(wait=False)
+
+    async def test_voice_sensor_start_exits_with_first_transcription(self):
+        adapter = VoiceSensorAdapter(audio_backend="pulse")
+        adapter._resolve_audio_backend = Mock(return_value="pulse")
+        adapter.listen_for_phrase = AsyncMock(return_value="ciao")
+        faster_whisper = types.ModuleType("faster_whisper")
+        faster_whisper.WhisperModel = Mock(return_value=object())
+        session = object()
+
+        try:
+            with (
+                patch(
+                    "infrastructure.sensation.text.voice.torch.hub.load",
+                    return_value=(object(), None),
+                ),
+                patch.dict(sys.modules, {"faster_whisper": faster_whisper}),
+            ):
+                with self.assertRaises(SystemExit) as raised:
+                    await adapter.start(session)
+
+            self.assertEqual(str(raised.exception), "ciao")
+            adapter.listen_for_phrase.assert_awaited_once_with(session)
+        finally:
+            adapter._executor.shutdown(wait=False)
 
     async def test_storekeeper_propagates_repository_session_creation_failure(self):
         class Loader:

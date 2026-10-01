@@ -2,23 +2,38 @@
   "contract_version": 2,
   "hashes": {
     "Adapter": {
+      "audio_devices": {
+        "production": "73cbc2a375f8682eb426246d2889ae6786bf22be0b02fbc4a1287c3f6b42f40a"
+      },
+      "default_audio_device": {
+        "production": "4d3aeb1f807203509a5fb3fae6628037c4a3716feace7c4bd65a24851f3a0c11"
+      },
+      "disable_speech": {
+        "production": "8d1e32fac7d65dbb24d444e8a2144274b6155a9b7c74505355379726541aef16"
+      },
+      "enable_speech": {
+        "production": "3f05a8c1dc86c2995ba7c1c314542a58182c6f83475f10b36f369039fe2cbe9d"
+      },
       "execute": {
-        "production": "f1d24c22a717089129b9fc8282fe3100e7721c239a8cf691e86b6837cc548e27"
+        "production": "4c58079e4169cd7f332e45ee7a2ed912ec5b80c03664b9cfc74636040b174ac4"
       },
       "get_state": {
-        "production": "01bb4781360fd046981dd2018b675e89fd84994fd23fe4858c68baa7e9ecf245"
+        "production": "bbc39643a8ca2e4726d565024c7c8f4e98ba2b953de9db2d2fd928453177aa60"
+      },
+      "set_backend": {
+        "production": "397236b2b1f7cc785901deee863f77bfec706101c384b7ef0b0cb167c242989c"
       },
       "set_state": {
-        "production": "f5d237189bdb66d5119d4ebbb1645e39849b8c843622a5fdbce77c372b957603"
+        "production": "b6bd3744e7e0aab529f87e22301e9ef9ac51d1d03f8d6fa46865b1353ebdb725"
       },
       "start": {
-        "production": "3023bb91aa9b1e395895d69bee8292ea3ef960e1e2a7bdf5dbd28fbe179f2c1e"
+        "production": "f7610de775b319965423aeedbc6a687c639621849110aa17993a4f4245dfd189"
       },
       "stop": {
-        "production": "13dd1f5e49d99a65106b972ddfb91c8a6b6b0e4c9b37183c8c8bb669ca42cdc9"
+        "production": "cda07b2b5b90348b7d57211ad0f83da5209ead70cfc90d5ad39698991dfd8405"
       },
       "toggle_feature": {
-        "production": "940741a2d73fffcf0b3a9764181cf74ba5e49cc2ceb9db3ed18f62aae79b7d30"
+        "production": "c94959356c9783053c100e4b631f1580d7166ad309c63722f5db50737c796ba9"
       }
     }
   },

@@ -9,7 +9,7 @@
         "production": "606072902a165a7d950066daf454593b9ba951d23531a252c52a989d13654948"
       },
       "listen_for_phrase": {
-        "production": "d8a41b4b95ae22d71606aa6a730acb0231440751199a399cd2143f682a8a06d0"
+        "production": "a8ba25481ed5bbb4f9e6dd85cbefd560846c451a408f9bb53d96fa61e0cfe17d"
       },
       "perceive": {
         "production": "fe757d024f689d13a22e571046d22dbee57ea261fb88bfd471d76638fbde5a17"
@@ -18,10 +18,10 @@
         "production": "1a7fec6abea743a5d73d2aed186afa98399c00e843edc961da3d547a30011f4a"
       },
       "start": {
-        "production": "ed5256b48e9ca7b17156f4121a2d11f3d9d98ec5a2204a37dcfe30d8435c1d88"
+        "production": "b7b4917615e5c5f2863d699bce49539bd4dc976985ea74f0c657c84c8a0ce46e"
       },
       "stop": {
-        "production": "9273ac4efc6f7e52f0c8eb8905cefd403cb859bd9b995b8ee7ca85ff9976293f"
+        "production": "7ac2d578dbc45c52b7da41a2a0524ad15cd80b767527d9dc77fd907dbe63956d"
       }
     }
   },
