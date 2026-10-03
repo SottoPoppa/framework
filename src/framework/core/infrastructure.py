@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from typing import Any, Optional
+from jinja2 import Environment
 from framework.service.diagnostic import get_logger
 import framework.service.scheme as scheme
 import framework.service.template as template
@@ -11,9 +12,9 @@ class Infrastructure:
 
     def __init__(self):
         self.logger = get_logger("infrastructure")
-        self.jinja_environments = {}
+        self.jinja_environments: dict[tuple[tuple[str, int], ...], Environment] = {}
 
-    def get_jinja(self, **options):
+    def get_jinja(self, **options: Any) -> Environment:
         """Restituisce un ambiente Jinja dalla cache locale."""
         return template.get_jinja(self, **options)
 
@@ -78,7 +79,7 @@ class Infrastructure:
                     )
         return schemes
 
-    async def load_schemes(self, directories: list[str]) -> dict:
+    async def load_schemes(self, directories: list[str]) -> dict[str, Any]:
         """Carica e risolve ricorsivamente i file di schema JSON nelle cartelle."""
         schemes = self._load_scheme_files(directories)
         final = scheme.resolve_schemes(schemes, self.render_jinja)
@@ -88,7 +89,7 @@ class Infrastructure:
             self.logger.warning("Nessuno schema trovato")
         return final
 
-    def resource(self, path: str | Path) -> str:
+    def resource(self, path: str | Path) -> Any:
         """Legge un file risorsa dal file-system in modo asincrono/trasparente."""
         path_str = str(path)
         self.logger.debug(

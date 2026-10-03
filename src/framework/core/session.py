@@ -206,7 +206,13 @@ class Session:
     l'osservabilità si usa ``report()``, che è puro.
     """
 
-    def __init__(self, dag_name, session_id, context=None, runtime_session=None):
+    def __init__(
+        self,
+        dag_name: str,
+        session_id: str,
+        context: Scope | dict[str, Any] | None = None,
+        runtime_session: Any = None,
+    ) -> None:
         self.dag_name = dag_name
         self.id = session_id
         self.context = context if isinstance(context, Scope) else Scope(context or {})
@@ -216,10 +222,10 @@ class Session:
         self.errors: dict[str, Any] = {}
         self._events: dict[str, asyncio.Event] = {}
 
-    def event_for(self, node):
+    def event_for(self, node: str) -> asyncio.Event:
         return self._events.setdefault(node, asyncio.Event())
 
-    async def wait(self, node):
+    async def wait(self, node: str) -> Any | None:
         await self.event_for(node).wait()
         if node in self.errors:
             error = self.errors[node]
@@ -230,7 +236,7 @@ class Session:
             raise FlowError(error)
         return self.results.get(node)
 
-    def mark(self, node, state):
+    def mark(self, node: str, state: NodeState) -> None:
         self.states[node] = state
         if state == NodeState.PENDING:
             self._events[node] = asyncio.Event()

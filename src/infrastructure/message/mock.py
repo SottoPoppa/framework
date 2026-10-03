@@ -3,6 +3,7 @@ import fnmatch
 from collections import defaultdict
 from typing import Any
 
+import framework.core.flow as flow
 import framework.port.message as message
 
 
@@ -28,9 +29,11 @@ class Adapter(message.Port):
     def _event_for(self, reader_id: str) -> asyncio.Event:
         return self._events.setdefault(reader_id, asyncio.Event())
 
+    @flow.result()
     async def can(self, *services: Any, **constants: Any) -> bool:
         return constants.get("name") in {"post", "read", "event"}
 
+    @flow.result()
     async def post(self, *services: Any, **constants: Any) -> None:
         message_data = dict(constants)
         message_data.setdefault("domain", "general")
@@ -39,6 +42,7 @@ class Adapter(message.Port):
         for event in self._events.values():
             event.set()
 
+    @flow.result()
     async def read(self, session: Any, *services: Any, **constants: Any) -> dict[str, Any] | None:
         reader_id = self._reader_id(session)
         pattern = constants.get("domain", "*")

@@ -5,6 +5,7 @@ import copy
 from typing import Any, Callable, Dict, List, Tuple
 from collections.abc import Mapping
 from functools import partial
+from jinja2 import Environment
 
 import tomllib
 
@@ -15,7 +16,8 @@ import framework.core.flow as flow
 
 
 # Registry condiviso: il loader lo aggiorna in-place durante il bootstrap.
-schemes: dict[str, dict] = {}
+schemes: dict[str, Any] = {}
+jinja_env: Environment | None = None
 
 
 # ==============================================================================

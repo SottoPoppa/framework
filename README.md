@@ -173,6 +173,17 @@ In alternativa, se hai già fatto `pip install -e .` a mano, puoi limitarti a:
 python3 public/main.py --install
 ```
 
+### Verifica statica dei tipi
+
+Pyright è incluso nelle dipendenze di sviluppo e analizza in modalità strict i sorgenti in `src/framework` (esclude test e adapter):
+
+```bash
+python3 -m pip install -e ".[dev]"
+pyright
+```
+
+La migrazione dei tipi è in corso; al momento il comando segnala le diagnostiche ancora da risolvere.
+
 ### 4. Configura la sicurezza e avvia l'applicazione
 
 Per l'adapter Starlette, `manager.defender.key` è obbligatoria per firmare la sessione. Sostituisci il valore di esempio con una chiave segreta non versionata in un ambiente reale. Le origini CORS sono vuote per default e devono essere configurate esplicitamente quando servono.

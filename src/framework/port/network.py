@@ -1,4 +1,11 @@
-from typing import Protocol, Any, Dict, AsyncGenerator, runtime_checkable
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    Protocol,
+    runtime_checkable,
+)
 from abc import abstractmethod
 import framework.core.flow as flow
 
@@ -17,14 +24,14 @@ class Port(Protocol):
     }
 
     # Decoratori automatici applicati alle sottoclassi
-    _method_decorators = {
+    _method_decorators: dict[str, Callable[..., Any]] = {
         "provision": flow.result(inputs=("intent",), outputs=("deployment",)),
         "monitor": flow.result(outputs=("status",)),
         "status": flow.result(outputs=("status",)),
         "route": flow.result(inputs=("payload", "requirements"), outputs=("route",)),
     }
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         for method_name, decorator in cls._method_decorators.items():
             if method_name in cls.__dict__:
@@ -91,21 +98,32 @@ class Port(Protocol):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    async def provision(self, intent: Dict[str, Any]) -> Dict[str, Any]:
+    def provision(
+        self,
+        intent: Dict[str, Any],
+    ) -> Awaitable[flow.FlowResult]:
         ...
 
     @abstractmethod
-    async def route(self, payload: Dict[str, Any], requirements: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    def route(
+        self,
+        payload: Dict[str, Any],
+        requirements: Dict[str, Any] | None = None,
+    ) -> Awaitable[flow.FlowResult]:
         ...
 
     @abstractmethod
-    async def compute(self, *args, **kwargs) -> Dict[str, Any]:
+    async def compute(
+        self,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
         ...
 
     @abstractmethod
-    async def monitor(self) -> Dict[str, Any]:
+    def monitor(self) -> Awaitable[flow.FlowResult]:
         ...
 
     @abstractmethod
-    async def status(self) -> Dict[str, Any]:
+    def status(self) -> Awaitable[flow.FlowResult]:
         ...

@@ -1,6 +1,7 @@
 import fnmatch
 from typing import Any, Dict, List
 
+import framework.core.flow as flow
 import framework.port.message as message
 import framework.manager.storekeeper as storekeeper
 from framework.core.infrastructure import Infrastructure
@@ -41,10 +42,12 @@ class Adapter(message.Port):
         self.processable: List[str] = ['log', 'audit']
 
 
+    @flow.result()
     async def can(self, *services: Any, **constants: Any) -> bool:
         """Verifica se l'operazione richiesta rientra nelle capacità dell'interfaccia."""
         return constants.get('name') in self.processable
 
+    @flow.result()
     async def post(self, *services: Any, **constants: Any) -> None:
         """
         Traccia e persiste un evento di Audit nel sistema loggandolo in formato standard.
@@ -88,6 +91,7 @@ class Adapter(message.Port):
             **audit_context
         })'''
 
+    @flow.result()
     async def read(self, *services: Any, **constants: Any) -> List[Dict[str, Any]]:
         """
         Consente ai moduli interni la lettura degli audit log accumulati e non ancora processati.

@@ -7,7 +7,23 @@ import time
 import traceback
 import contextvars
 import uuid
-from typing import Any, Callable, Dict, Generic, Iterable, List, Tuple, TypeVar
+from typing import (
+    Any,
+    Awaitable as _Awaitable,
+    Callable,
+    Dict,
+    Generic,
+    Iterable,
+    List,
+    Mapping,
+    Never as _Never,
+    ParamSpec as _ParamSpec,
+    Tuple,
+    TypeAlias as _TypeAlias,
+    TypeGuard,
+    TypeVar,
+    cast as _cast,
+)
 
 from framework.service.diagnostic import (
     get_logger,
@@ -22,6 +38,7 @@ from framework.service.trace import (
 
 T = TypeVar("T")
 F = TypeVar("F")
+_P = _ParamSpec("_P")
 Step = Callable[[Any], Any]
 _NO_INITIAL = object()
 
@@ -55,7 +72,7 @@ def request_boundary(func: Callable) -> Callable:
 class LocatedError(ValueError):
     """Errore con posizione nel sorgente usabile dalla diagnostica Flow."""
 
-    def __init__(self, message: str, **location: Any):
+    def __init__(self, message: str, **location: Any) -> None:
         super().__init__(message)
         self.location = {
             key: value for key, value in location.items() if value is not None
@@ -65,7 +82,7 @@ class LocatedError(ValueError):
 class FlowError(ValueError):
     """Eccezione per un Failure il cui payload non è un'eccezione Python."""
 
-    def __init__(self, value: Any):
+    def __init__(self, value: Any) -> None:
         self.value = value
         super().__init__(str(value))
 
@@ -224,7 +241,7 @@ def _fn_label(fn: Callable) -> str:
         return repr(fn)
 
 
-def _named(fn: Callable, name: str) -> Callable:
+def _named(fn: Callable[_P, T], name: str) -> Callable[_P, T]:
     """Assegna un nome descrittivo alle closure per l'ispezione della pipeline."""
     fn.__name__ = name
     return fn
@@ -236,7 +253,7 @@ def _named(fn: Callable, name: str) -> Callable:
 
 class Immutable(dict):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         input_data = args[0] if (args and isinstance(args[0], dict) and not kwargs) else kwargs
         super().__init__(self._freeze(input_data))
 
@@ -314,7 +331,7 @@ class Success(Immutable, Generic[T]):
         "is_success": {"type": bool, "required": True, "default": True},
         "value": {"required": True, "nullable": True}
     }
-    def __init__(self, value: T):
+    def __init__(self, value: T) -> None:
         super().__init__(is_success=True, value=value)
 
 
@@ -324,7 +341,7 @@ class Failure(Immutable, Generic[F]):
         "error": {"required": True, "nullable": True},
         "traceback": {"type": str, "required": False, "nullable": True, "default": None}
     }
-    def __init__(self, error: F, tb: str | None = None):
+    def __init__(self, error: F, tb: str | None = None) -> None:
         super().__init__(is_success=False, error=error, traceback=tb)
 
 
@@ -364,6 +381,9 @@ class Result(Immutable, Generic[T, F]):
         return self.steps.get(step_name, default)
 
 
+FlowResult: _TypeAlias = Result[Any, Any]
+
+
 Valor = Success[Any] | Failure[Any]
 
 
@@ -396,7 +416,7 @@ async def _invoke(step: Step, value: Any, transactions: list["Result"]) -> Valor
         return Failure(error=exc, tb=traceback.format_exc())
 
 
-async def pipe(value: Any, *steps: Step, action: str = "flow.pipe", component: str | None = None) -> Result:
+async def pipe(value: Any, *steps: Step, action: str = "flow.pipe", component: str | None = None) -> FlowResult:
     start = time.perf_counter()
     transactions: list[Result] = []
     current: Valor = _normalize(value, transactions)
@@ -445,7 +465,7 @@ async def pipe(value: Any, *steps: Step, action: str = "flow.pipe", component: s
     )
     return result
 
-def pipe_sync(value: Any, *steps: Step, action: str = "flow.pipe_sync", component: str | None = None) -> Result:
+def pipe_sync(value: Any, *steps: Step, action: str = "flow.pipe_sync", component: str | None = None) -> FlowResult:
     """Esegue una pipeline composta da step sincroni."""
     start = time.perf_counter()
     transactions: list[Result] = []
@@ -500,10 +520,21 @@ def pipe_sync(value: Any, *steps: Step, action: str = "flow.pipe_sync", componen
     )
     return result
 
-def result(inputs=[], outputs=[], action: str | None = None, component: str | None = None) -> Callable:
-    def decorator(func: Callable) -> Callable:
+def result(
+    inputs: Iterable[str] = [],
+    outputs: Iterable[str] = [],
+    action: str | None = None,
+    component: str | None = None,
+) -> Callable[[Callable[_P, object]], Callable[_P, _Awaitable[FlowResult]]]:
+    def decorator(
+        func: Callable[_P, object],
+    ) -> Callable[_P, _Awaitable[FlowResult]]:
+        configuration = (inputs, outputs, action, component)
+        if getattr(func, "__flow_result_config__", None) == configuration:
+            return _cast(Callable[_P, _Awaitable[FlowResult]], func)
+
         @wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Result:
+        async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> FlowResult:
             start = time.perf_counter()
             txs: list[Result] = []
             operation = action or getattr(func, "__qualname__", repr(func))
@@ -551,13 +582,18 @@ def result(inputs=[], outputs=[], action: str | None = None, component: str | No
             _trace_state.reset(trace_token)
             reset_log_context(log_token)
             return result
+        setattr(wrapper, "__flow_result_config__", configuration)
         return wrapper
     return decorator
 
 
-def is_result(value: Any) -> bool: return isinstance(value, Result)
-def success(value: Any = None) -> Result: return Result(output=Success(value))
-def error(value: Any = None) -> Result: return Result(output=Failure(value))
+def is_result(value: object) -> TypeGuard[FlowResult]: return isinstance(value, Result)
+def success(value: T | None = None) -> Result[T | None, _Never]:
+    return Result(output=Success(value))
+
+
+def error(value: F | None = None) -> Result[_Never, F | None]:
+    return Result(output=Failure(value))
 
 def output(value: Any) -> Any:
     if not is_result(value):
@@ -577,7 +613,7 @@ def unwrap(value: Any) -> Any:
     return value.output.value
 
 
-def check(value) -> bool:
+def check(value: object) -> bool:
     """Controlla se il valore è un Result e se è un Success."""
     return is_result(value) and value.is_success
 
@@ -685,7 +721,9 @@ def map_compute_value(key: str, transform: Callable[[Any], Any]) -> Callable:
         return Immutable(new_data) if isinstance(data, Immutable) else new_data
     return _named(_compute, f"map_compute_value({key})")
 
-def map_construct_value(factory: Callable[..., Any], *paths: str) -> Callable:
+def map_construct_value(
+    factory: Callable[..., Any], *paths: str
+) -> Callable[[Any], Any]:
     """Costruisce un valore passando a ``factory`` i valori indicati nei path."""
     getters = tuple(map_get_value(path) for path in paths)
 
@@ -708,7 +746,9 @@ def map_keys_map(fn: Callable[[Any], Any]) -> Callable:
         return {fn(k): v for k, v in data.items()}
     return _named(_key_transform, f"map_keys_map({_fn_label(fn)})")
 
-def map_items_tuple() -> Callable:
+def map_items_tuple() -> Callable[
+    [Mapping[Any, Any]], tuple[tuple[Any, Any], ...]
+]:
     """Converte gli elementi di una mappa in una tupla di coppie."""
     return _named(lambda data: tuple(data.items()), "map_items_tuple")
 
@@ -736,16 +776,20 @@ def map_select_key_tuple(key: Any, reverse: bool = False) -> Callable:
 # ==============================================================================
 
 
-def tuple_map_tuple(fn: Callable[[Any], Any]) -> Callable:
+def tuple_map_tuple(
+    fn: Callable[[T], F],
+) -> Callable[[Iterable[T]], tuple[F, ...]]:
     """Applica 'fn' a ciascun elemento di una tupla/sequenza."""
     return _named(lambda data: tuple(fn(x) for x in data), f"tuple_map_tuple({_fn_label(fn)})")
 
-def tuple_map_async_tuple(async_fn: Callable[[Any], Any], concurrency: int | None = None) -> Callable:
+def tuple_map_async_tuple(
+    async_fn: Callable[[Any], Any], concurrency: int | None = None
+) -> Callable[[Iterable[Any]], _Awaitable[tuple[Any, ...]]]:
     """Applica una funzione asincrona in parallelo su una tupla di elementi."""
-    async def _map_async(data: Iterable[Any]) -> tuple:
+    async def _map_async(data: Iterable[Any]) -> tuple[Any, ...]:
         sem = asyncio.Semaphore(concurrency) if concurrency else None
         
-        async def worker(item):
+        async def worker(item: Any) -> Any:
             if sem:
                 async with sem:
                     res = async_fn(item)
@@ -756,7 +800,9 @@ def tuple_map_async_tuple(async_fn: Callable[[Any], Any], concurrency: int | Non
         return tuple(await asyncio.gather(*[worker(x) for x in data]))
     return _named(_map_async, f"tuple_map_async_tuple({_fn_label(async_fn)})")
 
-def tuple_filter_tuple(predicate: Callable[[Any], bool]) -> Callable:
+def tuple_filter_tuple(
+    predicate: Callable[[T], bool],
+) -> Callable[[Iterable[T]], tuple[T, ...]]:
     """Filtra gli elementi di una tupla in base al predicato."""
     return _named(lambda data: tuple(x for x in data if predicate(x)), f"tuple_filter_tuple({_fn_label(predicate)})")
 
@@ -767,7 +813,7 @@ def tuple_reduce_value(fn: Callable[[Any, Any], Any], initial: Any = _NO_INITIAL
         f"tuple_reduce_value({_fn_label(fn)})"
     )
 
-def tuple_flatten_tuple() -> Callable:
+def tuple_flatten_tuple() -> Callable[[Iterable[Any]], tuple[Any, ...]]:
     """Appiattisce sequenze o liste annidate di un solo livello."""
     def _flatten(data: Iterable[Any]) -> tuple:
         flat = []
@@ -875,10 +921,12 @@ def tuple_zip_tuple(iterable: Iterable[Any], strict: bool = False) -> Callable:
         return tuple(zip(data, fixed))
     return _named(_zip, "tuple_zip_tuple")
 
-def pipe_fork_async_tuple(*branches: Step) -> Callable:
+def pipe_fork_async_tuple(
+    *branches: Step,
+) -> Callable[[Any], _Awaitable[tuple[Any, ...]]]:
     """Esegue piu' rami sullo stesso input e raccoglie i loro output."""
-    async def _fork(data: Any) -> tuple:
-        outputs = []
+    async def _fork(data: Any) -> tuple[Any, ...]:
+        outputs: list[Any] = []
         for branch in branches:
             output = branch(data)
             if inspect.isawaitable(output):
@@ -926,7 +974,7 @@ def flow_match_value(*cases: Tuple[Callable, Callable], default: Callable | None
 # 4. PIPE / GLOBALE & SIDE-EFFECTS (pipe_*) - Operazioni Trasversali
 # ==============================================================================
 
-def pipe_tap_value(fn: Callable[[Any], None]) -> Callable:
+def pipe_tap_value(fn: Callable[[Any], Any]) -> Callable[[Any], _Awaitable[Any]]:
     """Ispeziona o esegue side-effect sul dato passante senza modificarlo.
 
     FIX(4): supporta ora anche fn asincrone. Prima, se fn era una coroutine
@@ -940,7 +988,9 @@ def pipe_tap_value(fn: Callable[[Any], None]) -> Callable:
         return data
     return _named(_tap, f"pipe_tap_value({_fn_label(fn)})")
 
-def pipe_foreach_tuple(fn: Callable[[Any], None]) -> Callable:
+def pipe_foreach_tuple(
+    fn: Callable[[T], Any],
+) -> Callable[[Iterable[T]], _Awaitable[Iterable[T]]]:
     """Esegue un side-effect su ogni elemento di una lista senza alterarne il contenuto.
 
     FIX(4): supporta ora anche fn asincrone (eseguite in sequenza, in ordine,

@@ -1,0 +1,16 @@
+{
+  "contract_version": 2,
+  "exports": {
+    "resource": [
+      "Infrastructure.resource"
+    ]
+  },
+  "hashes": {
+    "Infrastructure": {
+      "resource": {
+        "production": "88c22326167371de00ab846eb4a4ab1e4f20419deb6965ba9cf1baaf91257043",
+        "test": "88c22326167371de00ab846eb4a4ab1e4f20419deb6965ba9cf1baaf91257043"
+      }
+    }
+  }
+}

@@ -34,7 +34,7 @@ tuple:test_suite := (
         "action": exports.import_module;
         "inputs": "framework.manager.loader";
         "outputs": true;
-        "assert": @received.is_success == true & @received.output.value.Loader != none;
+        "assert": @received.is_success == true & @received.output.value.Loader != none & @received.output.value.Resource != none;
         "note": "import_module risolve un modulo framework reale senza fixture"
     },
     {

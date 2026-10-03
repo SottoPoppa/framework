@@ -11,8 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import framework.core.flow as flow
 from framework.manager.networker import Manager as Networker
-import infrastructure.network.neural.llm as llm_module
-from infrastructure.network.neural.llm import Adapter
+import infrastructure.network.neural.llama as llm_module
+from infrastructure.network.neural.llama import Adapter
 
 
 class FakeLlama:
@@ -118,6 +118,35 @@ class LLMAdapterTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(flow.output(result)["output"], "risposta GGUF")
         finally:
             adapter._executor.shutdown(wait=True)
+
+    async def test_networker_passes_application_as_provider_payload(self):
+        received = []
+
+        class Provider:
+            capabilities = {
+                "network_type": "recurrent_neural_network",
+            }
+
+            async def route(self, payload, requirements=None):
+                received.append((payload, requirements))
+                return {"output": "ok"}
+
+        framework = SimpleNamespace(get_logger=lambda _name: Mock())
+        networker = Networker([Provider()], None, framework)
+        application = {"prompt": "ciao"}
+        requirements = {"network_type": "recurrent_neural_network"}
+
+        result = await networker.route(
+            object(),
+            application=application,
+            requirements=requirements,
+        )
+
+        self.assertTrue(flow.check(result), flow.output(result))
+        self.assertEqual(
+            received,
+            [(application, requirements)],
+        )
 
     async def test_stream_does_not_block_the_event_loop(self):
         adapter = Adapter(device="cpu")

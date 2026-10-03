@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 
 import framework.port.message as message
 import framework.port.manager as manager
@@ -15,8 +16,8 @@ class Manager(manager.Port):
         messages: list[message.Port],
         defender: Defender,
         framework: framework_module.Framework,
-        **constants,
-    ):
+        **constants: Any,
+    ) -> None:
         self.defender = defender
         self.providers = messages
         self.framework = framework
@@ -26,7 +27,11 @@ class Manager(manager.Port):
             else get_logger("messenger")
         )
 
-    def _matching_providers(self, receiver: str | None, adapter: str | None = None) -> list:
+    def _matching_providers(
+        self,
+        receiver: str | None,
+        adapter: str | None = None,
+    ) -> list[message.Port]:
         """
         Ritorna i provider che corrispondono al destinatario.
 
@@ -49,9 +54,9 @@ class Manager(manager.Port):
     async def _authorized_provider(
         self,
         action: str,
-        provider,
+        provider: message.Port,
         destination: str | None,
-        constants: dict,
+        constants: dict[str, Any],
     ) -> bool:
         if self.defender is None:
             return True
@@ -70,10 +75,10 @@ class Manager(manager.Port):
 
     async def _dispatch(
         self,
-        session,
+        session: Any,
         domain: str | None,
-        **constants,
-    ):
+        **constants: Any,
+    ) -> flow.FlowResult:
         """
         Instrada il messaggio verso i provider/controller appropriati.
         """
@@ -192,7 +197,11 @@ class Manager(manager.Port):
         return getattr(session, "session_data", session)
 
     @flow.result(inputs=('messenger',), outputs=())
-    async def send(self, session, **constants):
+    async def send(
+        self,
+        session: Any,
+        **constants: Any,
+    ) -> flow.FlowResult:
         """
         Invia un messaggio.
 
@@ -210,7 +219,11 @@ class Manager(manager.Port):
         )
 
     @flow.result(inputs=(), outputs=())
-    async def receive(self, session, **constants):
+    async def receive(
+        self,
+        session: Any,
+        **constants: Any,
+    ) -> flow.FlowResult:
         """
         Riceve il primo risultato disponibile dai provider.
         """
@@ -226,7 +239,7 @@ class Manager(manager.Port):
             )
             return flow.error("Nessun provider di messaggistica disponibile per la ricezione")
 
-        authorized = []
+        authorized: list[message.Port] = []
         for provider in matched:
             provider_name = provider.config.get("name") or provider.adapter
             if await self._authorized_provider("subscribe", provider, destination, constants):
@@ -239,8 +252,8 @@ class Manager(manager.Port):
                 domain=domain,
             )
 
-        tasks = [
-            asyncio.create_task(
+        tasks: list[asyncio.Future[flow.FlowResult]] = [
+            asyncio.ensure_future(
                 provider.read(session, **constants | {'domain': domain})
             )
             for provider in authorized

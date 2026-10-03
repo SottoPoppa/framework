@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import inspect
 import operator
+from collections.abc import Callable
 from typing import Any
 
 from .data import MISSING as REGISTRY_MISSING, Registry
@@ -21,7 +22,12 @@ from .scope import MISSING, Scope
 class EvaluationError(Exception):
     """Errore di valutazione con la posizione nel sorgente DSL."""
 
-    def __init__(self, message: str, source: Source | None = None, cause: BaseException | None = None):
+    def __init__(
+        self,
+        message: str,
+        source: Source | None = None,
+        cause: BaseException | None = None,
+    ) -> None:
         self.source = source
         self.reason = message
         location = f"{source} — " if source is not None else ""
@@ -30,7 +36,7 @@ class EvaluationError(Exception):
             self.__cause__ = cause
 
 
-OPERATORS = {
+OPERATORS: dict[str, Callable[..., Any]] = {
     '+': operator.add,
     '-': operator.sub,
     '*': operator.mul,
@@ -76,26 +82,43 @@ def _as_scope(context: Any) -> Scope:
 class Evaluator:
     """Valuta il modello DSL contro uno scope, senza catturare il runtime."""
 
-    def __init__(self, registry: Registry | None = None):
+    def __init__(self, registry: Registry | None = None) -> None:
         self.registry = registry or Registry()
 
-    async def evaluate(self, expression: Any, scope: Any, *, session: Any = None) -> Any:
+    async def evaluate(
+        self,
+        expression: object,
+        scope: object,
+        *,
+        session: object | None = None,
+    ) -> Any:
         """Punto di ingresso unico: valuta un'espressione o uno spec."""
         if isinstance(expression, ExecutionSpec):
             expression = expression.expression
         return await self._eval(expression, _as_scope(scope), session)
 
-    async def resume(self, deferred: Deferred, bindings: Any = None, *, session: Any = None) -> Any:
+    async def resume(
+        self,
+        deferred: Deferred,
+        bindings: object = None,
+        *,
+        session: object | None = None,
+    ) -> Any:
         """Riprende un'espressione sospesa fornendo i binding mancanti."""
         scope = _as_scope(bindings)
         return await self._eval(deferred.expression, scope, session)
 
-    def _registry_for(self, session: Any) -> Registry:
+    def _registry_for(self, session: object | None) -> Registry:
         return getattr(session, "registry", None) or self.registry
 
     # ── valutazione ──────────────────────────────────────────────────────────
 
-    async def _eval(self, node: Any, scope: Scope, session: Any) -> Any:
+    async def _eval(
+        self,
+        node: Any,
+        scope: Scope,
+        session: object | None,
+    ) -> Any:
         if isinstance(node, Literal):
             return node.value
 
@@ -122,7 +145,12 @@ class Evaluator:
 
         return node
 
-    async def _eval_ref(self, node: Ref, scope: Scope, session: Any) -> Any:
+    async def _eval_ref(
+        self,
+        node: Ref,
+        scope: Scope,
+        session: object | None,
+    ) -> Any:
         value = scope.lookup(node.path)
         if value is not MISSING:
             if isinstance(value, (Call, ExecutionSpec, Literal, Ref)):
@@ -141,7 +169,12 @@ class Evaluator:
             return Deferred(node, (node.path,), node.source)
         return None
 
-    async def _eval_call(self, node: Call, scope: Scope, session: Any) -> Any:
+    async def _eval_call(
+        self,
+        node: Call,
+        scope: Scope,
+        session: object | None,
+    ) -> Any:
         if node.function in {"and", "or"} and len(node.arguments) == 2 and not node.keywords:
             left = await self._eval(node.arguments[0], scope, session)
             pending = _deferred_paths(left)
@@ -176,7 +209,12 @@ class Evaluator:
                 f"la chiamata a {node.function!r} è fallita: {exc}", node.source, exc
             ) from exc
 
-    def _resolve(self, node: Call, scope: Scope, session: Any) -> Any:
+    def _resolve(
+        self,
+        node: Call,
+        scope: Scope,
+        session: object | None,
+    ) -> Callable[..., Any]:
         name = str(node.function)
         if name in OPERATORS:
             return OPERATORS[name]

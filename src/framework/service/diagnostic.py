@@ -473,26 +473,42 @@ class ComponentLogger:
         self.component = component
         self.sink = sink
 
-    def _log(self, level: str, message: str, exception=None, **metadata):
+    def _log(
+        self,
+        level: str,
+        message: str,
+        exception: BaseException | None = None,
+        **metadata: Any,
+    ) -> None:
         indent = _log_indent.get()
         context = _log_context.get()
         entry_metadata = {**context, **metadata}
         entry = _format_entry(level, message, self.component, indent, entry_metadata, exception)
         _emit_entry(entry, self.sink)
 
-    def debug(self, message, **metadata):
+    def debug(self, message: str, **metadata: Any) -> None:
         self._log("DEBUG", message, **metadata)
 
-    def info(self, message, **metadata):
+    def info(self, message: str, **metadata: Any) -> None:
         self._log("INFO", message, **metadata)
 
-    def warning(self, message, **metadata):
+    def warning(self, message: str, **metadata: Any) -> None:
         self._log("WARNING", message, **metadata)
 
-    def error(self, message, exception=None, **metadata):
+    def error(
+        self,
+        message: str,
+        exception: BaseException | None = None,
+        **metadata: Any,
+    ) -> None:
         self._log("ERROR", message, exception=exception, **metadata)
 
-    def critical(self, message, exception=None, **metadata):
+    def critical(
+        self,
+        message: str,
+        exception: BaseException | None = None,
+        **metadata: Any,
+    ) -> None:
         self._log("CRITICAL", message, exception=exception, **metadata)
 
     def scope(self, title: str) -> LogScope:

@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from time import perf_counter
+from typing import Any
 
 from jinja2 import (
     Environment,
@@ -135,7 +136,10 @@ def _template_filters():
     }
 
 
-def get_jinja(infrastructure=None, **options):
+def get_jinja(
+    infrastructure: Any | None = None,
+    **options: Any,
+) -> Environment:
     """Restituisce un ambiente Jinja, usando la cache se disponibile."""
     key = tuple(sorted((name, id(value)) for name, value in options.items()))
     if infrastructure is None:

@@ -1,8 +1,10 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
+from typing import Any, Awaitable, Callable, Protocol
+
 import framework.core.flow as flow
 
 
-class Port(ABC):
+class Port(Protocol):
     """Contratto comune per gli adapter di percezione sensoriale e processing (Sensation Adapters).
 
     Mentre gli adapter Sensor gestiscono la lettura diretta del dato grezzo dall'hardware,
@@ -11,14 +13,14 @@ class Port(ABC):
     rilevamento di anomalie ed estrazione del contesto operativo.
     """
 
-    capabilities = {
+    capabilities: dict[str, Any] = {
         "data_fusion": False,          # Capacità di combinare più fonti di senso
         "anomaly_detection": False,    # Rilevamento automatico di valori/comportamenti anomali
         "real_time_stream": True,      # Elaborazione di flussi sensoriali in tempo reale
         "context_awareness": False,    # Estrazione di contesti operativi di alto livello
     }
 
-    _method_decorators = {
+    _method_decorators: dict[str, Callable[..., Any]] = {
         "start": flow.result(inputs=("session", "sensation")),
         "stop": flow.result(inputs=("session", "sensation")),
         "perceive": flow.result(inputs=("session", "sensation")),
@@ -27,9 +29,9 @@ class Port(ABC):
         "get_context": flow.result(inputs=("session", "sensation")),
     }
 
-    _seeds = []
+    _seeds: list[Any] = []
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
 
         # Applica automaticamente i decoratori flow.result ai metodi dell'adapter concreto
@@ -44,38 +46,58 @@ class Port(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    async def start(self, *services, **constants):
+    def start(self, session: Any) -> Awaitable[flow.FlowResult]:
         """Inizializza la pipeline di percezione o la connessione al motore di analisi."""
-        pass
+        ...
 
     @abstractmethod
-    async def stop(self, *services, **constants):
+    def stop(
+        self,
+        *services: Any,
+        **constants: Any,
+    ) -> Awaitable[flow.FlowResult]:
         """Arresta le pipeline e libera i buffer di elaborazione sensoriale."""
-        pass
+        ...
 
     # ------------------------------------------------------------------
     # Operazioni Principali di Percezione (Perception & Data Processing)
     # ------------------------------------------------------------------
 
     @abstractmethod
-    async def perceive(self, *services, **constants):
+    def perceive(
+        self,
+        *services: Any,
+        **constants: Any,
+    ) -> Awaitable[flow.FlowResult]:
         """Elabora i dati grezzi ricevuti da uno o più sensori per restituire uno stato percepito.
         
         Es: trasforma i gradi centigradi in uno stato percepito ('Too Hot', 'Normal', 'Overheating').
         """
-        pass
+        ...
 
     @abstractmethod
-    async def process_stream(self, *services, **constants):
+    def process_stream(
+        self,
+        *services: Any,
+        **constants: Any,
+    ) -> Awaitable[flow.FlowResult]:
         """Applica algoritmi di filtraggio (es. filtri Kalman, medie mobili) su un flusso di dati."""
-        pass
+        ...
 
     @abstractmethod
-    async def evaluate_threshold(self, *services, **constants):
+    def evaluate_threshold(
+        self,
+        *services: Any,
+        **constants: Any,
+    ) -> Awaitable[flow.FlowResult]:
         """Valuta se uno specifico valore sensoriale viola regole o pattern di sicurezza."""
-        pass
+        ...
 
     @abstractmethod
-    async def get_context(self, *services, **constants):
+    def get_context(
+        self,
+        *services: Any,
+        **constants: Any,
+    ) -> Awaitable[flow.FlowResult]:
         """Restituisce il contesto sensoriale globale o lo stato aggregato del sistema."""
-        pass
+        ...

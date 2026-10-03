@@ -181,7 +181,7 @@ class Adapter(authentication.Port):
 
     # ── port implementation ───────────────────────────────────────────────────
 
-    async def sign_up(self, password=None,email=None, **kwargs):
+    async def sign_up(self, email=None, password=None, **kwargs):
         
         try:
             # Creiamo una copia per non sporcare l'oggetto originale

@@ -1,5 +1,7 @@
 from collections import defaultdict, deque
 
+from .model import DagDefinition, NodeDefinition
+
 
 class DagDefinitionError(Exception):
     """Sollevata quando la struttura del DAG non è valida (cicli, dipendenze mancanti, nodi duplicati)."""
@@ -12,10 +14,10 @@ class NodeNotFound(Exception):
 
 
 class Dag:
-    def __init__(self, definition):
+    def __init__(self, definition: DagDefinition) -> None:
         self.definition = definition
-        self.nodes = {}
-        self.successors = defaultdict(set)
+        self.nodes: dict[str, NodeDefinition] = {}
+        self.successors: defaultdict[str, set[str]] = defaultdict(set)
 
         # 1. Indicizzazione e controllo duplicati
         for node in definition.nodes:
@@ -39,7 +41,7 @@ class Dag:
     def name(self) -> str:
         return self.definition.name
 
-    def get(self, name: str):
+    def get(self, name: str) -> NodeDefinition:
         if name not in self.nodes:
             raise NodeNotFound(f'Node {name!r} not found in DAG {self.name!r}')
         return self.nodes[name]
@@ -51,7 +53,7 @@ class Dag:
             if n.entry and not any(dep in self.nodes for dep in n.deps)
         )
 
-    def _validate(self):
+    def _validate(self) -> None:
         """Verifica l'assenza di cicli nel DAG tramite ordinamento topologico (Algoritmo di Kahn)."""
         # Consideriamo il grado di ingresso basato solo sulle dipendenze da altri task
         indegree = {

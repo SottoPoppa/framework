@@ -4,6 +4,7 @@ import os
 import shutil
 import wave
 from collections import deque
+from typing import Any
 import numpy as np
 import torch
 from concurrent.futures import ThreadPoolExecutor
@@ -64,7 +65,8 @@ class Adapter(sensation.Port):
     # Ciclo di Vita (Start / Stop)
     # ------------------------------------------------------------------
 
-    async def start(self, session):
+    @flow.result(inputs=("session", "sensation"))
+    async def start(self, session: Any) -> None:
         """Carica i modelli e termina dopo la trascrizione della prima frase."""
         backend = self._resolve_audio_backend()
         if backend == "pyaudio" and pyaudio is None:
@@ -155,7 +157,8 @@ class Adapter(sensation.Port):
         self._pulse_process = process
         return process
 
-    async def stop(self, *services, **constants):
+    @flow.result(inputs=("session", "sensation"))
+    async def stop(self, *services: Any, **constants: Any) -> bool:
         """Ferma l'ascolto e chiude l'executor."""
         self._is_listening = False
         process = self._pulse_process
@@ -311,7 +314,12 @@ class Adapter(sensation.Port):
     # Implementazione del Contratto Sensation
     # ------------------------------------------------------------------
 
-    async def perceive(self, *services, **constants):
+    @flow.result(inputs=("session", "sensation"))
+    async def perceive(
+        self,
+        *services: Any,
+        **constants: Any,
+    ) -> dict[str, Any]:
         """Inoltra il buffer audio catturato a Faster-Whisper per la trascrizione."""
         audio_file = constants.get("audio_file")
         if not audio_file:
@@ -340,13 +348,24 @@ class Adapter(sensation.Port):
         self._last_context = perception
         return perception
 
-    async def process_stream(self, *services, **constants):
+    @flow.result(inputs=("session", "sensation"))
+    async def process_stream(self, *services: Any, **constants: Any):
         return await self.listen_for_phrase(*services, **constants)
 
-    async def evaluate_threshold(self, *services, **constants):
+    @flow.result(inputs=("session", "sensation"))
+    async def evaluate_threshold(
+        self,
+        *services: Any,
+        **constants: Any,
+    ) -> bool:
         return True
 
-    async def get_context(self, *services, **constants):
+    @flow.result(inputs=("session", "sensation"))
+    async def get_context(
+        self,
+        *services: Any,
+        **constants: Any,
+    ) -> dict[str, Any]:
         return self._last_context
 
     # Helper interno: converte byte grezzi PCM in formato WAV valido

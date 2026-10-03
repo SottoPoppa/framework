@@ -1,41 +1,47 @@
-from typing import Protocol, Any, runtime_checkable
+from typing import Any, Awaitable, Callable, Protocol, runtime_checkable
+
 import framework.core.flow as flow
+
 
 @runtime_checkable
 class Port(Protocol):
-    capabilities = {
+    capabilities: dict[str, Any] = {
         "tls": False,
         "encryption": False,
         "audit": False,
         "rate_limiting": False,
         "authentication": [],
     }
+    adapter: str
+    config: dict[str, Any]
 
-    _method_decorators = {
+    _method_decorators: dict[str, Callable[..., Any]] = {
         "read": flow.result(),
         "post": flow.result(),
         "can": flow.result(),
     }
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         for method_name, decorator in Port._method_decorators.items():
             original = cls.__dict__.get(method_name)
             if original is not None:
                 setattr(cls, method_name, decorator(original))
 
-    def loader(self, config: dict[str, Any]) -> None:
-        """Inizializza o configura l'adapter con i dati passati dal framework."""
+    def read(
+        self,
+        session: Any,
+        *services: Any,
+        **constants: Any,
+    ) -> Awaitable[flow.FlowResult]:
+        """Legge messaggi dal provider per la sessione indicata."""
         ...
 
-    async def get(self, endpoint: str, context: dict[str, Any]) -> Any:
-        """Gestisce una richiesta in ingresso di tipo GET."""
-        ...
-
-    async def post(self, endpoint: str, payload: dict[str, Any]) -> Any:
-        """Gestisce una richiesta in ingresso di tipo POST."""
-        ...
-
-    async def can(self, identity: str, action: str) -> bool:
-        """Verifica i permessi di sicurezza (ACL/RBAC) per un determinato modulo."""
+    def post(
+        self,
+        session: Any,
+        *services: Any,
+        **constants: Any,
+    ) -> Awaitable[flow.FlowResult]:
+        """Invia un messaggio al provider."""
         ...

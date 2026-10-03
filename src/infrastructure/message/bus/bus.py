@@ -2,6 +2,7 @@ import asyncio
 from collections import defaultdict
 from typing import List
 
+import framework.core.flow as flow
 import framework.port.message as message
 
 class Adapter(message.Port):
@@ -37,6 +38,7 @@ class Adapter(message.Port):
 
         return len(d) >= len(p) and d[:len(p)] == p
 
+    @flow.result()
     async def post(self, *services, **constants):
 
         domain = constants.get("domain", "general")
@@ -47,6 +49,7 @@ class Adapter(message.Port):
             if self._matches(pattern, domain):
                 await queue.put(message)
 
+    @flow.result()
     async def read(self, session, *services, **constants):
 
         pattern = constants.get("domain", "general")

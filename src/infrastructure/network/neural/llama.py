@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, Any, AsyncGenerator
 
+import framework.core.flow as flow
 import framework.port.network as network
 
 Llama = None
@@ -205,6 +206,7 @@ class Adapter(network.Port):
     # 3. Flusso Dati & Invocazione (Provision, Route, Stream, Compute, Monitor)
     # ------------------------------------------------------------------
 
+    @flow.result(inputs=("intent",), outputs=("deployment",))
     async def provision(self, intent: Dict[str, Any]) -> Dict[str, Any]:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(self._executor, _load_dependencies)
@@ -259,6 +261,10 @@ class Adapter(network.Port):
             "n_gpu_layers": self.n_gpu_layers,
         }
 
+    @flow.result(
+        inputs=("payload", "requirements"),
+        outputs=("route",),
+    )
     async def route(
         self,
         payload: Dict[str, Any] | None = None,
@@ -356,6 +362,7 @@ class Adapter(network.Port):
         payload = kwargs.get("payload", {}) or ({"prompt": args[0]} if args else {})
         return await self.route(payload=payload)
 
+    @flow.result(outputs=("status",))
     async def monitor(self) -> Dict[str, Any]:
         return {
             "is_ready": self._is_ready,
@@ -364,6 +371,7 @@ class Adapter(network.Port):
             "backend": "llama.cpp",
         }
 
+    @flow.result(outputs=("status",))
     async def status(self) -> Dict[str, Any]:
         return {
             "state": "READY" if self._is_ready else "UNINITIALIZED",

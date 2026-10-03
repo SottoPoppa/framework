@@ -53,7 +53,7 @@ class Scope:
 
     __slots__ = ("_data", "_parent")
 
-    def __init__(self, data: dict[str, Any] | None = None, parent: "Scope | None" = None):
+    def __init__(self, data: dict[str, Any] | None = None, parent: "Scope | None" = None) -> None:
         self._data: dict[str, Any] = dict(data) if data else {}
         self._parent = parent
 

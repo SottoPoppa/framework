@@ -1,53 +1,30 @@
-import ast
 import asyncio
-import importlib
-import importlib.util
-import inspect
-import json
-import os
-import signal
 import sys
-import types
-import uuid
-from dataclasses import dataclass, field
 from functools import partial
-from graphlib import TopologicalSorter
 from pathlib import Path
-from typing import Any, Optional, Type, TypedDict, get_args, get_type_hints
+from types import ModuleType
+from typing import Any, Optional, Sequence, Type, TypedDict, cast
 
-from jinja2 import BaseLoader, Environment
 import framework.core.flow as flow
 import framework.service.scheme as scheme
+from framework.core.framework import Framework, Resource
+from framework.core.infrastructure import Infrastructure
 from framework.service.diagnostic import LogBuffer
 from framework.core.application import Application
-
-# ============================================================
-# RESOURCE
-# ============================================================
-
-@dataclass
-class Resource:
-    """Rappresenta una risorsa/modulo gestita dal kernel del framework."""
-    name: str
-    path: str
-    module: Any = None
-    kind: Optional[str] = None
-    config: dict = field(default_factory=dict)
-    extend: dict = field(default_factory=dict)
 
 
 class LoaderContext(TypedDict, total=False):
     """Stato condiviso dagli step delle pipe del Loader."""
 
     config_path: Any
-    kwargs: dict
+    kwargs: dict[str, Any]
     config_file: str
-    schemes: dict
-    config: dict
+    schemes: dict[str, Any]
+    config: dict[str, Any]
     manager_resources: tuple[Resource, ...]
     adapter_resources: tuple[Resource, ...]
-    discovery: tuple[dict, tuple[Resource, ...]]
-    managers: dict
+    discovery: tuple[dict[str, Any], tuple[Resource, ...], tuple[Resource, ...]]
+    managers: Any
     session: Any
 
 
@@ -61,7 +38,7 @@ class Handle:
     Mantiene l'identità del riferimento sostituendo l'istanza interna al runtime.
     """
 
-    def __init__(self, obj: Any = None):
+    def __init__(self, obj: Any = None) -> None:
         object.__setattr__(self, "_obj", None)
         object.__setattr__(self, "_state", {})
         if obj is not None:
@@ -110,7 +87,7 @@ class Handle:
 class Loader:
     """Composition Root responsabile dell'infezione delle dipendenze e del wiring."""
 
-    cores = {
+    cores: dict[str, str] = {
 
         "flow": "src/framework/core/flow.py",
         "interpreter": "src/framework/core/interpreter.py",
@@ -127,7 +104,7 @@ class Loader:
         "scheme": "src/framework/core/scheme.py",
     }
 
-    services = {
+    services: dict[str, str] = {
         #"flow": "src/framework/service/flow.py",
         "factory": "src/framework/service/factory.py",
         #"language": "src/framework/service/language.py",
@@ -141,7 +118,7 @@ class Loader:
         "diagnostic": "src/framework/service/diagnostic.py",
     }
 
-    ports = {
+    ports: dict[str, str] = {
         "message": "src/framework/port/message.py",
         "presentation": "src/framework/port/presentation.py",
         "persistence": "src/framework/port/persistence.py",
@@ -152,7 +129,7 @@ class Loader:
         "sensation": "src/framework/port/sensation.py"
     }
 
-    managers = {
+    managers: dict[str, str] = {
         "defender": "src/framework/manager/defender.py",
         "messenger": "src/framework/manager/messenger.py",
         "presenter": "src/framework/manager/presenter.py",
@@ -165,15 +142,15 @@ class Loader:
         "authenticator": "src/framework/manager/authenticator.py"
     }
 
-    def __init__(self, framework, infrastructure):
+    def __init__(self, framework: Framework, infrastructure: Infrastructure) -> None:
         self.framework = framework
         self.logger = framework.logger
         self.infrastructure = infrastructure
-        self.container = None
+        self.container: Any = None
         self.handle = Handle(self)
-        self.current_config = {}
-        self.kwargs = {}
-        self.app = None
+        self.current_config: dict[str, Any] = {}
+        self.kwargs: dict[str, Any] = {}
+        self.app: Application | None = None
         self._reload_lock = asyncio.Lock()
 
         sys.modules["framework.loader"] = sys.modules[__name__]
@@ -198,15 +175,17 @@ class Loader:
             raise RuntimeError(f"Dipendenza non risolta: {name}")
         return val
 
-    def _resolve_dependencies(self, cls: Type) -> list:
+    def _resolve_dependencies(self, cls: Type[Any]) -> list[Any]:
         deps = self.framework.dependencies_from_class(cls).get(cls, [])
         return [self._resolve_dependency(d) for d in deps]
 
-    def _port_interface(self, port_key: str) -> Optional[Type]:
+    def _port_interface(self, port_key: str) -> Optional[Type[Any]]:
         module = sys.modules.get(f"framework.port.{port_key}")
         return getattr(module, "Port", None) if module else None
 
-    def _adapter_specs(self, item: tuple[str, Any]) -> tuple[tuple[str, str, dict], ...]:
+    def _adapter_specs(
+        self, item: tuple[str, Any]
+    ) -> tuple[tuple[str, str, dict[str, Any]], ...]:
         port_key, enabled = item
         if port_key in {"project", "manager", "tool"} or not isinstance(enabled, dict):
             return ()
@@ -214,22 +193,34 @@ class Loader:
             (
                 port_key,
                 adapter_name,
-                {
-                    key: value.casefold()
-                    if key in ("name", "auth") and isinstance(value, str)
-                    else value
-                    for key, value in (cfg.items() if isinstance(cfg, dict) else [])
-                },
+                self._normalize_adapter_config(cfg),
             )
-            for adapter_name, adapter_config in enabled.items()
-            for cfg in (
+            for adapter_name, adapter_config in cast(
+                dict[str, Any], enabled
+            ).items()
+            for cfg in cast(
+                list[Any] | tuple[Any, ...],
                 adapter_config
                 if isinstance(adapter_config, (list, tuple))
-                else [adapter_config]
+                else [adapter_config],
             )
         )
 
-    def _adapter_resource(self, spec: tuple[str, str, dict]) -> Resource:
+    @staticmethod
+    def _normalize_adapter_config(config: Any) -> dict[str, Any]:
+        if not isinstance(config, dict):
+            return {}
+        values = cast(dict[str, Any], config)
+        return {
+            key: value.casefold()
+            if key in ("name", "auth") and isinstance(value, str)
+            else value
+            for key, value in values.items()
+        }
+
+    def _adapter_resource(
+        self, spec: tuple[str, str, dict[str, Any]]
+    ) -> Resource:
         port_key, adapter_name, config = spec
         implementation = config.get("implementation")
         if implementation is None:
@@ -257,17 +248,23 @@ class Loader:
             config=[config],
         )
 
-    def _manager_entry(self, resource: Resource) -> tuple[Type, Resource] | None:
+    def _manager_entry(
+        self, resource: Resource
+    ) -> tuple[Type[Any], Resource] | None:
         manager = getattr(resource.module, "Manager", None)
         return (manager, resource) if manager else None
 
-    def _adapter_entries(self, resource: Resource) -> tuple[tuple[Resource, dict], ...]:
+    def _adapter_entries(
+        self, resource: Resource
+    ) -> tuple[tuple[Resource, dict[str, Any]], ...]:
         if not resource.module or not getattr(resource.module, "Adapter", None):
             return ()
         configs = resource.config if isinstance(resource.config, list) else [resource.config]
         return tuple((resource, config or {}) for config in configs)
 
-    async def _discover_adapters(self, config: dict) -> flow.Result:
+    async def _discover_adapters(
+        self, config: dict[str, Any]
+    ) -> flow.Result[Any, Any]:
         """Scopre e carica tutti gli adapter configurati."""
         return await flow.pipe(
             config,
@@ -283,12 +280,16 @@ class Loader:
         await self.framework.load(resource)
         return resource
 
-    def _build(self, cls: Type, config: dict = None) -> Handle:
+    def _build(
+        self, cls: Type[Any], config: dict[str, Any] | None = None
+    ) -> Handle:
         config = config or {}
         args = self._resolve_dependencies(cls)
         return Handle(cls(*args, **config))
 
-    def _build_managers(self, resources: list[Resource]) -> flow.Result:
+    def _build_managers(
+        self, resources: Sequence[Resource]
+    ) -> flow.Result[Any, Any]:
         """Costruisce e registra i manager rispettando l'ordine di dipendenza."""
         return flow.pipe_sync(
             resources,
@@ -299,18 +300,22 @@ class Loader:
             action="loader.build_managers",
         )
 
-    def _order_manager_entries(self, entries: tuple) -> tuple:
+    def _order_manager_entries(
+        self, entries: tuple[tuple[Type[Any], Resource], ...]
+    ) -> tuple[tuple[Type[Any], Resource], ...]:
         classes = [cls for cls, _ in entries]
-        dependencies = {}
+        dependencies: dict[type[Any], list[Any]] = {}
         for cls in classes:
             dependencies.update(self.framework.dependencies_from_class(cls))
         order = self.framework.resolve_order(classes, dependencies)
         resources = {cls: resource for cls, resource in entries}
         return tuple((cls, resources[cls]) for cls in order if cls is not Loader)
 
-    def _build_manager_entry(self, entry: tuple[Type, Resource]) -> Handle:
+    def _build_manager_entry(self, entry: tuple[Type[Any], Resource]) -> Handle:
         cls, resource = entry
-        obj = self._build(cls, resource.config or {})
+        if not isinstance(resource.config, dict):
+            raise TypeError(f"Configurazione manager non valida: {resource.name}")
+        obj = self._build(cls, resource.config)
         self.container.put(cls, obj, singleton=True)
         self.logger.info(
             "Manager costruito",
@@ -319,8 +324,8 @@ class Loader:
         return obj
 
     def _build_adapters(
-        self, resources: list[Resource], save: bool = True
-    ) -> flow.Result:
+        self, resources: Sequence[Resource], save: bool = True
+    ) -> flow.Result[Any, Any]:
         """Costruisce gli adapter istanziati e li assegna alle rispettive porte."""
         return flow.pipe_sync(
             resources,
@@ -330,7 +335,9 @@ class Loader:
             action="loader.build_adapters",
         )
 
-    def _build_adapter_entry(self, entry: tuple[Resource, dict], save: bool) -> Handle:
+    def _build_adapter_entry(
+        self, entry: tuple[Resource, dict[str, Any]], save: bool
+    ) -> Handle:
         resource, config = entry
         parts = resource.name.split(".")
         interface = self._port_interface(parts[2])
@@ -408,6 +415,8 @@ class Loader:
                 if not new_cls:
                     return False
 
+                if not isinstance(resource.config, dict):
+                    raise TypeError(f"Configurazione manager non valida: {resource.name}")
                 new_handle = self._build(new_cls, resource.config)
                 if old_handle is None:
                     self.container.put(new_cls, new_handle, singleton=True)
@@ -419,13 +428,15 @@ class Loader:
 
         return False
 
-    async def load_schemes(self, directories: list) -> dict:
+    async def load_schemes(
+        self, directories: list[str]
+    ) -> dict[str, Any]:
         return await self.infrastructure.load_schemes(directories)
 
-    async def resource(self, path: Any) -> str:
+    async def resource(self, path: str | Path) -> Any:
         return self.infrastructure.resource(path)
 
-    def record_contract(self, test_path: str, outcome: dict):
+    def record_contract(self, test_path: str, outcome: dict[str, Any]) -> None:
         """Registra i risultati dei test di contratto."""
         contract_mod = sys.modules.get("framework.service.contract")
         contract = getattr(contract_mod, "Contract", None) if contract_mod else globals().get("Contract")
@@ -452,27 +463,27 @@ class Loader:
         if module is None:
             return
 
-        data = outcome.get("data", {})
-        manifest = data.get("exports")
-        contract_exports = manifest if isinstance(manifest, dict) else None
-        declared_exports = None
+        data: dict[str, Any] = outcome.get("data", {})
+        manifest: dict[str, str | list[str]] | list[str] | None = data.get("exports")
+        contract_exports: dict[str, list[str]] | None = None
+        declared_exports: list[str] | None = None
         if isinstance(manifest, dict):
             declared_exports = []
             for methods in manifest.values():
                 if isinstance(methods, list):
                     declared_exports.extend(methods)
-                elif isinstance(methods, str):
+                else:
                     declared_exports.append(methods)
-        available = reflection.module_components(
+        available: dict[str, str] = reflection.module_components(
             module,
             set(declared_exports) if declared_exports is not None else None,
         )
         if not available:
             return
 
-        if declared_exports is not None:
-            local_manifest = {}
-            local_exports = []
+        if isinstance(manifest, dict) and declared_exports is not None:
+            local_manifest: dict[str, list[str]] = {}
+            local_exports: list[str] = []
             for alias, methods in manifest.items():
                 method_names = methods if isinstance(methods, list) else [methods]
                 local_methods = [name for name in method_names if name in available]
@@ -485,15 +496,17 @@ class Loader:
         if declared_exports is not None and not outcome.get("success"):
             return
 
-        passed, failed = set(), set()
-        for detail in data.get("details", []):
+        passed: set[str] = set()
+        failed: set[str] = set()
+        details: list[dict[str, Any]] = data.get("details", [])
+        for detail in details:
             target = detail.get("target")
             if not target:
                 continue
             alias = detail.get("export")
             declared_methods = (
                 contract_exports.get(alias)
-                if isinstance(contract_exports, dict)
+                if isinstance(contract_exports, dict) and isinstance(alias, str)
                 else None
             )
             candidates = declared_methods or [
@@ -510,7 +523,9 @@ class Loader:
         if not tested:
             return
 
-        hashes = {n: reflection.hash_text(available[n]) for n in tested}
+        hashes: dict[str, str] = {
+            name: reflection.hash_text(available[name]) for name in tested
+        }
         contract.record_tested(
             source_path,
             hashes,
@@ -523,7 +538,7 @@ class Loader:
             exports=sorted(hashes),
         )
 
-    def get_managers(self) -> dict:
+    def get_managers(self) -> dict[str, Any]:
         """Restituisce il dizionario di tutti i manager registrati."""
         result = {"loader": self.handle}
         for res in self.framework.components_iter():
@@ -536,7 +551,9 @@ class Loader:
                     result[res.name.split(".")[-1]] = obj
         return result
 
-    def _discovery_context(self, config_toml_path: Any) -> LoaderContext:
+    def _discovery_context(
+        self, config_toml_path: str | Path | dict[str, Any]
+    ) -> LoaderContext:
         kwargs = (
             config_toml_path
             if isinstance(config_toml_path, dict)
@@ -558,11 +575,14 @@ class Loader:
         return {**context, "schemes": schemes}
 
     def _read_discovery_config(self, context: LoaderContext) -> LoaderContext:
-        config = self.infrastructure.resource(context["config_file"])
+        config_file = context.get("config_file", "pyproject.toml")
+        config = self.infrastructure.resource(config_file)
         self.current_config = config
         return {**context, "config": config}
 
-    def _manager_resource(self, item: tuple[str, str, dict]) -> Resource:
+    def _manager_resource(
+        self, item: tuple[str, str, dict[str, Any]]
+    ) -> Resource:
         name, path, config = item
         return Resource(
             name=f"framework.manager.{name}",
@@ -571,7 +591,9 @@ class Loader:
             config=config,
         )
 
-    async def _discover_manager_resources(self, config: dict) -> tuple[Resource, ...]:
+    async def _discover_manager_resources(
+        self, config: dict[str, Any]
+    ) -> tuple[Resource, ...]:
         manager_config = config.get("manager", {})
         specs = tuple(
             (name, path, manager_config.get(name, {}))
@@ -585,11 +607,15 @@ class Loader:
         )
         return flow.unwrap(resources)
 
-    async def _discover_adapter_resources(self, config: dict) -> tuple[Resource, ...]:
+    async def _discover_adapter_resources(
+        self, config: dict[str, Any]
+    ) -> tuple[Resource, ...]:
         result = await self._discover_adapters(config)
         return flow.unwrap(result)
 
     async def _discover_resources(self, context: LoaderContext) -> LoaderContext:
+        if "config" not in context:
+            raise RuntimeError("Contesto discovery privo della configurazione")
         resources = await flow.pipe(
             context["config"],
             flow.pipe_fork_async_tuple(
@@ -605,14 +631,24 @@ class Loader:
             "adapter_resources": adapter_resources,
         }
 
-    def _discovery_result(self, context: dict) -> tuple[dict, tuple[Resource, ...], tuple[Resource, ...]]:
+    def _discovery_result(
+        self, context: LoaderContext
+    ) -> tuple[dict[str, Any], tuple[Resource, ...], tuple[Resource, ...]]:
+        if "config" not in context:
+            raise RuntimeError("Contesto discovery privo della configurazione")
+        if "manager_resources" not in context:
+            raise RuntimeError("Contesto discovery privo delle risorse manager")
+        if "adapter_resources" not in context:
+            raise RuntimeError("Contesto discovery privo delle risorse adapter")
         return (
             context["config"],
             tuple(context["manager_resources"]),
             tuple(context["adapter_resources"]),
         )
 
-    def _bootstrap_context(self, config_toml_path: Any) -> dict:
+    def _bootstrap_context(
+        self, config_toml_path: str | Path | dict[str, Any]
+    ) -> LoaderContext:
         kwargs = (
             config_toml_path
             if isinstance(config_toml_path, dict)
@@ -643,10 +679,14 @@ class Loader:
         return context
 
     async def _discover_bootstrap(self, context: LoaderContext) -> LoaderContext:
+        if "config_path" not in context:
+            raise RuntimeError("Contesto bootstrap privo del percorso di configurazione")
         discovery = await self._discover_components(context["config_path"])
         return {**context, "discovery": flow.unwrap(discovery)}
 
     def _build_runtime(self, context: LoaderContext) -> LoaderContext:
+        if "discovery" not in context:
+            raise RuntimeError("Contesto bootstrap privo del risultato discovery")
         config, mgr_resources, adapter_resources = context["discovery"]
         self.logger.info("Discovery risorse")
         self.logger.info("Build runtime")
@@ -684,7 +724,7 @@ class Loader:
 
         return {**context, "session": session}
 
-    def _apply_port_configurations(self, defender) -> None:
+    def _apply_port_configurations(self, defender: Any) -> None:
         """Pubblica le configurazioni DSL globali su manager e adapter."""
         manager_names = {
             "presentation": "presenter",
@@ -703,7 +743,9 @@ class Loader:
                 if callable(configure):
                     configure(configuration)
 
-    async def _discover_components(self, config_toml_path: Any) -> flow.Result:
+    async def _discover_components(
+        self, config_toml_path: str | Path | dict[str, Any]
+    ) -> flow.Result[Any, Any]:
         """Carica core, manager e adapter senza istanziarli."""
         return await flow.pipe(
             config_toml_path,
@@ -715,7 +757,9 @@ class Loader:
             action="loader.discover_components",
         )
 
-    async def bootstrap(self, config_toml_path: Any):
+    async def bootstrap(
+        self, config_toml_path: str | Path | dict[str, Any]
+    ) -> Application:
         """Inizializza il framework caricando configurazione e risorse."""
         return flow.unwrap(
             await flow.pipe(
@@ -735,7 +779,9 @@ class Loader:
             )
         )
 
-    async def verify_contracts(self, config_toml_path: Any) -> bool:
+    async def verify_contracts(
+        self, config_toml_path: str | Path | dict[str, Any]
+    ) -> bool:
         """Verifica i contract senza costruire o avviare l'applicazione."""
         self.kwargs = (
             config_toml_path
@@ -754,6 +800,6 @@ class Loader:
         self.logger.info("Tutti i contract sono verificati in modalità strict")
         return True
 
-    async def import_module(self, module_path: str):
+    async def import_module(self, module_path: str) -> ModuleType:
         """Importa un modulo Python tramite il kernel del framework."""
         return self.framework.import_module(module_path)

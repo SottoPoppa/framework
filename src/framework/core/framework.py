@@ -18,8 +18,8 @@ class Resource:
     path: str
     module: Any = None
     kind: Optional[str] = None
-    config: dict = field(default_factory=dict)
-    extend: dict = field(default_factory=dict)
+    config: dict[str, Any] | list[dict[str, Any]] = field(default_factory=dict)
+    extend: dict[str, Any] = field(default_factory=dict)
 
 
 class InstallContext(TypedDict, total=False):
@@ -142,8 +142,12 @@ class Framework:
         return module
 
     async def load_module(
-        self, name: str, path: str, extra: dict = None, force: bool = False
-    ):
+        self,
+        name: str,
+        path: str,
+        extra: dict[str, Any] | None = None,
+        force: bool = False,
+    ) -> ModuleType | None:
         """Carica o ricarica un modulo Python utilizzando importlib in modo sicuro."""
         if name in sys.modules and not force:
             module = sys.modules[name]
@@ -213,7 +217,9 @@ class Framework:
         self.logger.info("Modulo caricato", module=name, path=path)
         return module
 
-    async def add(self, resource: Resource, extra: dict = None):
+    async def add(
+        self, resource: Resource, extra: dict[str, Any] | None = None
+    ) -> Resource:
         """Registra un nuovo modulo risorsa nel registry."""
         module = await self.load_module(resource.name, resource.path, extra)
         resource.module = module
@@ -232,11 +238,13 @@ class Framework:
 
         return resource
 
-    async def load(self, resource: Resource, extra: dict = None):
+    async def load(
+        self, resource: Resource, extra: dict[str, Any] | None = None
+    ) -> Resource:
         """Carica una risorsa; API usata dal Loader durante la discovery."""
         return await self.add(resource, extra)
 
-    async def reload(self, resource: Resource):
+    async def reload(self, resource: Resource) -> Resource:
         """Ricarica forzatamente una risorsa."""
         module = await self.load_module(
             resource.name, resource.path, resource.extend, force=True
@@ -249,7 +257,12 @@ class Framework:
         )
         return resource
 
-    async def load_core(self, services: dict, ports: dict, extra_by_name: dict = None):
+    async def load_core(
+        self,
+        services: dict[str, str],
+        ports: dict[str, str],
+        extra_by_name: dict[str, dict[str, Any]] | None = None,
+    ) -> None:
         """Carica i servizi di core ordinandoli topologicamente."""
         extra_by_name = extra_by_name or {}
         modules = {**services, **ports}
@@ -277,7 +290,9 @@ class Framework:
             short_name = res.name.rsplit(".", 1)[-1]
             await self.add(res, extra_by_name.get(short_name))
 
-    def dependencies_from_class(self, target: Any) -> dict:
+    def dependencies_from_class(
+        self, target: type[Any]
+    ) -> dict[type[Any], list[Any]]:
         """Ispeziona il costruttore della classe per estrarne le annotazioni dei tipi."""
         init_fn = getattr(target, "__init__", None)
         if not init_fn or init_fn is object.__init__:
@@ -297,12 +312,20 @@ class Framework:
             annotation = hints.get(name)
             if annotation is None:
                 continue
-            args = get_args(annotation)
+            args = tuple(
+                argument
+                for argument in get_args(annotation)
+                if argument is not type(None)
+            )
             dependencies.extend(args if args else [annotation])
 
         return {target: dependencies}
 
-    def resolve_order(self, nodes: list, dependencies: dict) -> list:
+    def resolve_order(
+        self,
+        nodes: list[type[Any]],
+        dependencies: dict[type[Any], list[Any]],
+    ) -> list[type[Any]]:
         """Calcola l'ordine topologico di istanziazione per i nodi forniti."""
         node_set = set(nodes)
         graph = {

@@ -3,6 +3,7 @@ from collections import defaultdict
 import fnmatch
 from typing import Any
 
+import framework.core.flow as flow
 import framework.port.message as message
 
 
@@ -20,6 +21,7 @@ class Adapter(message.Port):
     def loader(self, config: dict[str, Any]) -> None:
         self.config.update(config)
 
+    @flow.result()
     async def post(self, *services: Any, **constants: Any):
         message_data = dict(constants)
         message_data.setdefault("domain", "general")
@@ -27,6 +29,7 @@ class Adapter(message.Port):
             self.messages.append(message_data)
             self._condition.notify_all()
 
+    @flow.result()
     async def read(self, session: Any, *services: Any, **constants: Any):
         reader = str(getattr(session, "id", None) or id(session))
         pattern = constants.get("domain", "*")
@@ -39,5 +42,6 @@ class Adapter(message.Port):
                         return message_data
                 await self._condition.wait()
 
+    @flow.result()
     async def can(self, identity: str, action: str) -> bool:
         return action in {"post", "read", "event"}

@@ -64,6 +64,7 @@ class Adapter(message.Port):
         self.config.update(config)
         self.name = self.config.get("name", self.name)
 
+    @flow.result()
     async def can(self, identity: str, action: str) -> bool:
         if action not in self.processable:
             return False
@@ -75,6 +76,7 @@ class Adapter(message.Port):
             )
         return True
 
+    @flow.result()
     async def post(self, session: Any, *services: Any, **constants: Any) -> None:
         session_id = self._session_id(session, constants.get("session_id"))
         model = self._resolve_model(constants.get("model"))
@@ -176,6 +178,7 @@ class Adapter(message.Port):
             if domain != "*":
                 await self._queues[(session_id, "*")].put(item)
 
+    @flow.result()
     async def read(self, session: Any, *services: Any, **constants: Any) -> Any:
         pattern = constants.get("domain") or "general"
         session_id = self._session_id(session)

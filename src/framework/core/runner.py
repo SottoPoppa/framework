@@ -12,9 +12,10 @@ from typing import Any
 
 import framework.core.flow as flow
 
+from .data import Registry
 from .evaluation import Evaluator
 from .graph import Dag, NodeNotFound
-from .model import DagDefinition
+from .model import DagDefinition, NodeDefinition
 from .scope import Scope
 from .session import NodeState, Session, SessionData
 
@@ -29,17 +30,23 @@ class _Failed:
     __slots__ = ()
 
 
-_FAILED = _Failed()
+_FAILED: _Failed = _Failed()
 
 
 class DagRunner:
 
-    def __init__(self, registry=None, evaluator: Evaluator | None = None, *, concurrency: int = 32):
+    def __init__(
+        self,
+        registry: Registry | None = None,
+        evaluator: Evaluator | None = None,
+        *,
+        concurrency: int = 32,
+    ) -> None:
         self.registry = registry
         self.evaluator = evaluator or Evaluator(registry)
         self.dags: dict[str, Dag] = {}
         self.sessions: dict[str, Session] = {}
-        self._source_tasks: dict[str, dict[str, asyncio.Task]] = {}
+        self._source_tasks: dict[str, dict[str, asyncio.Task[None]]] = {}
         self._sem = asyncio.Semaphore(concurrency)
 
     # ── registrazione ────────────────────────────────────────────────────────
@@ -58,7 +65,7 @@ class DagRunner:
         *,
         initial_context: dict[str, Any] | None = None,
         context: Scope | None = None,
-        runtime_session=None,
+        runtime_session: Any = None,
         resolve_context: bool = True,
     ) -> Session:
         dag = self.dags[dag_name]
@@ -125,7 +132,7 @@ class DagRunner:
         )
         tasks[node_name] = task
 
-        def clear_completed(completed: asyncio.Task) -> None:
+        def clear_completed(completed: asyncio.Task[None]) -> None:
             if tasks.get(node_name) is completed:
                 tasks.pop(node_name, None)
 
@@ -227,7 +234,13 @@ class DagRunner:
                 for child in successors:
                     group.create_task(self._run_node(dag, session, child))
 
-    async def _dependencies_ready(self, dag: Dag, session: Session, node, name: str) -> bool:
+    async def _dependencies_ready(
+        self,
+        dag: Dag,
+        session: Session,
+        node: NodeDefinition,
+        name: str,
+    ) -> bool:
         for dep in node.deps:
             if dep not in dag.nodes:
                 continue
@@ -241,7 +254,12 @@ class DagRunner:
                 return False
         return True
 
-    async def _execute_with_retry(self, session: Session, node, name: str) -> Any:
+    async def _execute_with_retry(
+        self,
+        session: Session,
+        node: NodeDefinition,
+        name: str,
+    ) -> Any:
         attempt = 0
         max_retries = getattr(node, "retries", 0)
         retry_delay = getattr(node, "retry_delay", 0)
@@ -292,7 +310,12 @@ class DagRunner:
                 if retry_delay:
                     await asyncio.sleep(retry_delay)
 
-    async def _apply_default(self, session: Session, node, name: str) -> None:
+    async def _apply_default(
+        self,
+        session: Session,
+        node: NodeDefinition,
+        name: str,
+    ) -> None:
         metadata = getattr(node, "metadata", {})
         if "default" not in metadata or session.context.get(name) is not None:
             return
@@ -302,7 +325,7 @@ class DagRunner:
         if default is not None:
             session.context.set(name, default)
 
-    async def wait(self, session: Session, node: str) -> Any:
+    async def wait(self, session: Session, node: str) -> Any | None:
         """Attende il completamento di un nodo della sessione."""
         return await session.wait(node)
 

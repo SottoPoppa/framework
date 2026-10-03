@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import json
+from typing import Any
 from framework.service.diagnostic import get_logger
 
 
@@ -56,7 +57,7 @@ class Contract:
         return legacy if os.path.exists(legacy) else contract
 
     @staticmethod
-    def read(path: str) -> dict:
+    def read(path: str) -> dict[str, Any]:
         if not os.path.exists(path):
             return {}
         try:
@@ -90,7 +91,9 @@ class Contract:
         temporary.replace(target)
 
     @staticmethod
-    def _export_names(exports) -> list[str] | None:
+    def _export_names(
+        exports: list[str] | dict[str, str | list[str]] | None,
+    ) -> list[str] | None:
         if exports is None:
             return None
         if isinstance(exports, dict):
@@ -118,7 +121,7 @@ class Contract:
     def record_tested(
         source_path: str,
         component_hashes: dict[str, str],
-        exports: list[str] | None = None,
+        exports: list[str] | dict[str, str | list[str]] | None = None,
     ) -> None:
         """Chiamato dal tester quando i test relativi a specifici componenti
         (metodi o funzioni) passano. `component_hashes`: {nome: hash_sorgente}.

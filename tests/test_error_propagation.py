@@ -180,6 +180,15 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
             copilot_session.finish.set()
             await adapter.close()
 
+    def test_framework_dependency_discovery_omits_none_from_optional_annotations(self):
+        class OptionalManager:
+            def __init__(self, loader: Loader | None, framework: Framework | None) -> None:
+                pass
+
+        dependencies = Framework.__new__(Framework).dependencies_from_class(OptionalManager)
+
+        self.assertEqual(dependencies[OptionalManager], [Loader, Framework])
+
     async def test_chat_sends_only_after_send_event(self):
         framework = Framework()
         config = Path(__file__).resolve().parents[1] / "pyproject.toml"
@@ -1241,6 +1250,17 @@ class ErrorPropagationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(result.is_success)
         self.assertIn("invalid payload", str(flow.output(result)))
+
+    async def test_flow_result_reapplies_different_metadata(self):
+        @flow.result(action="outer")
+        @flow.result(action="inner")
+        async def operation():
+            return "ok"
+
+        result = await operation()
+
+        self.assertTrue(result.is_success)
+        self.assertEqual(result.action, "outer")
 
     async def test_orchestrator_all_completed_propagates_failed_flow_result(self):
         manager = Orchestrator(None)

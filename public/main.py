@@ -3,6 +3,7 @@ import os
 import asyncio
 import argparse
 import subprocess
+from typing import Any
 
 # Setup del path
 cwd = os.getcwd()
@@ -26,7 +27,19 @@ def setup_core_dependencies():
         check=True,
     )
 
-async def main(config):
+def run_pyright(logger):
+    executable = os.path.join(cwd, "venv", "bin", "pyright")
+    try:
+        subprocess.run([executable], cwd=cwd, check=True)
+    except subprocess.CalledProcessError as exc:
+        logger.error("Pyright ha rilevato errori", returncode=exc.returncode)
+        return False
+    except OSError as exc:
+        logger.error("Impossibile avviare Pyright", executable=executable, exception=exc)
+        return False
+    return True
+
+async def main(config: dict[str, Any]) -> Any:
     framework_instance = framework.Framework()
     main_logger = framework_instance.get_logger("main")
     if config.get("dev") or config.get("debug"):
@@ -63,6 +76,9 @@ async def main(config):
 
     if config.get('install'):
         return await framework_instance.install(config)
+
+    if config.get("dev") and not run_pyright(main_logger):
+        return False
 
     main_logger.info("Bootstrap framework: inizio")
     app = await framework_instance.bootstrap(config)

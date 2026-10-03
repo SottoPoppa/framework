@@ -8,8 +8,8 @@
   "hashes": {
     "Loader": {
       "import_module": {
-        "production": "7ad2af1ddaaab163ca8e6fa63fd34f01d304a6e1f93660df09232336664680ab",
-        "test": "7ad2af1ddaaab163ca8e6fa63fd34f01d304a6e1f93660df09232336664680ab"
+        "production": "e4e993dc1ea9d8130135e188311fd1d4560781d423ac519e44276fa69d25e06d",
+        "test": "e4e993dc1ea9d8130135e188311fd1d4560781d423ac519e44276fa69d25e06d"
       }
     }
   }

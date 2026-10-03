@@ -28,7 +28,7 @@ class Registry:
 
     __slots__ = ("_items", "_parent")
 
-    def __init__(self, initial: Dict[str, Any] | None = None, parent: "Registry | None" = None):
+    def __init__(self, initial: Dict[str, Any] | None = None, parent: "Registry | None" = None) -> None:
         self._items: Dict[str, Any] = {}
         self._parent = parent
         if initial:

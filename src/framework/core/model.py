@@ -8,7 +8,7 @@ closure: può essere persistita e valutata in seguito da un altro interprete.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any, Mapping
+from typing import Any, Callable, Iterable, Mapping, Self
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,7 +104,15 @@ class DagDefinition:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_nodes(cls, name, nodes, *, context=None, triggers=(), metadata=None):
+    def from_nodes(
+        cls,
+        name: str,
+        nodes: Iterable[NodeDefinition],
+        *,
+        context: Mapping[str, Any] | None = None,
+        triggers: Iterable[TriggerDefinition] = (),
+        metadata: Mapping[str, Any] | None = None,
+    ) -> Self:
         return cls(name, tuple(nodes), dict(context or {}), tuple(triggers), dict(metadata or {}))
 
 
@@ -130,7 +138,7 @@ def expression_of(node: Any) -> Any:
 
 TAG = "$dsl"
 
-_KINDS = {
+_KINDS: dict[type[Any], str] = {
     Literal: "literal",
     Ref: "ref",
     Call: "call",
@@ -139,7 +147,7 @@ _KINDS = {
 }
 
 
-def encode(node: Any, encode_value) -> Any:
+def encode(node: Any, encode_value: Callable[[Any], Any]) -> Any:
     """Codifica un nodo del modello in una struttura JSON taggata.
 
     `encode_value` codifica i valori annidati non-modello, così il codec non

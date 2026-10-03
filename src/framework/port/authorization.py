@@ -1,22 +1,20 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
+from typing import Protocol
 
 import framework.core.flow as flow
 
 
-class port(ABC):
-    def __init__(self):
-        #self.server = Server(ldap_server, get_info=ALL)
-        #self.user_dn = user_dn
-        #self.password = password
-        pass
-
+class Port(Protocol):
     @abstractmethod
     @flow.result()
-    def load_data_store(self):
+    def load_data_store(self) -> object:
         raise NotImplementedError()
 
     @abstractmethod
     @flow.result()
-    def load_policies(self):
+    def load_policies(self) -> object:
         raise NotImplementedError()
+
+
+port = Port
     

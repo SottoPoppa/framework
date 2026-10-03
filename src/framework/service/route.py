@@ -1,5 +1,6 @@
 import itertools
 import re
+from typing import Any, Iterable
 from urllib.parse import urlparse, parse_qs, urljoin
 from framework.service.diagnostic import get_logger
 
@@ -7,7 +8,7 @@ ROUTE_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"}
 logger = get_logger("route")
 
 
-def normalize_path(path):
+def normalize_path(path: object) -> str:
     if not isinstance(path, str) or not path.strip():
         raise ValueError("Il path della route deve essere una stringa non vuota")
     path = path.strip()
@@ -16,7 +17,9 @@ def normalize_path(path):
     return re.sub(r"\{\$([a-zA-Z0-9_]+)\}", r"{\1}", path)
 
 
-def split_url(url):
+def split_url(
+    url: object,
+) -> dict[str, str | list[str] | dict[str, list[str]]]:
     """Restituisce i componenti dell'URL in una forma facilmente ricercabile."""
     full_url = str(url)
     parsed_url = urlparse(full_url)
@@ -34,12 +37,15 @@ def split_url(url):
     }
 
 
-def compile_pattern(path):
+def compile_pattern(path: str) -> re.Pattern[str]:
     pattern = re.sub(r"\{([a-zA-Z0-9_]+)\}", r"(?P<\1>[^/]+)", path)
     return re.compile(f"^{pattern}$")
 
 
-def register(routes, route):
+def register(
+    routes: dict[str, dict[str, dict[str, Any]]],
+    route: dict[str, Any],
+) -> tuple[str, str, dict[str, Any]]:
     view = f"src/application/view/page/{route['view']}" if route.get("view") else None
     path = normalize_path(route.get("path") or (view.replace(".xml", "") if view else ""))
     method = route.get("method", "GET").upper()
@@ -54,7 +60,10 @@ def register(routes, route):
     return path, method, entry
 
 
-def register_many(routes, route_items):
+def register_many(
+    routes: dict[str, dict[str, dict[str, Any]]],
+    route_items: Iterable[dict[str, Any]],
+) -> dict[str, dict[str, dict[str, Any]]]:
     for route in route_items:
         view = f"src/application/view/page/{route['view']}" if route.get("view") else None
         path = normalize_path(route.get("path") or (view.replace(".xml", "") if view else ""))
@@ -70,7 +79,11 @@ def register_many(routes, route_items):
     return routes
 
 
-def match(routes, path, method="GET"):
+def match(
+    routes: dict[str, dict[str, dict[str, Any]]],
+    path: str,
+    method: str = "GET",
+) -> tuple[dict[str, Any] | None, dict[str, str]]:
     path = normalize_path(path)
     method = method.upper()
     for methods in routes.values():
@@ -85,7 +98,7 @@ def match(routes, path, method="GET"):
 import copy
 
 def route(
-    url: dict,
+    url: dict[str, Any],
     new_part: str,
 ) -> str:
     """
@@ -163,7 +176,13 @@ def route(
 
     return result
 
-def resolve_route(risorse, request_url, request_method, base_url=None,**kargs):
+def resolve_route(
+    risorse: dict[str, dict[str, dict[str, Any]]],
+    request_url: str,
+    request_method: str,
+    base_url: str | None = None,
+    **kargs: object,
+) -> dict[str, Any] | None:
         
         try:
             # 1. Normalizzazione URL

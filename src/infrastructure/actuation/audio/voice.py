@@ -24,7 +24,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 import subprocess
-from typing import Any
+from typing import Any, cast
 
 import edge_tts
 import miniaudio
@@ -84,6 +84,7 @@ class Adapter(actuation.Port):
     # Lifecycle
     # ------------------------------------------------------------------
 
+    @flow.result(inputs=("session", "actuator"))
     async def start(self, session) -> bool:
         """
         Avvia l'adapter.
@@ -117,6 +118,7 @@ class Adapter(actuation.Port):
 
         return isinstance(result, dict) and result.get("status") == "success"
 
+    @flow.result(inputs=("session", "actuator"))
     async def stop(
         self,
         *services: Any,
@@ -136,6 +138,7 @@ class Adapter(actuation.Port):
     # Execution
     # ------------------------------------------------------------------
 
+    @flow.result(inputs=("session", "actuator"))
     async def execute(
         self,
         *services: Any,
@@ -493,13 +496,18 @@ class Adapter(actuation.Port):
     # State
     # ------------------------------------------------------------------
 
-    def set_state(
+    @flow.result(inputs=("session", "actuator"))
+    async def set_state(
         self,
-        state: dict[str, Any],
+        session: Any = None,
+        state: dict[str, Any] | None = None,
     ) -> None:
         """
         Aggiorna lo stato dell'adapter.
         """
+
+        if state is None and isinstance(session, dict):
+            state = cast(dict[str, Any], session)
 
         if not isinstance(state, dict):
             raise TypeError(
@@ -508,7 +516,8 @@ class Adapter(actuation.Port):
 
         self._last_state.update(state)
 
-    def get_state(self) -> dict[str, Any]:
+    @flow.result(inputs=("session", "actuator"))
+    async def get_state(self, session: Any = None) -> dict[str, Any]:
         """
         Restituisce l'ultimo stato.
         """
@@ -561,10 +570,13 @@ class Adapter(actuation.Port):
     # Feature
     # ------------------------------------------------------------------
 
-    def toggle_feature(
+    @flow.result(inputs=("session", "actuator"))
+    async def toggle_feature(
         self,
-        feature: str,
+        session: Any = None,
+        feature_name: str | bool | None = None,
         enabled: bool | None = None,
+        **constants: Any,
     ) -> bool:
         """
         Abilita/disabilita una feature dell'adapter.
@@ -580,6 +592,24 @@ class Adapter(actuation.Port):
         Ritorna lo stato finale.
         """
 
+        if isinstance(session, str) and (
+            feature_name is None or isinstance(feature_name, bool)
+        ):
+            if isinstance(feature_name, bool):
+                enabled = feature_name
+            feature_name = session
+
+        if feature_name is None:
+            feature_name = constants.get("feature")
+
+        if not isinstance(feature_name, str):
+            raise ValueError(
+                f"Feature non supportata: {feature_name!r}. "
+                "Feature disponibili: "
+                "'speech', 'tts', 'speaking', "
+                "'startup_announcement'."
+            )
+
         aliases = {
             "speech": "speech",
             "tts": "speech",
@@ -587,12 +617,12 @@ class Adapter(actuation.Port):
             "startup_announcement": "startup_announcement",
         }
 
-        feature = aliases.get(
-            feature,
-            feature,
+        feature_name = aliases.get(
+            feature_name,
+            feature_name,
         )
 
-        if feature == "speech":
+        if feature_name == "speech":
             if enabled is None:
                 enabled = not self._speaking_enabled
 
@@ -600,7 +630,7 @@ class Adapter(actuation.Port):
 
             return self._speaking_enabled
 
-        if feature == "startup_announcement":
+        if feature_name == "startup_announcement":
             if enabled is None:
                 enabled = not self.announce_start
 
@@ -609,7 +639,7 @@ class Adapter(actuation.Port):
             return self.announce_start
 
         raise ValueError(
-            f"Feature non supportata: {feature!r}. "
+            f"Feature non supportata: {feature_name!r}. "
             "Feature disponibili: "
             "'speech', 'tts', 'speaking', "
             "'startup_announcement'."

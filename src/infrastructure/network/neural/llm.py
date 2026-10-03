@@ -3,6 +3,7 @@ import io
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, AsyncGenerator
 
+import framework.core.flow as flow
 import framework.port.network as network
 
 try:
@@ -145,6 +146,7 @@ class Adapter(network.Port):
     # 3. Flusso Dati & Invocazione (Provision, Route, Stream, Compute, Monitor)
     # ------------------------------------------------------------------
 
+    @flow.result(inputs=("intent",), outputs=("deployment",))
     async def provision(self, intent: Dict[str, Any]) -> Dict[str, Any]:
         """Carica il Tokenizer e i Pesi del modello da Hugging Face."""
         if AutoModelForCausalLM is None:
@@ -178,7 +180,15 @@ class Adapter(network.Port):
             "vocab_size": getattr(self.tokenizer, "vocab_size", None),
         }
 
-    async def route(self, payload: Dict[str, Any], requirements: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    @flow.result(
+        inputs=("payload", "requirements"),
+        outputs=("route",),
+    )
+    async def route(
+        self,
+        payload: Dict[str, Any],
+        requirements: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
         """Esegue il Forward Pass completo del testo attraverso la topologia della rete."""
         if not self._is_ready:
             return {"status": "error", "message": "Modello non inizializzato. Esegui prima 'provision'."}
@@ -246,6 +256,7 @@ class Adapter(network.Port):
         payload = kwargs.get("payload", {}) or ({"prompt": args[0]} if args else {})
         return await self.route(payload=payload)
 
+    @flow.result(outputs=("status",))
     async def monitor(self) -> Dict[str, Any]:
         """Monitoraggio telemetrico della VRAM e dello stato topologico."""
         metrics = {
@@ -258,6 +269,7 @@ class Adapter(network.Port):
             metrics["vram_reserved_mb"] = torch.cuda.memory_reserved() / (1024 ** 2)
         return metrics
 
+    @flow.result(outputs=("status",))
     async def status(self) -> Dict[str, Any]:
         return {
             "state": "READY" if self._is_ready else "UNINITIALIZED",

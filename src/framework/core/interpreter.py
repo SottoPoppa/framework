@@ -12,10 +12,13 @@ from __future__ import annotations
 import copy
 import inspect
 import uuid
+from collections.abc import Awaitable, Callable, Iterable, Mapping
+from types import TracebackType
 from typing import Any
 
 import framework.core.flow as flow
 
+from .ast import Program as ParsedProgram
 from .data import Registry
 from .evaluation import Evaluator
 from .library import BUILTINS, flatten_records
@@ -23,7 +26,7 @@ from .model import Call, Deferred, ExecutionSpec, Literal, Ref
 from .program import DSLSourceError, Program, ProgramLoader
 from .runner import DagRunner
 from .scope import Scope
-from .session import SessionData, pure_mapping, pure_value
+from .session import ExecutionReport, Session, SessionData, pure_mapping, pure_value
 
 __all__ = [
     "DSLSourceError",
@@ -44,20 +47,24 @@ class SessionHandle:
         self,
         runner: DagRunner,
         sid: str | None = None,
-        env: dict | None = None,
-        context_preparer=None,
+        env: dict[str, Any] | None = None,
+        context_preparer: Callable[
+            [str, Session, dict[str, Any]], Awaitable[None]
+        ] | None = None,
         session_data: SessionData | None = None,
         session_data_store: dict[str, SessionData] | None = None,
-        executions: dict[str, Any] | None = None,
+        executions: dict[str, Session] | None = None,
         context: Scope | None = None,
         registry: Registry | None = None,
-    ):
+    ) -> None:
         self.runner = runner
         self.env = dict(env or {})
         self.registry = registry or runner.registry
         self._context_preparer = context_preparer
         self._closed = False
-        self.sid = sid or (session_data["id"] if session_data else uuid.uuid4().hex)
+        self.sid: str = sid or (
+            session_data["id"] if session_data else uuid.uuid4().hex
+        )
         if session_data_store is None:
             self._session_data_store = {
                 self.sid: session_data or SessionData({
@@ -78,7 +85,10 @@ class SessionHandle:
     def session_data(self) -> SessionData:
         return self._session_data_store[self.sid]
 
-    def replace_session_data(self, session_data: SessionData | dict[str, Any]):
+    def replace_session_data(
+        self,
+        session_data: SessionData | dict[str, Any],
+    ) -> SessionData:
         """Pubblica uno snapshot nuovo e aggiorna i binding runtime esistenti."""
         snapshot = (
             session_data
@@ -94,17 +104,17 @@ class SessionHandle:
             execution.context.set("session", snapshot)
         return snapshot
 
-    def publish_result(self, dag_name: str, node_name: str, value: Any):
+    def publish_result(self, dag_name: str, node_name: str, value: Any) -> SessionData:
         return self.replace_session_data(
             self.session_data.publish_result(dag_name, node_name, value)
         )
 
-    def clear_result(self, dag_name: str, node_name: str):
+    def clear_result(self, dag_name: str, node_name: str) -> SessionData:
         return self.replace_session_data(
             self.session_data.clear_result(dag_name, node_name)
         )
 
-    def execution(self, dag_name: str):
+    def execution(self, dag_name: str) -> Session | None:
         return self._executions.get(dag_name)
 
     def controller_context(self, dag_name: str) -> dict[str, Any] | None:
@@ -123,7 +133,11 @@ class SessionHandle:
         """Vista immutabile dei risultati pubblicati dai DAG."""
         return self.session_data["results"]
 
-    async def run(self, dag_name: str, env: dict | None = None):
+    async def run(
+        self,
+        dag_name: str,
+        env: dict[str, Any] | None = None,
+    ) -> flow.FlowResult:
         """Esegue un DAG e restituisce il Context DSL come risultato puro."""
         if self._closed:
             raise RuntimeError("La sessione è stata chiusa")
@@ -161,7 +175,7 @@ class SessionHandle:
             return flow.error({name: str(error) for name, error in session.errors.items()})
         return flow.success(self._visible_context(session))
 
-    def _visible_context(self, session) -> dict[str, Any]:
+    def _visible_context(self, session: Session) -> dict[str, Any]:
         visible = {}
         for key, value in session.context.data.items():
             if key.startswith("_"):
@@ -176,7 +190,7 @@ class SessionHandle:
         target: str,
         node_or_payload: Any = None,
         payload: Any = _PAYLOAD_NOT_GIVEN,
-    ):
+    ) -> Any:
         """Emette un evento su un nodo, opzionalmente qualificato dal controller."""
         if self._closed:
             raise RuntimeError("La sessione è stata chiusa")
@@ -204,7 +218,7 @@ class SessionHandle:
         controller: str,
         node: str,
         payload: Any = None,
-    ):
+    ) -> Any:
         """Avvia il controller se necessario e consegna l'evento al suo DAG."""
         if self.execution(controller) is None:
             started = await self.run(controller)
@@ -212,18 +226,23 @@ class SessionHandle:
                 return started
         return await self.emit(controller, node, payload=payload)
 
-    def report(self, dag_name: str):
+    def report(self, dag_name: str) -> ExecutionReport | None:
         """Esito puro dell'esecuzione di un DAG della sessione."""
         session = self.execution(dag_name)
         return session.report() if session is not None else None
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> SessionHandle:
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         await self.close()
 
-    async def close(self):
+    async def close(self) -> None:
         if self._closed:
             return
         for session in tuple(self._executions.values()):
@@ -234,22 +253,26 @@ class SessionHandle:
 
 class Interpreter:
 
-    def __init__(self, schemes=None, registry=None):
+    def __init__(
+        self,
+        schemes: Mapping[str, Mapping[str, Any]] | None = None,
+        registry: Registry | None = None,
+    ) -> None:
         self.schemes = schemes
         self.registry = registry or Registry()
         self.registry.register_dict(BUILTINS)
         self.programs = ProgramLoader()
         self.evaluator = Evaluator(self.registry)
         self.runner = DagRunner(registry=self.registry, evaluator=self.evaluator)
-        self.session_envs: dict[str, dict] = {}
+        self.session_envs: dict[str, dict[str, Any]] = {}
         self.session_data: dict[str, SessionData] = {}
-        self.session_executions: dict[str, dict[str, Any]] = {}
+        self.session_executions: dict[str, dict[str, Session]] = {}
         self.session_contexts: dict[str, Scope] = {}
         self._started = False
 
     # ── programmi ────────────────────────────────────────────────────────────
 
-    def parse_only(self, source: str, name: str = "<string>"):
+    def parse_only(self, source: str, name: str = "<string>") -> ParsedProgram:
         """Parsa il DSL senza compilare né registrare il programma."""
         return self.programs.parse(source, name)
 
@@ -259,7 +282,7 @@ class Interpreter:
         self.runner.register(program.definition)
         return program
 
-    async def load_file(self, name: str, code: str):
+    async def load_file(self, name: str, code: str) -> flow.FlowResult:
         return flow.success(self.load(name, code).definition)
 
     # ── valutazione ──────────────────────────────────────────────────────────
@@ -267,9 +290,9 @@ class Interpreter:
     async def evaluate(
         self,
         expression: Any,
-        bindings: dict | None = None,
+        bindings: dict[str, Any] | None = None,
         *,
-        session=None,
+        session: Any = None,
     ) -> Any:
         """Valuta un'espressione o riprende un ``Deferred`` con i binding dati."""
         scope = Scope(dict(bindings or {}))
@@ -281,10 +304,10 @@ class Interpreter:
         self,
         program_name: str,
         name: str,
-        bindings: dict | None = None,
+        bindings: dict[str, Any] | None = None,
         *,
-        session=None,
-    ):
+        session: Any = None,
+    ) -> flow.FlowResult:
         """Rivaluta una dichiarazione DSL per nome usando binding JSON."""
         dag = self.runner.dags.get(program_name)
         if dag is None:
@@ -311,7 +334,7 @@ class Interpreter:
         return self._pure_result(result)
 
     @staticmethod
-    def _pure_result(value: Any):
+    def _pure_result(value: Any) -> flow.FlowResult:
         if flow.is_result(value):
             if not flow.check(value):
                 return flow.error(str(flow.output(value)))
@@ -321,7 +344,14 @@ class Interpreter:
         except TypeError as exc:
             return flow.error(str(exc))
 
-    async def call(self, fn, args=(), kwargs=None, *, session=None):
+    async def call(
+        self,
+        fn: Any,
+        args: Iterable[Any] = (),
+        kwargs: dict[str, Any] | None = None,
+        *,
+        session: Any = None,
+    ) -> flow.FlowResult:
         """Invoca una callable o valuta un'espressione, normalizzando in Result."""
         kwargs = dict(kwargs or {})
 
@@ -359,7 +389,7 @@ class Interpreter:
 
     # ── contesto DSL ─────────────────────────────────────────────────────────
 
-    def _validate_context(self, dag_name: str, session) -> None:
+    def _validate_context(self, dag_name: str, session: Session) -> None:
         """Applica i custom type quando il contesto DSL è pronto."""
         from framework.service import scheme
 
@@ -384,7 +414,12 @@ class Interpreter:
         if errors:
             raise ValueError(f"Contesto non valido secondo gli schemi dichiarati: {errors}")
 
-    async def _prepare_context(self, dag_name: str, session, initial_context: dict) -> None:
+    async def _prepare_context(
+        self,
+        dag_name: str,
+        session: Session,
+        initial_context: dict[str, Any],
+    ) -> None:
         """Valuta il contesto dichiarato dal DAG prima di avviarlo."""
         declared = dict(getattr(self.runner.dags[dag_name].definition, "context", {}))
         declared.update(initial_context or {})
@@ -401,11 +436,11 @@ class Interpreter:
 
     def session_create(
         self,
-        sid: str = None,
-        env: dict = None,
-        authentication: dict | None = None,
-        state: dict | SessionData | None = None,
-    ):
+        sid: str | None = None,
+        env: dict[str, Any] | None = None,
+        authentication: dict[str, Any] | None = None,
+        state: dict[str, Any] | SessionData | None = None,
+    ) -> SessionHandle:
         """Crea una sessione registrandone l'ambiente runtime."""
         sid = sid or uuid.uuid4().hex
         if env is not None:
@@ -419,11 +454,11 @@ class Interpreter:
 
     def open_session(
         self,
-        env: dict = None,
-        sid: str = None,
-        authentication: dict | None = None,
-        state: dict | SessionData | None = None,
-    ):
+        env: dict[str, Any] | None = None,
+        sid: str | None = None,
+        authentication: dict[str, Any] | None = None,
+        state: dict[str, Any] | SessionData | None = None,
+    ) -> SessionHandle:
         """Apre una sessione, riprendendo lo stato puro prodotto da `to_dict()`."""
         restored = None
         if state is not None:
@@ -482,11 +517,11 @@ class Interpreter:
 
     # ── ciclo di vita ────────────────────────────────────────────────────────
 
-    async def start(self):
+    async def start(self) -> Interpreter:
         self._started = True
         return self
 
-    async def stop(self):
+    async def stop(self) -> None:
         for executions in tuple(self.session_executions.values()):
             for session in tuple(executions.values()):
                 await self.runner.close_session(session)
@@ -499,8 +534,13 @@ class Interpreter:
         self.session_envs.clear()
         self._started = False
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Interpreter:
         return await self.start()
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         await self.stop()

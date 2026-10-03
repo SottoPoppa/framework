@@ -1,5 +1,7 @@
 import inspect
 import json
+from typing import Any
+
 import framework.port.actuation as actuation
 import framework.core.flow as flow
 
@@ -28,10 +30,12 @@ class Adapter(actuation.Port):
     # Ciclo di Vita (Start / Stop)
     # ------------------------------------------------------------------
 
+    @flow.result(inputs=("session", "actuator"))
     async def start(self, *services, **constants):
         """Inizializza il registry delle funzioni ed eventuali collegamenti."""
         return True
 
+    @flow.result(inputs=("session", "actuator"))
     async def stop(self, *services, **constants):
         """Svuota il registro delle funzioni registrate."""
         self._registry.clear()
@@ -88,6 +92,7 @@ class Adapter(actuation.Port):
     # Implementazione del Contratto Actuator.Port
     # ------------------------------------------------------------------
 
+    @flow.result(inputs=("session", "actuator"))
     async def execute(self, *services, **constants):
         """Esegue una funzione richiesta dal Function Calling dell'LLM.
         
@@ -141,8 +146,20 @@ class Adapter(actuation.Port):
                 "message": f"Errore durante l'esecuzione: {str(e)}"
             }
 
-    async def set_state(self, *services, **constants):
+    @flow.result(inputs=("session", "actuator"))
+    async def set_state(
+        self,
+        session: Any = None,
+        state: dict[str, Any] | None = None,
+        **constants: Any,
+    ) -> dict[str, Any]:
         """Imposta lo stato di una feature o proprietà passando per un tool dedicato."""
+        if state is not None:
+            if not isinstance(state, dict):
+                raise TypeError("state deve essere un dict.")
+            self._last_state.update(state)
+            return {"status": "updated", "state": state}
+
         key = constants.get("key")
         value = constants.get("value")
         if key:
@@ -150,14 +167,24 @@ class Adapter(actuation.Port):
             return {"status": "updated", "key": key, "value": value}
         return {"status": "ignored"}
 
-    async def get_state(self, *services, **constants):
+    @flow.result(inputs=("session", "actuator"))
+    async def get_state(self, *services: Any, **constants: Any) -> dict[str, Any]:
         """Restituisce lo stato dell'ultima esecuzione o stato registrato."""
         return self._last_state
 
-    async def toggle_feature(self, *services, **constants):
+    @flow.result(inputs=("session", "actuator"))
+    async def toggle_feature(
+        self,
+        session: Any = None,
+        feature_name: str | None = None,
+        enabled: bool | None = None,
+        **constants: Any,
+    ) -> dict[str, Any]:
         """Abilita o disabilita una specifica funzione del registro."""
-        feature_name = constants.get("feature_name")
-        enabled = constants.get("enabled", True)
+        if feature_name is None:
+            feature_name = constants.get("feature_name")
+        if enabled is None:
+            enabled = constants.get("enabled", True)
         if feature_name:
             self._enabled_features[feature_name] = enabled
             return {"feature": feature_name, "enabled": enabled}

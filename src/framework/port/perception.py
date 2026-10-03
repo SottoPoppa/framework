@@ -1,11 +1,12 @@
-from abc import ABC, abstractmethod
+from typing import Any, Protocol
 
-class port(ABC):
 
-    @abstractmethod
-    def loader(self,*services,**constants):
-        pass
+class Port(Protocol):
+    def loader(self, *services: Any, **constants: Any) -> None:
+        ...
 
-    @abstractmethod
-    async def process(self,*services,**constants):
-        pass
+    async def process(self, *services: Any, **constants: Any) -> Any:
+        ...
+
+
+port = Port
