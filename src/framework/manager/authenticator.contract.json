@@ -23,28 +23,28 @@
   "hashes": {
     "Manager": {
       "activate": {
-        "production": "f8cfe855e1c917ae5f754b07a6a43ee2eb8d2fcfe3efaaccb5c3f800629d6377",
-        "test": "f8cfe855e1c917ae5f754b07a6a43ee2eb8d2fcfe3efaaccb5c3f800629d6377"
+        "production": "d29afe9720c553739ce352787b6eac1f738e221aa5b2e99e3a8359e3fb6e4e1a",
+        "test": "f2076064ab5d7be4fe0138671507351354cb08c17bf3d293f91979bc556e3120"
       },
       "authenticate": {
-        "production": "7b1085de7305a82ddf3f08bd976edd052df339f53d05abefa1ec609c42c07f2b",
-        "test": "7b1085de7305a82ddf3f08bd976edd052df339f53d05abefa1ec609c42c07f2b"
+        "production": "4907ac63589241a93972805c69b6b60900f37df50ef3c04fcc1283bb17e4e7d4",
+        "test": "94ead0a8d70b3b2094e3b3595ff9b73fba3b24ef12c346cd6600b3684292b301"
       },
       "invalidate": {
-        "production": "61e01e6110ce9b7dbefb5260a1014c9e8325c01adc5598d6c9f8d604fa1dac9c",
-        "test": "61e01e6110ce9b7dbefb5260a1014c9e8325c01adc5598d6c9f8d604fa1dac9c"
+        "production": "a0043a571b9f3ffc6e6ada36ce2d6970d5c5f21a56382073cd6476fbc89d1f7a",
+        "test": "c871a4dbd76b49890ad279a80888a0ee099dba68914da8d383ce612eba128166"
       },
       "regenerate": {
-        "production": "802ada6631df4a8f82b12855a7bfae577ad7fe4efb4cc92850e39af428d5de98",
-        "test": "802ada6631df4a8f82b12855a7bfae577ad7fe4efb4cc92850e39af428d5de98"
+        "production": "d641ed03333e72d289d7f823896db27105f2026d93af5d9cadf3ff7f97fb03a2",
+        "test": "7cdf3488f2999de1b09a8ed6fde5f81d240625f603e015273d78d7c0d3012103"
       },
       "shutdown": {
-        "production": "176d8e32d89a7d650c54edc12fb9e5f8be08d59bf689fe04df011eead274b665",
-        "test": "176d8e32d89a7d650c54edc12fb9e5f8be08d59bf689fe04df011eead274b665"
+        "production": "251e715d7a92ea79d706572e3650a6901f6e2e420ef321d371e367e09d904bc1",
+        "test": "251e715d7a92ea79d706572e3650a6901f6e2e420ef321d371e367e09d904bc1"
       },
       "startup": {
-        "production": "bced058ae4422ad71c5bd508a2f7501417f19b91250ddcd8e244f4bbdc3ce1c1",
-        "test": "bced058ae4422ad71c5bd508a2f7501417f19b91250ddcd8e244f4bbdc3ce1c1"
+        "production": "fe262f0230d8e284c1c5be27f7a2f8f40ecbddc683114df8538d96d9d53f514f",
+        "test": "fe262f0230d8e284c1c5be27f7a2f8f40ecbddc683114df8538d96d9d53f514f"
       }
     }
   }

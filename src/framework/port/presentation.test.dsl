@@ -85,7 +85,7 @@ tuple:test_suite := (
     },
     {
         "action": exports.rebuild;
-        "inputs": (imports.module.Port, "missing");
+        "inputs": (imports.module.Port, none, "missing");
         "outputs": none;
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Presentation Port espone rebuild come hook astratto";

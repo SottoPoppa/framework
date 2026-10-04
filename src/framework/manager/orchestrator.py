@@ -1,7 +1,7 @@
 import asyncio
 import inspect
-from typing import List, Dict, Any, Callable
-import re
+from collections.abc import Awaitable, Callable
+from typing import Any, Dict, List, cast
 import traceback
 
 import framework.core.interpreter as interpreter
@@ -13,24 +13,26 @@ import framework.port.manager as manager
 
 class Manager(manager.Port):
     _session_exempt_methods = {"_select_provider"}
-    def __init__(self, messenger: messenger.Manager,**constants):
-        self.defender = constants.get('defender')
-        self.messenger = constants.get('messenger')
+    def __init__(
+        self, messenger: messenger.Manager, **constants: Any
+    ) -> None:
+        self.defender: Any = constants.get('defender')
+        self.messenger: Any = constants.get('messenger')
         self.interpreter = interpreter.Interpreter(scheme.schemes)
         self.logger = get_logger("orchestrator")
-        self._background_tasks: set[asyncio.Task] = set()
+        self._background_tasks: set[asyncio.Task[Any]] = set()
 
     # ── INTERPRETER ────────────────────────────────────────────────────────────────
 
-    async def stop(self, session):
-        tasks = list(self._background_tasks)
+    async def stop(self, session: Any) -> None:
+        tasks: list[asyncio.Task[Any]] = list(self._background_tasks)
         for task in tasks:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         await self.interpreter.stop()
     
-    async def start(self, session):
+    async def start(self, session: Any) -> None:
         
         '''await self.interpreter.start()
         codice_dsl = """
@@ -87,51 +89,50 @@ class Manager(manager.Port):
         except Exception as e:
             print(f"Errore durante l'esecuzione: {e}")'''
 
-    async def load_file(self, session, name, source):
+    async def load_file(self, session: Any, name: str, source: Any) -> Any:
         return await self.interpreter.load_file(name, source)
 
-    def _runtime_session(self, session, env=None):
+    def _runtime_session(
+        self, session: Any, env: Any = None
+    ) -> Any:
         if callable(getattr(session, "run", None)) and callable(
             getattr(session, "emit", None)
         ):
             return session
 
-        session_data = getattr(session, "session_data", session)
-        session_id = (
-            session_data.get("id")
-            if isinstance(session_data, dict)
-            else getattr(session_data, "id", session_data)
-        )
-        state = session_data.to_dict() if callable(
-            getattr(session_data, "to_dict", None)
-        ) else session_data if isinstance(session_data, dict) else None
+        session_data: Any = getattr(session, "session_data", session)
+        if isinstance(session_data, dict):
+            session_state = cast(dict[str, Any], session_data)
+            session_id = session_state.get("id")
+            state: Any = session_state
+        else:
+            session_id = getattr(session_data, "id", session_data)
+            state_getter = getattr(session_data, "to_dict", None)
+            state = state_getter() if callable(state_getter) else None
         return self.interpreter.open_session(
             env=env,
             sid=session_id,
             state=state,
         )
 
-    async def open_session(self, session, env=None):
+    async def open_session(self, session: Any, env: Any = None) -> Any:
         return self._runtime_session(session, env)
 
-    async def run(self, session, file, env=None):
+    async def run(self, session: Any, file: str, env: Any = None) -> Any:
         return await self._runtime_session(session).run(file, env or {})
         
     # ── PROVIDER ────────────────────────────────────────────────────────────────
 
     def _select_provider(self, requirements: Dict[str, Any]) -> Any:
         """Seleziona il provider che meglio soddisfa i requirements."""
-        if not self.providers:
+        providers: list[Any] = getattr(self, "providers", [])
+        if not providers:
             return None
             
         if not requirements:
-            return self.providers[-1] # Default behavior (last one) or first? Original code used -1.
+            return providers[-1] # Default behavior (last one) or first? Original code used -1.
             
-        best_provider = None
-        best_score = -1
-        
-        for provider in self.providers:
-            score = 0
+        for provider in providers:
             capabilities = getattr(provider, 'capabilities', {})
             
             # Calcola score basato su requirements e capabilities
@@ -150,21 +151,23 @@ class Manager(manager.Port):
                 
         # Se nessun match esatto, ritorna l'ultimo (fallback) o None?
         # Per ora fallback all'ultimo come comportamento di default
-        return self.providers[-1]
+        return providers[-1]
 
     # ── API ────────────────────────────────────────────────────────────────
 
     @flow.result()
-    async def first_completed(self, session, **constants):
+    async def first_completed(
+        self, session: Any, **constants: Any
+    ) -> Any:
         """Attende il primo task completato e restituisce il suo risultato."""
-        operations = [
+        operations: list[asyncio.Future[Any]] = [
             asyncio.ensure_future(operation)
             for operation in constants.get("operations", [])
         ]
         if not operations:
             return None
-        errors = []
-        pending = set(operations)
+        errors: list[Any] = []
+        pending: set[asyncio.Future[Any]] = set(operations)
         try:
             while pending:
                 finished, pending = await asyncio.wait(
@@ -175,7 +178,7 @@ class Manager(manager.Port):
                     if operation not in finished:
                         continue
                     try:
-                        transaction = operation.result()
+                        transaction: Any = operation.result()
                     except asyncio.CancelledError:
                         continue
                     except Exception as exc:
@@ -197,10 +200,12 @@ class Manager(manager.Port):
                             continue
                         transaction = flow.output(transaction)
 
-                    success = constants.get("success")
+                    success: Any = constants.get("success")
                     if callable(success):
                         try:
-                            transaction = await success(
+                            transaction = await cast(
+                                Callable[..., Awaitable[Any]], success
+                            )(
                                 transaction=transaction,
                                 profile=getattr(operation, "get_name", lambda: None)(),
                             )
@@ -224,7 +229,9 @@ class Manager(manager.Port):
 
                     return flow.success(transaction)
 
-            error_msg = errors or "Nessuna transazione valida completata"
+            error_msg: str | list[Any] = (
+                errors or "Nessuna transazione valida completata"
+            )
             self.logger.warning(
                 "Orchestrator: first_completed senza risultato valido",
                 errors=error_msg,
@@ -238,11 +245,13 @@ class Manager(manager.Port):
                 await asyncio.gather(*operations, return_exceptions=True)
 
     @flow.result()
-    async def all_completed(self, session, **constants) -> Dict[str, Any]:
-        tasks: List[asyncio.Future] = constants.get('tasks', [])
+    async def all_completed(
+        self, session: Any, **constants: Any
+    ) -> Dict[str, Any]:
+        tasks: List[asyncio.Future[Any]] = constants.get('tasks', [])
     
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        detailed_errors = []
+        results: list[Any] = await asyncio.gather(*tasks, return_exceptions=True)
+        detailed_errors: list[Any] = []
         for result in results:
             if isinstance(result, BaseException):
                 self.logger.error(
@@ -261,8 +270,10 @@ class Manager(manager.Port):
                         error=error,
                     )
                 continue
-            if isinstance(result, dict) and result.get("success") is False:
-                detailed_errors.append(result.get("error", result))
+            if isinstance(result, dict):
+                result_data = cast(dict[str, Any], result)
+                if result_data.get("success") is False:
+                    detailed_errors.append(result_data.get("error", result_data))
 
         if detailed_errors:
             self.logger.warning("Orchestrator: all_completed fallito", tasks=len(tasks))
@@ -271,13 +282,15 @@ class Manager(manager.Port):
         return flow.success({"results": results})
 
     @flow.result()
-    async def chain_completed(self, session, **constants) -> Dict[str, Any]:
+    async def chain_completed(
+        self, session: Any, **constants: Any
+    ) -> Dict[str, Any]:
         """Esegue i task in sequenza, aspettando il completamento di ciascuno prima di passare al successivo."""
-        tasks = constants.get('tasks', [])
-        results = []
+        tasks: list[Any] = constants.get('tasks', [])
+        results: list[Any] = []
         for task in tasks:
             try:
-                result = await task(**constants)
+                result: Any = await task(**constants)
             except Exception as exc:
                 self.logger.error(
                     "Orchestrator: chain_completed fallito",
@@ -293,23 +306,29 @@ class Manager(manager.Port):
                     )
                     return result
                 result = flow.output(result)
-            elif isinstance(result, dict) and result.get("success") is False:
-                self.logger.error(
-                    "Orchestrator: task sequenziale fallito",
-                    error=result.get("error", result),
-                )
-                return flow.error(result.get("error", result))
+            elif isinstance(result, dict):
+                result_data = cast(dict[str, Any], result)
+                if result_data.get("success") is False:
+                    error_value: Any = result_data.get("error", result_data)
+                    failure: flow.FlowResult = flow.error(error_value)
+                    self.logger.error(
+                        "Orchestrator: task sequenziale fallito",
+                        error=error_value,
+                    )
+                    return failure
             results.append(result)
 
         return flow.success({"state": True, "result": results, "error": None})
 
     @flow.result()
-    async def together_completed(self, session, **constants) -> Dict[str, Any]:
+    async def together_completed(
+        self, session: Any, **constants: Any
+    ) -> Dict[str, Any]:
         """Esegue tutti i task contemporaneamente senza attendere il completamento di tutti."""
-        tasks = constants.get('tasks', [])
+        tasks: list[Any] = constants.get('tasks', [])
         try:
             for task in tasks:
-                awaitable = task(**constants) if callable(task) else task
+                awaitable: Any = task(**constants) if callable(task) else task
                 if not inspect.isawaitable(awaitable):
                     raise TypeError(f"Task non awaitable: {task!r}")
                 background = asyncio.ensure_future(awaitable)
@@ -321,7 +340,7 @@ class Manager(manager.Port):
             self.logger.error("Orchestrator: together_completed fallito", exception=e)
             return flow.error(e)
 
-    def _background_completed(self, task: asyncio.Task) -> None:
+    def _background_completed(self, task: asyncio.Task[Any]) -> None:
         self._background_tasks.discard(task)
         if task.cancelled():
             return

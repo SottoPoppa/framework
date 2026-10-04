@@ -13,35 +13,35 @@ exports: {
 tuple:test_suite := (
     {
         "action": exports.sign_in;
-        "inputs": (imports.module.Port, "user@example.com", "secret");
+        "inputs": (imports.module.Port, {"id": "test-session"; "context": {}; "authentication": {}; "results": {}}, "user@example.com", "secret");
         "outputs": none;
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Authentication Port espone sign_in come hook astratto";
     },
     {
         "action": exports.sign_up;
-        "inputs": (imports.module.Port, "user@example.com", "secret");
+        "inputs": (imports.module.Port, {"id": "test-session"; "context": {}; "authentication": {}; "results": {}}, "user@example.com", "secret");
         "outputs": none;
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Authentication Port espone sign_up come hook astratto";
     },
     {
         "action": exports.sign_out;
-        "inputs": (imports.module.Port, "session");
+        "inputs": (imports.module.Port, {"id": "test-session"; "context": {}; "authentication": {}; "results": {}});
         "outputs": none;
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Authentication Port espone sign_out come hook astratto";
     },
     {
         "action": exports.sign_aid;
-        "inputs": (imports.module.Port, "user@example.com");
+        "inputs": {"args": (imports.module.Port, {"id": "test-session"; "context": {}; "authentication": {}; "results": {}}); "kwargs": {"email": "user@example.com"}};
         "outputs": none;
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Authentication Port espone sign_aid come hook astratto";
     },
     {
         "action": exports.get_user;
-        "inputs": (imports.module.Port, "session");
+        "inputs": (imports.module.Port, {"id": "test-session"; "context": {}; "authentication": {}; "results": {}});
         "outputs": none;
         "assert": @received.is_success == true & @received.output.value == @expected;
         "note": "Authentication Port espone get_user come hook astratto";

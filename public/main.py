@@ -11,10 +11,11 @@ sys.path.insert(1, cwd + '/src')
 
 import framework.core.framework as framework
 import framework.core.flow as flow
+from framework.service.diagnostic import ComponentLogger
 
 
 
-def setup_core_dependencies():
+def setup_core_dependencies() -> None:
     subprocess.run(
         [
             sys.executable,
@@ -27,7 +28,7 @@ def setup_core_dependencies():
         check=True,
     )
 
-def run_pyright(logger):
+def run_pyright(logger: ComponentLogger) -> bool:
     executable = os.path.join(cwd, "venv", "bin", "pyright")
     try:
         subprocess.run([executable], cwd=cwd, check=True)
@@ -46,7 +47,7 @@ async def main(config: dict[str, Any]) -> Any:
         main_logger.info("Avvio CLI", config=config)
 
     if config.get("verify"):
-        conflicting_modes = []
+        conflicting_modes: list[str] = []
         if config.get("setup"):
             conflicting_modes.append("--setup")
         if config.get("install"):
@@ -84,8 +85,15 @@ async def main(config: dict[str, Any]) -> Any:
     app = await framework_instance.bootstrap(config)
     main_logger.info("Bootstrap framework: completato")
     try:
+        loader = framework_instance.loader
+        if loader is None:
+            raise RuntimeError("Loader non inizializzato dopo il bootstrap")
+
         if config.get('test_integration') is not None:
-            tester = framework_instance.loader.get_managers().get('tester')
+            tester = loader.get_managers().get('tester')
+            if tester is None:
+                main_logger.error("Manager tester non registrato")
+                return False
             result = await tester.run_integration(
                 app._session,
                 filter=config.get('test_integration'),
@@ -93,7 +101,10 @@ async def main(config: dict[str, Any]) -> Any:
             return flow.output(result)
 
         if config.get('test') is not None:
-            tester = framework_instance.loader.get_managers().get('tester')
+            tester = loader.get_managers().get('tester')
+            if tester is None:
+                main_logger.error("Manager tester non registrato")
+                return False
             result = await tester.run(
                 app._session,
                 filter=config.get('test'),

@@ -2,6 +2,7 @@
 
 from abc import ABC
 import inspect
+from typing import Any
 
 
 class Port(ABC):
@@ -9,11 +10,11 @@ class Port(ABC):
 
     _session_exempt_methods: set[str] = set()
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
-        exempt = set().union(
-            *(getattr(base, "_session_exempt_methods", set()) for base in cls.__mro__)
-        )
+        exempt: set[str] = set()
+        for base in cls.__mro__:
+            exempt.update(getattr(base, "_session_exempt_methods", set()))
         exempt.update(getattr(cls, "_session_exempt_methods", set()))
 
         for name, method in cls.__dict__.items():

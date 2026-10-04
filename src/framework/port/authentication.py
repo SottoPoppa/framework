@@ -2,6 +2,7 @@ from abc import abstractmethod
 from typing import Any, Callable, Protocol
 
 import framework.core.flow as flow
+from framework.core.session import SessionData
 
 class Port(Protocol):
     name: str
@@ -16,10 +17,10 @@ class Port(Protocol):
 
     # Mappa: nome_metodo -> decoratore da applicare automaticamente
     _method_decorators: dict[str, Callable[..., Any]] = {
-        "sign_in":      flow.result(inputs=("email", "password")),
-        "sign_up":      flow.result(inputs=("email", "password")),
+        "sign_in":      flow.result(inputs=("session", "email", "password")),
+        "sign_up":      flow.result(inputs=("session", "email", "password")),
         "sign_out":     flow.result(inputs=("session",),          outputs=("session",)),
-        "sign_aid":     flow.result(),
+        "sign_aid":     flow.result(inputs=("session",), outputs=("session",)),
         "get_user": flow.result(inputs=("session",)),
     }
 
@@ -34,26 +35,26 @@ class Port(Protocol):
 
     @abstractmethod
     async def sign_in(
-        self, email: str, password: str
+        self, session: SessionData, email: str, password: str
     ) -> flow.FlowResult:
         ...
 
     @abstractmethod
     async def sign_up(
-        self, email: str, password: str
+        self, session: SessionData, email: str, password: str
     ) -> flow.FlowResult:
         ...
 
     @abstractmethod
-    async def sign_out(self, session: dict[str, Any]) -> flow.FlowResult:
+    async def sign_out(self, session: SessionData) -> flow.FlowResult:
         ...
 
     @abstractmethod
-    async def get_user(self, session: dict[str, Any]) -> flow.FlowResult:
+    async def get_user(self, session: SessionData) -> flow.FlowResult:
         ...
 
     @abstractmethod
     async def sign_aid(
-        self, *, email: str, **constants: Any
+        self, session: SessionData, *, email: str, **constants: Any
     ) -> flow.FlowResult:
         ...

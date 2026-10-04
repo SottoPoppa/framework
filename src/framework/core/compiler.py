@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from .ast import ASTNode, Declaration, Task
 
@@ -169,7 +169,9 @@ class Compiler:
                         prefix=f"{prefix}.{key_name}",
                     )
 
-    def _task_options(self, trigger, expr, task_name):
+    def _task_options(
+        self, trigger: Any, expr: Any, task_name: str
+    ) -> tuple[bool, tuple[str, ...], str | None]:
         options = getattr(trigger, "kwargs", {})
         entry = self._literal(options.get("entry"), True)
         declared_deps = options.get("deps")
@@ -178,7 +180,7 @@ class Compiler:
             if deps_value is False:
                 deps = ()
             elif isinstance(deps_value, (list, tuple, set)):
-                deps = tuple(str(dep) for dep in deps_value)
+                deps = tuple(str(dep) for dep in cast(Any, deps_value))
             else:
                 deps = (str(deps_value),)
         else:
@@ -186,9 +188,9 @@ class Compiler:
         on_end = self._literal(options.get("on_end"))
         return bool(entry), deps, on_end if isinstance(on_end, str) else None
 
-    def _task_metadata(self, trigger):
+    def _task_metadata(self, trigger: Any) -> dict[str, Any]:
         options = getattr(trigger, "kwargs", {})
-        metadata = {}
+        metadata: dict[str, Any] = {}
         if "default" in options:
             metadata["default"] = self._expr(options["default"])
         for key in ("source", "on_event"):
@@ -196,7 +198,7 @@ class Compiler:
                 metadata[key] = self._literal(options[key])
         return metadata
 
-    def _output_names(self, expression) -> tuple[str, ...]:
+    def _output_names(self, expression: ASTNode) -> tuple[str, ...]:
         if isinstance(expression, (SequenceNode, TupleNode)):
             values = expression.items
         else:
@@ -207,7 +209,7 @@ class Compiler:
             if isinstance(value, (Var, ContextVar))
         )
 
-    def _literal(self, value, default=None):
+    def _literal(self, value: Any, default: Any = None) -> Any:
         if value is None:
             return default
         if isinstance(value, (BoolLiteral, NumberLiteral, StringLiteral, AnyVal)):
@@ -216,9 +218,11 @@ class Compiler:
             return [self._literal(item) for item in value.items]
         return value
 
-    def _typed_declarations(self, node: Any, path: tuple[str, ...] = ()) -> list[tuple[str, str]]:
+    def _typed_declarations(
+        self, node: Any, path: tuple[str, ...] = ()
+    ) -> list[tuple[str, str]]:
         """Raccoglie le dichiarazioni `type:name` con il loro percorso DSL."""
-        declarations = []
+        declarations: list[tuple[str, str]] = []
         if isinstance(node, Declaration):
             for type_name, value_name in node.targets:
                 if type_name and type_name != "type" and value_name:
@@ -234,7 +238,9 @@ class Compiler:
                 declarations.extend(self._typed_declarations(item, path))
         return declarations
 
-    def _declaration_entries(self, decl: Declaration) -> list[tuple[str, Any]]:
+    def _declaration_entries(
+        self, decl: Declaration
+    ) -> list[tuple[str, Any]]:
         value = self._expr(decl.value)
         entries: list[tuple[str, Any]] = []
         for target_pair in decl.targets:
@@ -289,7 +295,7 @@ class Compiler:
 
         # 5. Gestione Pipe (|>)
         if isinstance(v, PipeNode):
-            steps = getattr(v, "steps", [])
+            steps = v.steps
             if not steps:
                 return Literal(None)
 
@@ -298,9 +304,9 @@ class Compiler:
             for step in steps[1:]:
                 fn_name = None
                 if isinstance(step, (Var, ContextVar)):
-                    fn_name = step.name
+                    fn_name = step.name or ""
                 elif isinstance(step, FunctionCall):
-                    fn_name = step.name
+                    fn_name = step.name or ""
                 elif isinstance(step, str):
                     fn_name = step
                 else:
@@ -327,7 +333,7 @@ class Compiler:
 
         # 7. Oggetti Dict / Mappe
         if isinstance(v, DictNode):
-            res = {}
+            res: dict[str, Any] = {}
             for item in v.items:
                 if isinstance(item, Pair):
                     key_str = self._extract_key_name(item.key)
@@ -371,7 +377,7 @@ class Compiler:
             return {x.path.split(".")[0]}
 
         if isinstance(x, Call):
-            refs = set()
+            refs: set[str] = set()
             for a in x.arguments:
                 refs.update(self._refs(a))
             for v in x.keywords.values():
@@ -379,14 +385,16 @@ class Compiler:
             return refs
 
         if isinstance(x, (list, tuple)):
-            refs = set()
-            for item in x:
+            refs: set[str] = set()
+            items = cast(list[Any] | tuple[Any, ...], x)
+            for item in items:
                 refs.update(self._refs(item))
             return refs
 
         if isinstance(x, dict):
-            refs = set()
-            for v in x.values():
+            refs: set[str] = set()
+            values = cast(dict[Any, Any], x)
+            for v in values.values():
                 refs.update(self._refs(v))
             return refs
 

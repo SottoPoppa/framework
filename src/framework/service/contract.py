@@ -1,7 +1,9 @@
 import os
 from pathlib import Path
 import json
-from typing import Any
+from collections.abc import Iterable
+from types import ModuleType
+from typing import Any, cast
 from framework.service.diagnostic import get_logger
 
 
@@ -62,7 +64,7 @@ class Contract:
             return {}
         try:
             content = Path(path).read_text(encoding="utf-8").strip()
-            data = json.loads(content) if content else {}
+            data = json.loads(content) if content else cast(dict[str, Any], {})
         except (OSError, UnicodeError, json.JSONDecodeError) as error:
             raise ValueError(
                 f"Contratto JSON non leggibile '{path}': {error}"
@@ -71,15 +73,17 @@ class Contract:
             raise ValueError(
                 f"Contratto JSON non valido '{path}': la radice deve essere un oggetto"
             )
-        return data
+        return cast(dict[str, Any], data)
 
     @staticmethod
-    def write(path: str, data: dict) -> None:
-        def json_safe(value):
+    def write(path: str, data: dict[str, Any]) -> None:
+        def json_safe(value: Any) -> Any:
             if isinstance(value, dict):
-                return {str(key): json_safe(item) for key, item in value.items()}
+                mapping = cast(dict[Any, Any], value)
+                return {str(key): json_safe(item) for key, item in mapping.items()}
             if isinstance(value, (list, tuple, set)):
-                return [json_safe(item) for item in value]
+                items = cast(list[Any] | tuple[Any, ...] | set[Any], value)
+                return [json_safe(item) for item in items]
             return value
 
         target = Path(path)
@@ -91,25 +95,24 @@ class Contract:
         temporary.replace(target)
 
     @staticmethod
-    def _export_names(
-        exports: list[str] | dict[str, str | list[str]] | None,
-    ) -> list[str] | None:
+    def _export_names(exports: Any) -> list[str] | None:
         if exports is None:
             return None
         if isinstance(exports, dict):
-            names = []
-            for methods in exports.values():
+            export_map = cast(dict[str, Any], exports)
+            names: list[str] = []
+            for methods in export_map.values():
                 if isinstance(methods, list):
-                    names.extend(methods)
+                    names.extend(cast(list[str], methods))
                 elif isinstance(methods, str):
                     names.append(methods)
             return sorted(set(names))
         if isinstance(exports, list):
-            return sorted(set(exports))
+            return sorted(set(cast(list[str], exports)))
         raise ValueError("'exports' deve essere una lista o un dizionario")
 
     @staticmethod
-    def _entry(hashes: dict, name: str) -> dict:
+    def _entry(hashes: dict[str, Any], name: str) -> dict[str, Any]:
         """Ritorna il dict {test, production} per un componente, annidando
         sotto il nome della classe quando `name` è 'ClasseName.metodo'."""
         if "." in name:
@@ -154,7 +157,11 @@ class Contract:
         Contract.write(path, contract)
 
     @staticmethod
-    def verify_module(source_path: str, module, strict: bool) -> bool:
+    def verify_module(
+        source_path: str,
+        module: ModuleType,
+        strict: bool,
+    ) -> bool:
         import framework.service.introspection as introspection
         """Chiamato al caricamento di qualunque componente: se esiste un
         contratto accanto al file, verifica ogni suo componente pubblico
@@ -182,11 +189,13 @@ class Contract:
         if not components and names is None:
             return True
 
-        hashes = contract.setdefault("hashes", {})
+        hashes = cast(dict[str, Any], contract.setdefault("hashes", {}))
 
-        missing = []
-        modified = []
-        names_to_verify = names if names is not None else components.keys()
+        missing: list[str] = []
+        modified: list[str] = []
+        names_to_verify: Iterable[str] = (
+            names if names is not None else components.keys()
+        )
         for name in names_to_verify:
             source = components.get(name)
             if source is None:

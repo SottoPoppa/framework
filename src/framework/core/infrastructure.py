@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from jinja2 import Environment
 from framework.service.diagnostic import get_logger
 import framework.service.scheme as scheme
@@ -49,12 +49,10 @@ class Infrastructure:
     def render_jinja(
         self,
         target: str,
-        context: Optional[dict] = None,
-        environment: Optional[Any] = None,
+        context: dict[str, Any] | None = None,
+        environment: Environment | None = None,
     ) -> str:
         """Renderizza una stringa Jinja con i global registrati in Infrastructure."""
-        if not isinstance(target, str):
-            return target
         if "{{" not in target and "{%" not in target and "{#" not in target:
             return target
 

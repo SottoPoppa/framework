@@ -14,8 +14,8 @@ class Manager(manager.Port):
     def __init__(
         self,
         messages: list[message.Port],
-        defender: Defender,
-        framework: framework_module.Framework,
+        defender: Defender | None,
+        framework: framework_module.Framework | None,
         **constants: Any,
     ) -> None:
         self.defender = defender
@@ -44,8 +44,7 @@ class Manager(manager.Port):
             provider
             for provider in self.providers
             if (
-                (receiver is None
-                    or provider.config.get('name') == receiver
+                (provider.config.get('name') == receiver
                     or provider.adapter == receiver)
                 and (adapter is None or provider.adapter == adapter)
             )
@@ -53,6 +52,7 @@ class Manager(manager.Port):
 
     async def _authorized_provider(
         self,
+        session: Any,
         action: str,
         provider: message.Port,
         destination: str | None,
@@ -68,6 +68,7 @@ class Manager(manager.Port):
             "receiver": destination,
         })
         return await self.defender.authorized(
+            session,
             "message",
             action=action,
             request=request,
@@ -94,9 +95,17 @@ class Manager(manager.Port):
                     domain=domain,
                 )
                 return flow.error("Controller DSL non trovato")
+            if not domain:
+                self.logger.warning(
+                    "Messenger: nodo controller DSL non specificato",
+                    receiver=destination,
+                )
+                return flow.error("Nodo controller DSL non specificato")
             request = dict(constants)
             request.update({"adapter": "dsl", "provider": "dsl", "receiver": destination})
-            if not await self.defender.authorized("message", action="publish", request=request):
+            if not await self.defender.authorized(
+                session, "message", action="publish", request=request
+            ):
                 self.logger.warning(
                     "Messenger: pubblicazione DSL non autorizzata",
                     receiver=destination,
@@ -145,7 +154,9 @@ class Manager(manager.Port):
         authorized_count = 0
         for provider in matched:
             provider_name = provider.config.get("name") or provider.adapter
-            authorized = await self._authorized_provider("publish", provider, destination, constants)
+            authorized = await self._authorized_provider(
+                session, "publish", provider, destination, constants
+            )
             if not authorized:
                 self.logger.warning(
                     "Messenger: provider non autorizzato",
@@ -192,7 +203,7 @@ class Manager(manager.Port):
         return failure or flow.success()
 
     @staticmethod
-    def _as_session_data(session):
+    def _as_session_data(session: Any) -> Any:
         """Estrae lo snapshot puro dagli handle runtime legacy."""
         return getattr(session, "session_data", session)
 
@@ -242,7 +253,9 @@ class Manager(manager.Port):
         authorized: list[message.Port] = []
         for provider in matched:
             provider_name = provider.config.get("name") or provider.adapter
-            if await self._authorized_provider("subscribe", provider, destination, constants):
+            if await self._authorized_provider(
+                session, "subscribe", provider, destination, constants
+            ):
                 authorized.append(provider)
                 continue
             self.logger.warning(
@@ -275,8 +288,8 @@ class Manager(manager.Port):
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
-            results = []
-            errors = []
+            results: list[flow.FlowResult] = []
+            errors: list[Exception] = []
             for task in tasks:
                 if task not in done:
                     continue
@@ -304,9 +317,11 @@ class Manager(manager.Port):
                     domain=domain,
                     error=flow.output(result),
                 )
-            successful = [result for result in results if result not in failures]
+            successful: list[flow.FlowResult] = [
+                result for result in results if result not in failures
+            ]
 
-            message_results = [
+            message_results: list[flow.FlowResult] = [
                 result
                 for result in successful
                 if (flow.output(result) if flow.is_result(result) else result) is not None

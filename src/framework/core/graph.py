@@ -27,8 +27,6 @@ class Dag:
 
         # 2. Risoluzione dipendenze e costruzione adiacenze
         # Una dipendenza è valida se è un altro task oppure è definita nel contesto
-        context_keys = getattr(definition, 'context', {})
-
         for node in definition.nodes:
             for dep in node.deps:
                 # Costruiamo il grafo dei successori solo tra i nodi di esecuzione (task)

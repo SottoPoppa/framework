@@ -1,9 +1,10 @@
-from typing import Optional
+from typing import Any, Optional
 import json
 import supabase
 from types import MappingProxyType
 import re
 import framework.port.authentication as authentication
+from framework.core.session import SessionData
 
 _TYPE_MAP    = {"string":"text","integer":"integer","float":"numeric",
                 "boolean":"boolean","date":"date","datetime":"timestamp"}
@@ -171,7 +172,7 @@ class Adapter(authentication.Port):
         return supabase.create_client(self._url, self._key)
 
     def _authed_client(self, session):
-        tokens = session["providers"][self.name]["tokens"]
+        tokens = session["authentication"]["providers"][self.name]["tokens"]
         client = self._client()
         client.auth.set_session(
             tokens["access_token"],
@@ -181,7 +182,9 @@ class Adapter(authentication.Port):
 
     # ── port implementation ───────────────────────────────────────────────────
 
-    async def sign_up(self, email=None, password=None, **kwargs):
+    async def sign_up(
+        self, session: SessionData, email: str, password: str, **kwargs: Any
+    ):
         
         try:
             # Creiamo una copia per non sporcare l'oggetto originale
@@ -199,16 +202,16 @@ class Adapter(authentication.Port):
         except Exception as e:
             return authentication.flow.error(map_supabase_error(str(e)))
 
-    async def sign_in(self, email, password):
+    async def sign_in(self, session: SessionData, email: str, password: str):
         try:
             response  = self._client().auth.sign_in_with_password({"email": email, "password": password})
             return authentication.flow.success(map_auth_response(self.name,response))
         except Exception as e:
             return authentication.flow.error(map_supabase_error(str(e)))
 
-    async def sign_out(self, session):
+    async def sign_out(self, session: SessionData):
         try:
-            tokens = session['providers'][self.name]['tokens']
+            tokens = session["authentication"]["providers"][self.name]["tokens"]
             client = self._client()
             # IMPORTANTE: Passa sia access che refresh token se disponibili
             client.auth.set_session(tokens['access_token'], tokens.get('refresh_token', ""))
@@ -219,7 +222,7 @@ class Adapter(authentication.Port):
         except Exception as e:
             return authentication.flow.error(map_supabase_error(str(e)))
 
-    async def sign_aid(self, **kwargs):
+    async def sign_aid(self, session: SessionData, **kwargs: Any):
         try:
             match kwargs['type']:
                 case 'signup':
@@ -246,9 +249,9 @@ class Adapter(authentication.Port):
         except Exception as e:
             return authentication.flow.error(map_supabase_error(str(e)))
 
-    async def get_user(self, session):
+    async def get_user(self, session: SessionData):
         try:
-            tokens = session['providers'][self.name]['tokens']
+            tokens = session["authentication"]["providers"][self.name]["tokens"]
             client = self._client()
             client.auth.set_session(tokens['access_token'], tokens.get('refresh_token', ""))
             

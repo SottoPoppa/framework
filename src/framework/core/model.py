@@ -8,7 +8,11 @@ closure: può essere persistita e valutata in seguito da un altro interprete.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any, Callable, Iterable, Mapping, Self
+from typing import Any, Callable, Iterable, Mapping, Self, TypeGuard, cast as _cast
+
+
+def _empty_mapping() -> dict[str, Any]:
+    return {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,7 +55,7 @@ class Ref:
 class Call:
     function: str
     arguments: tuple[Any, ...] = ()
-    keywords: Mapping[str, Any] = field(default_factory=dict)
+    keywords: Mapping[str, Any] = field(default_factory=_empty_mapping)
     source: Source | None = None
 
 
@@ -91,7 +95,7 @@ class NodeDefinition:
     retry_delay: float = 0.0
     on_end: str | None = None
     outputs: tuple[str, ...] = ()
-    metadata: Mapping[str, Any] = field(default_factory=dict)
+    metadata: Mapping[str, Any] = field(default_factory=_empty_mapping)
     source: Source | None = None
 
 
@@ -99,9 +103,9 @@ class NodeDefinition:
 class DagDefinition:
     name: str
     nodes: tuple[NodeDefinition, ...]
-    context: Mapping[str, Any] = field(default_factory=dict)
+    context: Mapping[str, Any] = field(default_factory=_empty_mapping)
     triggers: tuple[TriggerDefinition, ...] = ()
-    metadata: Mapping[str, Any] = field(default_factory=dict)
+    metadata: Mapping[str, Any] = field(default_factory=_empty_mapping)
 
     @classmethod
     def from_nodes(
@@ -153,7 +157,7 @@ def encode(node: Any, encode_value: Callable[[Any], Any]) -> Any:
     `encode_value` codifica i valori annidati non-modello, così il codec non
     dipende dal modulo di sessione.
     """
-    kind = _KINDS.get(type(node))
+    kind = _KINDS.get(_cast(type[Any], type(node)))
     if kind is None:
         return None
 
@@ -180,17 +184,22 @@ def encode(node: Any, encode_value: Callable[[Any], Any]) -> Any:
     return {TAG: body}
 
 
-def is_encoded(value: Any) -> bool:
-    return isinstance(value, dict) and len(value) == 1 and TAG in value
+def is_encoded(value: Any) -> TypeGuard[dict[str, Any]]:
+    if not isinstance(value, dict):
+        return False
+    encoded = _cast(dict[str, Any], value)
+    return len(encoded) == 1 and TAG in encoded
 
 
 def decode(value: Any) -> Any:
     """Ricostruisce il modello da una struttura JSON taggata."""
     if isinstance(value, list):
-        return [decode(item) for item in value]
+        items = _cast(list[Any], value)
+        return [decode(item) for item in items]
     if not is_encoded(value):
         if isinstance(value, dict):
-            return {key: decode(item) for key, item in value.items()}
+            items = _cast(dict[Any, Any], value)
+            return {key: decode(item) for key, item in items.items()}
         return value
 
     body = value[TAG]
@@ -203,10 +212,11 @@ def decode(value: Any) -> Any:
     if kind == "ref":
         return Ref(body["path"], bool(body.get("deferrable")), source)
     if kind == "call":
+        raw_keywords = _cast(dict[str, Any], body.get("keywords") or {})
         return Call(
             body["function"],
             tuple(decode(item) for item in body.get("arguments", ())),
-            {str(k): decode(v) for k, v in (body.get("keywords") or {}).items()},
+            {str(key): decode(item) for key, item in raw_keywords.items()},
             source,
         )
     if kind == "deferred":

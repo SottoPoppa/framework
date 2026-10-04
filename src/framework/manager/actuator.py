@@ -8,6 +8,9 @@ Controllo di servizi o componenti software: Un “actuator” potrebbe attivare 
 Automazione di processi: L’actuator potrebbe automatizzare sequenze di operazioni, come l’avvio di backup, la sincronizzazione di dati o l’esecuzione di script.
 '''
 
+from collections.abc import Awaitable
+from typing import Any
+
 import framework.port.actuation as actuation
 import framework.port.manager as manager
 import framework.core.flow as flow
@@ -21,8 +24,8 @@ class Manager(manager.Port):
         actuators: list[actuation.Port],
         loader: Loader,
         framework: framework_module.Framework,
-        **constants,
-    ):
+        **constants: Any,
+    ) -> None:
         self.actuators = actuators
         self.loader = loader
         self.framework = framework
@@ -35,38 +38,33 @@ class Manager(manager.Port):
     # ------------------------------------------------------------------
 
     @flow.result(inputs=(), outputs=())
-    async def startup(self, session):
+    async def startup(self, session: Any) -> Any:
         """Inizializza ed avvia tutti gli adapter/porte attuatore registrati."""
-        loops = []
+        loops: list[Awaitable[Any]] = []
         self.logger.info("Actuator startup", active_actuators=len(self.actuators))
         
         for actuator in self.actuators:
-            if hasattr(actuator, "start"):
-                async def run_actuator(current=actuator):
-                    #exit(1)
-                    adapter_name = getattr(current, "name", None) or type(current).__name__
-                    self.logger.info("Avvio actuator adapter", adapter=adapter_name)
-                    result = await current.start(session)
-                    
-                    if flow.is_result(result) and not flow.check(result):
-                        raise RuntimeError(flow.output(result))
-                    return flow.output(result) if flow.is_result(result) else result
+            async def run_actuator(current: actuation.Port = actuator) -> Any:
+                adapter_name = getattr(current, "name", None) or type(current).__name__
+                self.logger.info("Avvio actuator adapter", adapter=adapter_name)
+                result = await current.start(session)
+                
+                if flow.is_result(result) and not flow.check(result):
+                    raise RuntimeError(flow.output(result))
+                return flow.output(result) if flow.is_result(result) else result
 
-                loops.append(run_actuator())
+            loops.append(run_actuator())
                 
         return loops
 
     @flow.result(inputs=(), outputs=())
-    async def shutdown(self, session):
+    async def shutdown(self, session: Any) -> Any:
         """Spegne in modo sicuro tutti i dispositivi/adapter attivi."""
         self.logger.info("Arresto in corso per gli attuatori...")
-        errors = []
+        errors: list[Any] = []
         for actuator in reversed(self.actuators):
-            stop = getattr(actuator, "stop", None)
-            if not callable(stop):
-                continue
             try:
-                result = await stop(session)
+                result = await actuator.stop(session)
             except Exception as exc:
                 errors.append(exc)
                 self.logger.error(
@@ -92,7 +90,13 @@ class Manager(manager.Port):
     # ------------------------------------------------------------------
 
     @flow.result(inputs=(), outputs=())
-    async def execute_command(self, session, device_id: str, command: str, **payload):
+    async def execute_command(
+        self,
+        session: Any,
+        device_id: str,
+        command: str,
+        **payload: Any,
+    ) -> Any:
         """Invia un comando diretto a un dispositivo hardware (es. valvola, motore, relè)."""
         target = self._get_actuator_driver(device_id)
         if not target:
@@ -105,7 +109,12 @@ class Manager(manager.Port):
         return None
 
     @flow.result(inputs=(), outputs=())
-    async def set_state(self, session, device_id: str, state: dict):
+    async def set_state(
+        self,
+        session: Any,
+        device_id: str,
+        state: dict[str, Any],
+    ) -> Any:
         """Imposta direttamente lo stato di un dispositivo (es. temperatura target, posizione valvola)."""
         target = self._get_actuator_driver(device_id)
         if target and hasattr(target, "set_state"):
@@ -117,14 +126,19 @@ class Manager(manager.Port):
     # ------------------------------------------------------------------
 
     @flow.result(inputs=(), outputs=())
-    async def set_maintenance_mode(self, session, enabled: bool):
+    async def set_maintenance_mode(self, session: Any, enabled: bool) -> Any:
         """Abilita o disabilita la modalità manutenzione nell'applicazione."""
         self._maintenance_mode = enabled
         self.logger.info("Stato manutenzione aggiornato", maintenance_mode=enabled)
         return {"maintenance_mode": self._maintenance_mode}
 
     @flow.result(inputs=(), outputs=())
-    async def toggle_feature(self, session, feature_name: str, enabled: bool):
+    async def toggle_feature(
+        self,
+        session: Any,
+        feature_name: str,
+        enabled: bool,
+    ) -> Any:
         """Abilita o disabilita al volo un componente software o una funzionalità."""
         self.logger.info("Feature toggle modificato", feature=feature_name, state=enabled)
         for actuator in self.actuators:
@@ -137,7 +151,12 @@ class Manager(manager.Port):
     # ------------------------------------------------------------------
 
     @flow.result(inputs=(), outputs=())
-    async def control_data_stream(self, session, stream_id: str, action: str):
+    async def control_data_stream(
+        self,
+        session: Any,
+        stream_id: str,
+        action: str,
+    ) -> Any:
         """Avvia o interrompe un flusso dati (es. streaming sensori, pipeline notifiche)."""
         action = action.lower()
         if action in ("start", "resume"):
@@ -153,7 +172,12 @@ class Manager(manager.Port):
     # ------------------------------------------------------------------
 
     @flow.result(inputs=(), outputs=())
-    async def run_task(self, session, task_name: str, **params):
+    async def run_task(
+        self,
+        session: Any,
+        task_name: str,
+        **params: Any,
+    ) -> Any:
         """Esegue/automatizza un task di sistema (backup, sync dati, script isolati)."""
         self.logger.info("Avvio automazione processo", task=task_name)
         
@@ -168,7 +192,10 @@ class Manager(manager.Port):
     # Helper Metodi Interni
     # ------------------------------------------------------------------
 
-    def _get_actuator_driver(self, device_id: str = None):
+    def _get_actuator_driver(
+        self,
+        device_id: str | None = None,
+    ) -> actuation.Port | None:
         """Recupera il driver/adapter specifico per il dispositivo richiesto."""
         if not device_id and self.actuators:
             return self.actuators[-1]

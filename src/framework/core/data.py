@@ -7,7 +7,7 @@ sessioni diverse dello stesso interprete.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterator
+from typing import Any, Dict, Iterator, cast as _cast
 
 
 class _Missing:
@@ -71,12 +71,13 @@ class Registry:
                     value = MISSING
                     break
                 if isinstance(value, dict):
-                    value = value.get(part, MISSING)
+                    value = _cast(dict[Any, Any], value).get(part, MISSING)
                 elif isinstance(value, (list, tuple)) and part.lstrip("-").isdigit():
                     index = int(part)
-                    value = value[index] if -len(value) <= index < len(value) else MISSING
+                    sequence = _cast(list[Any] | tuple[Any, ...], value)
+                    value = sequence[index] if -len(sequence) <= index < len(sequence) else MISSING
                 else:
-                    value = getattr(value, part, MISSING)
+                    value = getattr(_cast(Any, value), part, MISSING)
                 if value is MISSING:
                     break
             if value is not MISSING:

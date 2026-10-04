@@ -9,7 +9,7 @@ import asyncio
 import json
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, NoReturn, cast
 
 from framework.service.scheme import Scheme
 
@@ -24,6 +24,14 @@ class ImpureValueError(TypeError):
 _PRIMITIVES = (str, int, float, bool)
 
 
+def _empty_string_mapping() -> dict[str, str]:
+    return {}
+
+
+def _empty_value_mapping() -> dict[str, Any]:
+    return {}
+
+
 def pure_value(value: Any) -> Any:
     """Proietta un valore nella sua forma pura, rifiutando gli oggetti runtime."""
     if value is None or isinstance(value, _PRIMITIVES):
@@ -31,9 +39,11 @@ def pure_value(value: Any) -> Any:
     if isinstance(value, Enum):
         return pure_value(value.value)
     if isinstance(value, dict):
-        return {str(key): pure_value(item) for key, item in value.items()}
+        items = cast(dict[Any, Any], value)
+        return {str(key): pure_value(item) for key, item in items.items()}
     if isinstance(value, (list, tuple)):
-        return [pure_value(item) for item in value]
+        items = cast(list[Any] | tuple[Any, ...], value)
+        return [pure_value(item) for item in items]
     encoded = model.encode(value, pure_value)
     if encoded is not None:
         return encoded
@@ -60,8 +70,9 @@ def pure_mapping(mapping: Any) -> dict[str, Any]:
     """Proietta una mappa scartando le chiavi che contengono oggetti runtime."""
     if not isinstance(mapping, dict):
         return {}
+    items = cast(dict[Any, Any], mapping)
     projection: dict[str, Any] = {}
-    for key, value in mapping.items():
+    for key, value in items.items():
         try:
             projection[str(key)] = pure_value(value)
         except ImpureValueError:
@@ -82,45 +93,56 @@ class SessionData(Scheme):
 
     SCHEME = SESSION_DATA_SCHEME
 
-    def __init__(self, payload: dict[str, Any]):
+    def __init__(self, payload: Any):
         if not isinstance(payload, dict):
             raise TypeError("Lo stato della sessione deve essere una mappa")
+        payload_mapping = cast(dict[str, Any], payload)
         state = {
-            "id": str(payload.get("id") or ""),
-            "context": pure_value(payload.get("context") or {}),
-            "authentication": pure_value(payload.get("authentication") or {}),
-            "results": pure_value(payload.get("results") or {}),
+            "id": str(payload_mapping.get("id") or ""),
+            "context": pure_value(payload_mapping.get("context") or {}),
+            "authentication": pure_value(payload_mapping.get("authentication") or {}),
+            "results": pure_value(payload_mapping.get("results") or {}),
         }
         super().__init__(state)
 
-    def clear(self):
+    def clear(self) -> NoReturn:
         raise TypeError("SessionData è immutabile; usa evolve()")
 
-    def pop(self, key, default=None):
+    def pop(self, key: str, default: Any = None) -> NoReturn:
         raise TypeError("SessionData è immutabile; usa evolve()")
 
-    def popitem(self):
+    def popitem(self) -> NoReturn:
         raise TypeError("SessionData è immutabile; usa evolve()")
 
-    def setdefault(self, key, default=None):
+    def setdefault(self, key: str, default: Any = None) -> NoReturn:
         raise TypeError("SessionData è immutabile; usa evolve()")
 
-    def update(self, *args, **kwargs):
+    def update(self, *args: Any, **kwargs: Any) -> NoReturn:
         raise TypeError("SessionData è immutabile; usa evolve()")
 
-    def __ior__(self, other):
+    def __ior__(self, other: Any) -> NoReturn:
         raise TypeError("SessionData è immutabile; usa evolve()")
 
-    def evolve(self, **changes) -> "SessionData":
+    def evolve(self, **changes: Any) -> "SessionData":
         """Restituisce un nuovo snapshot validato con i campi aggiornati."""
         return SessionData(self.to_dict() | changes)
 
-    def get_result(self, dag_name: str, node_name: str, default=None):
+    def get_result(
+        self,
+        dag_name: str,
+        node_name: str,
+        default: Any = None,
+    ) -> Any:
         """Restituisce un risultato DAG senza esporre strutture mutabili."""
         dag_results = self["results"].get(str(dag_name), {})
         return dag_results.get(str(node_name), default)
 
-    def publish_result(self, dag_name: str, node_name: str, value: Any):
+    def publish_result(
+        self,
+        dag_name: str,
+        node_name: str,
+        value: Any,
+    ) -> "SessionData":
         """Restituisce uno snapshot con un risultato DAG puro pubblicato."""
         try:
             safe_value = pure_value(value)
@@ -130,7 +152,7 @@ class SessionData(Scheme):
         results.setdefault(str(dag_name), {})[str(node_name)] = safe_value
         return self.evolve(results=results)
 
-    def clear_result(self, dag_name: str, node_name: str):
+    def clear_result(self, dag_name: str, node_name: str) -> "SessionData":
         """Restituisce uno snapshot senza il risultato DAG indicato."""
         results = self.to_dict()["results"]
         dag_results = results.get(str(dag_name))
@@ -177,9 +199,9 @@ class ExecutionReport:
 
     dag: str
     id: str
-    states: dict[str, str] = field(default_factory=dict)
-    results: dict[str, Any] = field(default_factory=dict)
-    errors: dict[str, str] = field(default_factory=dict)
+    states: dict[str, str] = field(default_factory=_empty_string_mapping)
+    results: dict[str, Any] = field(default_factory=_empty_value_mapping)
+    errors: dict[str, str] = field(default_factory=_empty_string_mapping)
 
     def to_dict(self) -> dict[str, Any]:
         return {

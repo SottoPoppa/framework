@@ -116,7 +116,7 @@ def route(
         [],
     )
 
-    query_params = copy.deepcopy(
+    query_params: dict[str, list[str]] = copy.deepcopy(
         url_data.get(
             "query",
             {},
@@ -154,7 +154,7 @@ def route(
                 [],
             ).append(value)
 
-    query_parts = []
+    query_parts: list[str] = []
 
     for key, values in query_params.items():
 

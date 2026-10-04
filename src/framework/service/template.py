@@ -1,12 +1,13 @@
+from __future__ import annotations
+
 import os
-from pathlib import Path
 from time import perf_counter
-from typing import Any
+from collections.abc import Awaitable, Callable, Iterator
+from typing import Any, cast
 
 from jinja2 import (
     Environment,
     FileSystemLoader,
-    StrictUndefined,
     TemplateError,
     TemplateNotFound,
     TemplateSyntaxError,
@@ -14,10 +15,12 @@ from jinja2 import (
     nodes,
     select_autoescape,
 )
+from jinja2.exceptions import TemplateRuntimeError, UndefinedError
 from jinja2.ext import Extension
+from jinja2.parser import Parser
+from jinja2.runtime import Context
 import framework.core.flow as flow
 import framework.service.dom as dom
-import framework.service.scheme as scheme
 from framework.service.diagnostic import get_logger
 
 
@@ -27,39 +30,46 @@ TEMPLATE_RENDER_CONTEXT_KEY = "_template_context"
 class DeferredUndefined(Undefined):
     """Preserva le espressioni Jinja non risolte nel primo passaggio."""
 
-    def __init__(self, hint=None, obj=None, name=None, exc=None, expression=None):
+    def __init__(
+        self,
+        hint: str | None = None,
+        obj: Any = None,
+        name: str | None = None,
+        exc: type[TemplateRuntimeError] = UndefinedError,
+        expression: str | None = None,
+    ) -> None:
         super().__init__(hint=hint, obj=obj, name=name, exc=exc)
-        self._expression = expression or name or ""
+        self._expression: str = expression or name or ""
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> DeferredUndefined:
         if name.startswith("__"):
             raise AttributeError(name)
         return type(self)(expression=f"{self._expression}.{name}")
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: Any) -> DeferredUndefined:
         if isinstance(key, str):
             expression = f"{self._expression}[{key!r}]"
         else:
             expression = f"{self._expression}[{key}]"
         return type(self)(expression=expression)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "{{ " + self._expression + " }}"
 
-    def __html__(self):
+    def __html__(self) -> str:
         return str(self)
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return False
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Any]:
         return iter(())
 
 
 class AsyncBlockExtension(Extension):
     tags = {"storekeeper", "messenger"}
 
-    def parse(self, parser):
+    def parse(self, parser: Parser) -> nodes.Node:
         token = next(parser.stream)
         block_name = token.value
         args, kwargs, dynamic_args, dynamic_kwargs = parser.parse_call_args()
@@ -87,15 +97,23 @@ class AsyncBlockExtension(Extension):
             body,
         ).set_lineno(token.lineno)
 
-    async def _render(self, context, block_name, caller, **request):
-        loaders = context.get("_async_block_loaders", {})
-        loader = loaders.get(block_name)
+    async def _render(
+        self,
+        context: Context,
+        block_name: str,
+        caller: Any,
+        **request: Any,
+    ) -> Any:
+        loaders = cast(
+            dict[str, Any], context.get("_async_block_loaders", {})
+        )
+        loader: Any = loaders.get(block_name)
         if not callable(loader):
             raise RuntimeError(
                 f"Blocco Jinja '{block_name}' non disponibile nel template"
             )
         started = perf_counter()
-        value = await loader(request)
+        value = await cast(Callable[..., Awaitable[Any]], loader)(request)
         get_logger("template").debug(
             "Blocco asincrono completato",
             block=block_name,
@@ -103,36 +121,54 @@ class AsyncBlockExtension(Extension):
             repository=request.get("repository"),
             duration_ms=round((perf_counter() - started) * 1000, 2),
         )
-        return await caller(value)
+        return await cast(Callable[..., Awaitable[Any]], caller)(value)
 
 
-def _result_output(value):
+def _result_output(value: Any) -> Any:
     """Restituisce il payload sia da un Result sia dalla sua forma serializzata."""
     if flow.is_result(value):
         return flow.output(value)
     if isinstance(value, dict):
-        output = value.get("output")
-        if isinstance(output, dict) and "is_success" in output:
-            return output.get("value") if output["is_success"] else output.get("error")
+        result_data = cast(dict[str, Any], value)
+        output = result_data.get("output")
+        output_data = (
+            cast(dict[str, Any], output) if isinstance(output, dict) else None
+        )
+        if output_data is not None and "is_success" in output_data:
+            return (
+                output_data.get("value")
+                if output_data["is_success"]
+                else output_data.get("error")
+            )
+        return result_data
     return value
 
 
-def _result_success(value):
+def _result_success(value: Any) -> bool:
     """Indica se un valore rappresenta un risultato riuscito."""
     if flow.is_result(value):
         return value.is_success
     if isinstance(value, dict):
-        output = value.get("output")
-        if isinstance(output, dict) and "is_success" in output:
-            return bool(output["is_success"])
+        result_data = cast(dict[str, Any], value)
+        output = result_data.get("output")
+        output_data = (
+            cast(dict[str, Any], output) if isinstance(output, dict) else None
+        )
+        if output_data is not None and "is_success" in output_data:
+            return bool(output_data["is_success"])
     return True
 
 
-def _template_filters():
+def _template_filters() -> dict[str, Any]:
+    def get_filter(data: Any, key: Any) -> Any:
+        if isinstance(data, dict):
+            return cast(dict[Any, Any], data).get(key)
+        return None
+
     return {
         "value": _result_output,
         "check": _result_success,
-        "get": lambda d, key: d.get(key) if isinstance(d, dict) else None,
+        "get": get_filter,
     }
 
 
@@ -153,7 +189,7 @@ def get_jinja(
     return environment
 
 
-def _select_environment(infrastructure, target: str):
+def _select_environment(infrastructure: Any, target: str) -> Environment:
     default = get_jinja(infrastructure)
     try:
         references = [
@@ -181,20 +217,30 @@ def _select_environment(infrastructure, target: str):
     return default
 
 
-def render_jinja(infrastructure, target: str, context=None, environment=None) -> str:
-    if not isinstance(target, str):
-        return target
+def render_jinja(
+    infrastructure: Any,
+    target: str,
+    context: dict[str, Any] | None = None,
+    environment: Environment | None = None,
+) -> str:
     if "{{" not in target and "{%" not in target and "{#" not in target:
         return target
     environment = environment or _select_environment(infrastructure, target)
-    payload = {
-        "env": lambda name, default="": os.environ.get(name, default),
+    def env(name: str, default: str = "") -> str:
+        return os.environ.get(name, default)
+
+    payload: dict[str, Any] = {
+        "env": env,
         **(context or {}),
     }
     return environment.from_string(target).render(**payload)
 
 
-async def format(target, infrastructure=None, **constants):
+async def format(
+    target: Any,
+    infrastructure: Any | None = None,
+    **constants: Any,
+) -> Any:
     """Formatta una stringa usando l'ambiente Jinja dell'infrastruttura."""
     try:
         if not target:
@@ -218,17 +264,17 @@ async def format(target, infrastructure=None, **constants):
 
 
 async def render(
-    infrastructure,
-    managers,
-    runtime_session,
-    render_node,
-    text=None,
-    file=None,
-    controller_context=None,
-    source_name=None,
-    async_block_loaders=None,
-    **constants,
-):
+    infrastructure: Any,
+    managers: Any,
+    runtime_session: Any,
+    render_node: Callable[..., Awaitable[Any]],
+    text: Any = None,
+    file: str | None = None,
+    controller_context: dict[str, Any] | None = None,
+    source_name: str | None = None,
+    async_block_loaders: dict[str, Callable[..., Awaitable[Any]]] | None = None,
+    **constants: Any,
+) -> Any:
     logger = get_logger("template")
     render_started = perf_counter()
     if text is None and file is None:
@@ -236,9 +282,10 @@ async def render(
     if text is None:
         text = infrastructure.resource(file)
     elif isinstance(text, dom.element_type()):
-        text = dom.serialize(text)
+        text = dom.serialize(cast(Any, text))
     elif not isinstance(text, str):
         text = str(text)
+    text = cast(str, text)
     source_name = source_name or file or "template string"
 
     environment = get_jinja(
@@ -266,9 +313,9 @@ async def render(
         source=source_name,
         duration_ms=round((perf_counter() - compile_started) * 1000, 2),
     )
-    manager_context = {"manager": managers}
-    render_context = constants | (controller_context or {}) | manager_context
-    template_context = render_context
+    manager_context: dict[str, Any] = {"manager": managers}
+    render_context: dict[str, Any] = constants | (controller_context or {}) | manager_context
+    template_context: dict[str, Any] = render_context
     if async_block_loaders is not None:
         template_context = {
             **render_context,
@@ -286,8 +333,11 @@ async def render(
     try:
         xml = dom.parse(content)
     except dom.parse_error() as error:
-        line, column = getattr(error, "position", (None, None))
-        rendered_line = None
+        line, column = cast(
+            tuple[int | None, int | None],
+            getattr(error, "position", (None, None)),
+        )
+        rendered_line: str | None = None
         if line and 1 <= line <= len(content.splitlines()):
             rendered_line = content.splitlines()[line - 1].strip()
         raise flow.LocatedError(

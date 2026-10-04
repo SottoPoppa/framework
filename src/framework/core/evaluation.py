@@ -12,7 +12,7 @@ from __future__ import annotations
 import inspect
 import operator
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast as _cast
 
 from .data import MISSING as REGISTRY_MISSING, Registry
 from .model import Call, Deferred, ExecutionSpec, Literal, Ref, Source
@@ -36,23 +36,47 @@ class EvaluationError(Exception):
             self.__cause__ = cause
 
 
+def _logical_and(left: Any, right: Any) -> bool:
+    return bool(left and right)
+
+
+def _true_divide(left: Any, right: Any) -> Any:
+    return left / right
+
+
+def _power(left: Any, right: Any) -> Any:
+    return left ** right
+
+
+def _logical_or(left: Any, right: Any) -> bool:
+    return bool(left or right)
+
+
+def _logical_not(value: Any) -> bool:
+    return not bool(value)
+
+
+def _contains(value: Any, container: Any) -> bool:
+    return value in container if container is not None else False
+
+
 OPERATORS: dict[str, Callable[..., Any]] = {
     '+': operator.add,
     '-': operator.sub,
     '*': operator.mul,
-    '/': operator.truediv,
+    '/': _true_divide,
     '%': operator.mod,
-    '^': operator.pow,
+    '^': _power,
     '==': operator.eq,
     '!=': operator.ne,
     '>': operator.gt,
     '<': operator.lt,
     '>=': operator.ge,
     '<=': operator.le,
-    'and': lambda a, b: bool(a and b),
-    'or': lambda a, b: bool(a or b),
-    'not': lambda a: not bool(a),
-    'in': lambda a, b: a in b if b is not None else False,
+    'and': _logical_and,
+    'or': _logical_or,
+    'not': _logical_not,
+    'in': _contains,
 }
 
 
@@ -61,9 +85,11 @@ def _deferred_paths(value: Any) -> tuple[str, ...]:
     if isinstance(value, Deferred):
         return value.parameters
     if isinstance(value, (list, tuple)):
-        return tuple(path for item in value for path in _deferred_paths(item))
+        items = _cast(list[Any] | tuple[Any, ...], value)
+        return tuple(path for item in items for path in _deferred_paths(item))
     if isinstance(value, dict):
-        return tuple(path for item in value.values() for path in _deferred_paths(item))
+        items = _cast(dict[Any, Any], value)
+        return tuple(path for item in items.values() for path in _deferred_paths(item))
     return ()
 
 
@@ -74,9 +100,10 @@ def _as_scope(context: Any) -> Scope:
     if context is None:
         return Scope()
     if isinstance(context, dict):
-        return Scope(context)
+        return Scope(_cast(dict[str, Any], context))
     data = getattr(context, "data", None)
-    return Scope(data if isinstance(data, dict) else {})
+    scope_data = _cast(dict[str, Any], data) if isinstance(data, dict) else {}
+    return Scope(scope_data)
 
 
 class Evaluator:
@@ -135,13 +162,16 @@ class Evaluator:
             return await self._eval(node.expression, scope, session)
 
         if isinstance(node, list):
-            return [await self._eval(item, scope, session) for item in node]
+            items = _cast(list[Any], node)
+            return [await self._eval(item, scope, session) for item in items]
 
         if isinstance(node, tuple):
-            return tuple([await self._eval(item, scope, session) for item in node])
+            items = _cast(tuple[Any, ...], node)
+            return tuple([await self._eval(item, scope, session) for item in items])
 
         if isinstance(node, dict):
-            return {key: await self._eval(item, scope, session) for key, item in node.items()}
+            items = _cast(dict[Any, Any], node)
+            return {key: await self._eval(item, scope, session) for key, item in items.items()}
 
         return node
 

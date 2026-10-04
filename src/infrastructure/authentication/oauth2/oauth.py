@@ -12,6 +12,7 @@ import aiohttp
 
 import framework.port.authentication as authentication
 import framework.core.flow as flow
+from framework.core.session import SessionData
 
 
 class Adapter(authentication.Port):
@@ -1740,8 +1741,9 @@ class Adapter(authentication.Port):
 
     async def sign_in(
         self,
-        email,
-        password,
+        session: SessionData,
+        email: str,
+        password: str,
     ):
 
         if self.grant_type != "password":
@@ -1792,8 +1794,9 @@ class Adapter(authentication.Port):
 
     async def sign_up(
         self,
-        email,
-        password,
+        session: SessionData,
+        email: str,
+        password: str,
     ):
 
         return flow.error(
@@ -1807,25 +1810,8 @@ class Adapter(authentication.Port):
 
     async def sign_out(
         self,
-        session,
+        session: SessionData,
     ):
-
-        session.get(
-            "providers",
-            {},
-        ).pop(
-            self.name,
-            None,
-        )
-
-        session.get(
-            "_oauth",
-            {},
-        ).pop(
-            self.name,
-            None,
-        )
-
         return flow.success(
             {
                 "session": session
@@ -1838,11 +1824,11 @@ class Adapter(authentication.Port):
 
     async def get_user(
         self,
-        session,
+        session: SessionData,
     ):
 
         provider = (
-            session
+            session["authentication"]
             .get("providers", {})
             .get(self.name)
         )
@@ -1866,6 +1852,7 @@ class Adapter(authentication.Port):
 
     async def sign_aid(
         self,
+        session: SessionData,
         **constants,
     ):
 

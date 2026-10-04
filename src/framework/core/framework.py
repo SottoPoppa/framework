@@ -8,8 +8,12 @@ import types
 from dataclasses import dataclass, field
 from graphlib import TopologicalSorter
 from pathlib import Path
-from typing import Any, Optional, Type, TypedDict, get_args, get_type_hints
-from framework.service.diagnostic import LogBuffer, get_logger, set_default_log_sink
+from typing import TYPE_CHECKING, Any, Iterable, Optional, TypedDict, cast, get_args, get_type_hints
+from framework.service.diagnostic import ComponentLogger, LogBuffer, get_logger, set_default_log_sink
+
+if TYPE_CHECKING:
+    from framework.core.infrastructure import Infrastructure
+    from framework.manager.loader import Loader
 
 @dataclass
 class Resource:
@@ -18,15 +22,17 @@ class Resource:
     path: str
     module: Any = None
     kind: Optional[str] = None
-    config: dict[str, Any] | list[dict[str, Any]] = field(default_factory=dict)
-    extend: dict[str, Any] = field(default_factory=dict)
+    config: dict[str, Any] | list[dict[str, Any]] = field(
+        default_factory=dict[str, Any]
+    )
+    extend: dict[str, Any] = field(default_factory=dict[str, Any])
 
 
 class InstallContext(TypedDict, total=False):
     config_file: str
-    config: dict
+    config: dict[str, Any]
     enabled_adapters: list[tuple[str, str]]
-    contract_cls: Type
+    contract_cls: type[Any]
     sources: list[tuple[str, str, str]]
     all_requires: set[str]
     contracts_found: int
@@ -46,8 +52,8 @@ class Framework:
         self.logger = get_logger("framework")
         self.components: dict[str, Resource] = {}
         self.strict: bool = False
-        self.infrastructure = None
-        self.loader = None
+        self.infrastructure: Infrastructure | None = None
+        self.loader: Loader | None = None
 
     async def _prepare_loader(self) -> Any:
         """Prepara il kernel e il Loader senza costruire l'applicazione."""
@@ -86,12 +92,12 @@ class Framework:
             self.logger.error("Verifica contract fallita", exception=exc)
             return False
 
-    def get_logger(self, component: str):
+    def get_logger(self, component: str) -> ComponentLogger:
         return get_logger(component)
 
 
 
-    def _pkg(self, name: str) -> types.ModuleType:
+    def _pkg(self, name: str) -> types.ModuleType | None:
         """Crea o recupera la gerarchia di pacchetti sintetici in sys.modules."""
         if not name:
             return None
@@ -112,7 +118,10 @@ class Framework:
 
         if "." in name:
             parent_name, child_name = name.rsplit(".", 1)
-            setattr(self._pkg(parent_name), child_name, pkg)
+            parent = self._pkg(parent_name)
+            if parent is None:
+                raise ValueError(f"Nome di package non valido: {name}")
+            setattr(parent, child_name, pkg)
         return pkg
 
     def imports(self, code: str) -> list[str]:
@@ -122,7 +131,7 @@ class Framework:
         except Exception as exc:
             self.logger.debug("Impossibile analizzare gli import dal sorgente", exception=exc)
             return []
-        result = set()
+        result: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -131,7 +140,7 @@ class Framework:
                 result.add(node.module)
         return list(result)
 
-    def import_module(self, module_path: str):
+    def import_module(self, module_path: object) -> types.ModuleType:
         """Importa un modulo Python tramite il kernel del framework."""
         if not isinstance(module_path, str) or not module_path.strip():
             raise ValueError("Il percorso del modulo non può essere vuoto")
@@ -147,7 +156,7 @@ class Framework:
         path: str,
         extra: dict[str, Any] | None = None,
         force: bool = False,
-    ) -> ModuleType | None:
+    ) -> types.ModuleType | None:
         """Carica o ricarica un modulo Python utilizzando importlib in modo sicuro."""
         if name in sys.modules and not force:
             module = sys.modules[name]
@@ -266,8 +275,8 @@ class Framework:
         """Carica i servizi di core ordinandoli topologicamente."""
         extra_by_name = extra_by_name or {}
         modules = {**services, **ports}
-        graph = {}
-        pending = {}
+        graph: dict[str, set[str]] = {}
+        pending: dict[str, Resource] = {}
 
         for name, path in modules.items():
             ns_type = "service" if name in services else "port"
@@ -304,7 +313,7 @@ class Framework:
             hints = getattr(init_fn, "__annotations__", {})
 
         sig = inspect.signature(init_fn)
-        dependencies = []
+        dependencies: list[Any] = []
 
         for name, param in sig.parameters.items():
             if name == "self" or param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
@@ -337,7 +346,7 @@ class Framework:
     def component(self, name: str) -> Optional[Resource]:
         return self.components.get(name)
 
-    def components_iter(self):
+    def components_iter(self) -> Iterable[Resource]:
         return self.components.values()
 
     def components_ports(self) -> list[Resource]:
@@ -356,9 +365,11 @@ class Framework:
 # Installazione e gestione delle risorse
 # -----------------------------------------
 
-    def _install_context(self, config_or_path: Any) -> InstallContext:
+    def _install_context(
+        self, config_or_path: str | Path | dict[str, Any]
+    ) -> InstallContext:
         config_file = (
-            config_or_path.get("config", "pyproject.toml")
+            str(config_or_path.get("config", "pyproject.toml"))
             if isinstance(config_or_path, dict)
             else str(config_or_path)
         )
@@ -372,26 +383,34 @@ class Framework:
     def _read_install_config(
         self, context: InstallContext, infrastructure: Any
     ) -> InstallContext:
+        if "config_file" not in context:
+            raise RuntimeError("Percorso di configurazione non inizializzato")
+        config_file = context["config_file"]
         try:
-            config = infrastructure.resource(context["config_file"])
+            config: dict[str, Any] = infrastructure.resource(config_file)
         except Exception as exc:
             raise RuntimeError(
-                f"Errore nel caricare '{context['config_file']}': {exc}"
+                f"Errore nel caricare '{config_file}': {exc}"
             ) from exc
         return {**context, "config": config}
 
     def _find_enabled_adapters(self, context: InstallContext) -> InstallContext:
-        enabled = [
-            (port_name, adapter_name)
-            for port_name, port_config in context["config"].items()
-            if port_name not in {"project", "manager", "tool"}
-            and isinstance(port_config, dict)
-            for adapter_name in port_config
-        ]
+        if "config" not in context:
+            raise RuntimeError("Configurazione non caricata")
+        install_config = context["config"]
+        enabled: list[tuple[str, str]] = []
+        for port_name, port_config in install_config.items():
+            if port_name in {"project", "manager", "tool"}:
+                continue
+            if not isinstance(port_config, dict):
+                continue
+            port_config = cast(dict[str, Any], port_config)
+            for adapter_name in map(str, port_config):
+                enabled.append((port_name, adapter_name))
         return {**context, "enabled_adapters": enabled}
 
     async def _load_install_contract(
-        self, context: InstallContext, services: dict
+        self, context: InstallContext, services: dict[str, str]
     ) -> InstallContext:
         contract_name = "framework.service.contract"
         contract_mod = sys.modules.get(contract_name)
@@ -410,10 +429,14 @@ class Framework:
     def _install_sources(
         self,
         context: InstallContext,
-        cores: dict,
-        services: dict,
-        ports: dict,
+        cores: dict[str, str],
+        services: dict[str, str],
+        ports: dict[str, str],
     ) -> InstallContext:
+        if "config" not in context or "enabled_adapters" not in context:
+            raise RuntimeError("Configurazione adapter non inizializzata")
+        install_config = context["config"]
+        enabled_adapters = context["enabled_adapters"]
         sources = [("core", name, path) for name, path in cores.items()]
         sources.extend(
             ("service", name, path)
@@ -421,18 +444,22 @@ class Framework:
             if name != "contract"
         )
         sources.extend(("port", name, path) for name, path in ports.items())
-        adapter_sources = []
-        for port_name, adapter_name in context["enabled_adapters"]:
-            adapter_config = context["config"][port_name][adapter_name]
-            configurations = (
-                adapter_config
+        adapter_sources: list[tuple[str, str, str]] = []
+        for port_name, adapter_name in enabled_adapters:
+            port_config = install_config.get(port_name)
+            if not isinstance(port_config, dict):
+                raise RuntimeError(f"Configurazione adapter non valida: {port_name}")
+            port_config = cast(dict[str, Any], port_config)
+            adapter_config: Any = port_config[adapter_name]
+            configurations: list[Any] = (
+                list(cast(Iterable[Any], adapter_config))
                 if isinstance(adapter_config, (list, tuple))
                 else [adapter_config]
             )
-            for config in configurations:
-                implementation = (
-                    config.get("implementation")
-                    if isinstance(config, dict)
+            for adapter_configuration in configurations:
+                implementation: Any = (
+                    cast(dict[str, Any], adapter_configuration).get("implementation")
+                    if isinstance(adapter_configuration, dict)
                     else None
                 )
                 if implementation is None:
@@ -473,10 +500,13 @@ class Framework:
         return {**context, "sources": sources}
 
     def _analyze_install_contracts(self, context: InstallContext) -> InstallContext:
+        if "contract_cls" not in context or "sources" not in context:
+            raise RuntimeError("Sorgenti o contract non inizializzati")
         contract_cls = context["contract_cls"]
+        sources = context["sources"]
         all_requires: set[str] = set()
         contracts_found = 0
-        for component_type, component_name, source_path in context["sources"]:
+        for component_type, component_name, source_path in sources:
             source = Path(source_path)
             if not source.exists():
                 self.logger.warning(
@@ -503,15 +533,17 @@ class Framework:
             if not data:
                 continue
             contracts_found += 1
-            requires = data.get("requires", [])
+            requires: Any = data.get("requires", [])
             if isinstance(requires, str):
-                requires = [requires]
-            if not isinstance(requires, list):
+                requirement_values: list[object] = [requires]
+            elif isinstance(requires, list):
+                requirement_values = cast(list[object], requires)
+            else:
                 self.logger.warning(
                     "Campo requires non valido nel contract", resource=component_name
                 )
                 continue
-            for requirement in requires:
+            for requirement in requirement_values:
                 if isinstance(requirement, str) and requirement.strip():
                     all_requires.add(requirement.strip())
         return {
@@ -521,15 +553,21 @@ class Framework:
         }
 
     def _prepare_installation(self, context: InstallContext) -> InstallContext:
-        return {**context, "requirements": sorted(context["all_requires"])}
+        if "all_requires" not in context:
+            raise RuntimeError("Dipendenze non analizzate")
+        all_requires = context["all_requires"]
+        return {**context, "requirements": sorted(all_requires)}
 
     def _run_installation(self, context: InstallContext) -> bool:
+        if "requirements" not in context or "contracts_found" not in context:
+            raise RuntimeError("Installazione non preparata")
         requirements = context["requirements"]
+        contracts_found = context["contracts_found"]
 
         if not requirements:
             self.logger.info(
                 "Installazione completata senza dipendenze",
-                contracts=context["contracts_found"],
+                contracts=contracts_found,
             )
             return True
 
@@ -583,9 +621,9 @@ class Framework:
         config_or_path: Any = "pyproject.toml",
         *,
         infrastructure: Any = None,
-        cores: dict = None,
-        services: dict = None,
-        ports: dict = None,
+        cores: dict[str, str] | None = None,
+        services: dict[str, str] | None = None,
+        ports: dict[str, str] | None = None,
     ) -> bool:
         """Analizza i contract e installa le dipendenze dichiarate in requires."""
         if infrastructure is None or cores is None or services is None or ports is None:

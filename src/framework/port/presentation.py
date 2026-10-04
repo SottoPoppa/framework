@@ -1,19 +1,14 @@
 from abc import ABC, abstractmethod
+from collections.abc import Iterable, Mapping
 import json
-from bs4 import BeautifulSoup
-from jinja2 import Environment, select_autoescape,FileSystemLoader,BaseLoader,ChoiceLoader,Template,DebugUndefined
-from html import escape
+from jinja2 import Environment, select_autoescape, FileSystemLoader, DebugUndefined
 import uuid
-import untangle
-import markupsafe
-import itertools
 import os
-from urllib.parse import urlparse, parse_qs, urljoin
+import xml.etree.ElementTree as ET
 from enum import Enum
+from re import Pattern
 from time import perf_counter
-
-import os
-import pathlib
+from typing import Any, cast
 
 import framework.core.flow as flow
 import framework.service.dom as dom
@@ -262,7 +257,7 @@ _SVG_ATTRIBUTES = {a.value: a.value for a in [
     Attribute.PATTERN_TRANSFORM, Attribute.PRESERVE_ASPECT_RATIO, Attribute.HREF
 ]}
 
-_ATTRIBUTES_SCHEMA |= {
+_ATTRIBUTES_SCHEMA.update({
     Tag.SVG.value: _SVG_ATTRIBUTES,
     Tag.G.value: _SVG_ATTRIBUTES,
     Tag.DEFS.value: _SVG_ATTRIBUTES,
@@ -289,12 +284,12 @@ _ATTRIBUTES_SCHEMA |= {
     Tag.FE_DROP_SHADOW.value: _SVG_ATTRIBUTES,
     Tag.CLIP_PATH.value: _SVG_ATTRIBUTES,
     Tag.PATTERN.value: _SVG_ATTRIBUTES,
-}
+})
 
 
 class Port(ABC):
-    tags = {}
-    capabilities = {
+    tags: Any = {}
+    capabilities: dict[str, Any] = {
         "tls": False,
         "min_tls_version": "TLSv1.2",
         "csrf": False,
@@ -302,7 +297,7 @@ class Port(ABC):
         "rate_limiting": False,
     }
 
-    _method_decorators = {
+    _method_decorators: dict[str, Any] = {
         "start": flow.result(),
         "stop": flow.result(),
         "shutdown": flow.result(),
@@ -312,30 +307,37 @@ class Port(ABC):
         "node_update": flow.result(),
     }
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls: type["Port"], **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         for method_name, decorator in Port._method_decorators.items():
             original = cls.__dict__.get(method_name)
             if original is not None:
                 setattr(cls, method_name, decorator(original))
 
-    def __init__(self, loader, defender, messenger, authenticator, **constants):
-        self.config = constants
-        self.loader = loader
-        self.defender = defender
-        self.authenticator = authenticator
-        self.messenger = messenger
-        self.executor = constants.get("executor")
-        self.views = {}
+    def __init__(
+        self,
+        loader: Any,
+        defender: Any,
+        messenger: Any,
+        authenticator: Any,
+        **constants: Any,
+    ) -> None:
+        self.config: dict[str, Any] = constants
+        self.loader: Any = loader
+        self.defender: Any = defender
+        self.authenticator: Any = authenticator
+        self.messenger: Any = messenger
+        self.executor: Any = constants.get("executor")
+        self.views: dict[str, Any] = {}
         self.initialize()
 
-    def initialize(self):
+    def initialize(self) -> None:
         if isinstance(self, type):
             return None
-        self.components = {}
-        self.DOM = {}
-        self.data = {}
-        self.routes = {}
+        self.components: dict[str, Any] = {}
+        self.DOM: dict[str, Any] = {}
+        self.data: dict[str, Any] = {}
+        self.routes: dict[str, dict[str, dict[str, Any]]] = {}
         self.views = {}
         # DOM
         self.document = {}
@@ -344,32 +346,6 @@ class Port(ABC):
         #http_loader = MyLoader()
         #choice_loader = ChoiceLoader([fs_loader, http_loader])
 
-        ui_kit = [
-            'breadcrumb',
-            #'table',
-            'badge',
-            'input',
-            'action',
-            'text',
-            #'media',
-            'window',
-            'card',
-            #'navigation',
-            'pagination',
-            'group',
-            'row',
-            'column',
-            'container',
-            'defender',
-            'message',
-            'presenter',
-            'view',
-            'divider',
-            'icon',
-            'accordion',
-            #'resource',
-        ]
-        
         '''for widget in ui_kit:
             if widget not in self.WIDGETS:
                 raise NotImplementedError(f"Tag '{widget}' non gestito in compose_view")'''
@@ -377,12 +353,13 @@ class Port(ABC):
         self.env = Environment(loader=fs_loader,autoescape=select_autoescape(["html", "xml"]),undefined=DebugUndefined)
         #self.env.filters['route'] = language.route
 
-    def validate_adapter(self):
+    def validate_adapter(self) -> bool:
         required_state = ('loader', 'defender', 'messenger', 'DOM', 'routes', 'env')
         missing = [name for name in required_state if not hasattr(self, name)]
         if missing:
             raise RuntimeError(f"Adapter presentation incompleto: mancano {', '.join(missing)}")
-        if not isinstance(self.tags, dict) or not self.tags:
+        tags: object = self.tags
+        if not isinstance(tags, dict) or not tags:
             raise RuntimeError("Adapter presentation deve definire una mappa 'tags' non vuota")
         for method in ('node_create', 'node_update', 'rebuild'):
             if not callable(getattr(self, method, None)):
@@ -392,7 +369,7 @@ class Port(ABC):
             self.defender._register_capabilities(None, "presentation", self.capabilities)
         return True
 
-    def validate_capabilities(self):
+    def validate_capabilities(self) -> bool:
         loaded_schemes = getattr(scheme, "schemes", {})
         capabilities_schema = loaded_schemes.get("presentation_adapter", {})
         if not capabilities_schema:
@@ -403,26 +380,37 @@ class Port(ABC):
         return True
 
     @abstractmethod
-    async def mount_view(self, *services, **constants):
+    async def mount_view(self, *services: Any, **constants: Any) -> Any:
         pass
 
     @abstractmethod
-    async def mount_route(self, *services, **constants):
+    async def mount_route(self, *services: Any, **constants: Any) -> Any:
         pass
 
     @abstractmethod
-    async def mount_css(self, *services, **constants):
+    async def mount_css(self, *services: Any, **constants: Any) -> Any:
         pass
 
     @abstractmethod
-    def node_create(self, tag, attrs=None, inner=None):
+    def node_create(
+        self,
+        tag: Any,
+        attrs: dict[str, Any] | None = None,
+        inner: list[Any] | None = None,
+    ) -> Any:
         pass
 
     @abstractmethod
-    async def node_update(self, node, context=None):
+    async def node_update(
+        self, node: Any, context: dict[str, Any] | None = None
+    ) -> Any:
         pass
 
-    def node_union(self, node=None, context=None):
+    def node_union(
+        self,
+        node: dict[str, Any] | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Unisce un descrittore DSL con un contesto di aggiornamento."""
         node = node or {}
         context = context or {}
@@ -431,7 +419,7 @@ class Port(ABC):
             "inner": context["inner"] if "inner" in context else node.get("inner", []),
         }
 
-    def node_get(self, id: str):
+    def node_get(self, id: str) -> Any | None:
         """Restituisce il widget DSL corrispondente a un id, se presente nel DOM."""
         if isinstance(self, type):
             return None
@@ -440,10 +428,22 @@ class Port(ABC):
         return None
 
     @abstractmethod
-    async def rebuild(self, node_id, view=None, context=None):
+    async def rebuild(
+        self,
+        session: Any,
+        node_id: str,
+        context: dict[str, Any] | None = None,
+        dsl_alias: str | None = None,
+    ) -> Any:
         pass
 
-    def mount_tag(self, tag, attrs=None, inner=None, in_svg=False):
+    def mount_tag(
+        self,
+        tag: str,
+        attrs: dict[str, Any] | None = None,
+        inner: list[Any] | None = None,
+        in_svg: bool = False,
+    ) -> Any:
         attrs = attrs or {}
         inner = inner or []
         if "}" in tag:
@@ -454,12 +454,13 @@ class Port(ABC):
         elif in_svg and tag == "style":
             tag = Tag.STYLE_SVG.value
             
-        if tag not in self.tags: raise Exception(f"Tag {tag} non trovato")
+        tags = cast(dict[str, dict[str, Any]], self.tags)
+        if tag not in tags: raise Exception(f"Tag {tag} non trovato")
         tipo = attrs.get("type") or tag
-        elemento = self.tags[tag].get(tipo) or self.tags[tag].get(tag)
+        elemento = tags[tag].get(tipo) or tags[tag].get(tag)
         if elemento is None: raise Exception(f"Tipo {tipo} non trovato in {tag}")
         schema = _ATTRIBUTES_SCHEMA.get(tag) or {}
-        new_attrs = {}
+        new_attrs: dict[str, Any] = {}
         for attr in attrs:
             if attr not in schema: 
                 #print(f"Attributo {attr} non valido per il tag {tag}")
@@ -471,21 +472,28 @@ class Port(ABC):
         return self.node_create(elemento,new_attrs,inner)
  
     @staticmethod
-    def normalize_route_path(path):
+    def normalize_route_path(path: object) -> str:
         return normalize_path(path)
 
     @staticmethod
-    def compile_route_pattern(path):
+    def compile_route_pattern(path: str) -> Pattern[str]:
         return compile_pattern(path)
 
-    def register_route(self, route):
+    def register_route(
+        self, route: dict[str, Any]
+    ) -> tuple[str, str, dict[str, Any]]:
         return register(self.routes, route)
 
-    def match_route(self, path, method='GET'):
+    def match_route(
+        self, path: str, method: str = 'GET'
+    ) -> tuple[dict[str, Any] | None, dict[str, str]]:
         return match(self.routes, path, method)
 
     @staticmethod
-    def parse_reactive_event(payload=None, **fields):
+    def parse_reactive_event(
+        payload: Mapping[str, object] | None = None,
+        **fields: object,
+    ) -> dict[str, str]:
         if payload is None:
             payload = fields
         elif fields:
@@ -505,7 +513,7 @@ class Port(ABC):
         }
 
     @staticmethod
-    def resolve_controller_file(alias):
+    def resolve_controller_file(alias: object) -> str:
         if not isinstance(alias, str) or not alias.strip():
             raise ValueError("L'alias DSL deve essere una stringa non vuota")
         alias = alias.strip()
@@ -515,13 +523,15 @@ class Port(ABC):
     async def shutdown():
         return None
 
-    async def parse_route(self):
+    async def parse_route(self) -> dict[str, dict[str, dict[str, Any]]]:
         routes_cfg = self.defender.get_policy('presentation').get('routes', {}).values()
         self.routes.clear()
         register_many(self.routes, routes_cfg)
         return self.routes
 
-    async def _load_storekeeper(self, runtime_session, attributes):
+    async def _load_storekeeper(
+        self, runtime_session: Any, attributes: Mapping[str, Any]
+    ) -> Any:
         storekeeper = self.loader.get_managers().get("storekeeper")
         if storekeeper is None:
             raise RuntimeError("Storekeeper non disponibile nel contesto del template")
@@ -548,7 +558,9 @@ class Port(ABC):
             raise RuntimeError(f"Lettura Storekeeper non riuscita: {flow.output(result)}")
         return flow.output(result)
 
-    async def _load_messenger(self, runtime_session, attributes):
+    async def _load_messenger(
+        self, runtime_session: Any, attributes: Mapping[str, Any]
+    ) -> Any:
         messenger = getattr(self, "messenger", None)
         if messenger is None:
             messenger = self.loader.get_managers().get("messenger")
@@ -569,13 +581,13 @@ class Port(ABC):
 
     async def execute_controllers(
         self,
-        runtime_session,
-        controllers=None,
-        source_name=None,
-    ):
+        runtime_session: Any,
+        controllers: Iterable[str] | None = None,
+        source_name: str | None = None,
+    ) -> dict[str, Any]:
         logger = get_logger("template")
         manager_context = {"manager": self.loader.get_managers()}
-        controller_context = {}
+        controller_context: dict[str, Any] = {}
         for controller in controllers or []:
             controller_started = perf_counter()
             result = await runtime_session.run(controller, manager_context)
@@ -588,7 +600,11 @@ class Port(ABC):
             )
         return controller_context
 
-    def get_controller_contexts(self, runtime_session, controllers=None):
+    def get_controller_contexts(
+        self,
+        runtime_session: Any,
+        controllers: Iterable[str] | None = None,
+    ) -> dict[str, Any]:
         controllers = tuple(controllers or ())
         if not controllers:
             return {}
@@ -599,7 +615,7 @@ class Port(ABC):
                 "Runtime session must expose controller_context()"
             )
 
-        controller_context = {}
+        controller_context: dict[str, Any] = {}
         for controller in controllers:
             context = context_getter(controller)
             if context is not None:
@@ -608,13 +624,19 @@ class Port(ABC):
 
     async def render_template(
         self,
-        runtime_session,
-        text=None,
-        file=None,
-        controller_context=None,
-        source_name=None,
-        **constants,
-    ):
+        runtime_session: Any,
+        text: Any = None,
+        file: str | None = None,
+        controller_context: dict[str, Any] | None = None,
+        source_name: str | None = None,
+        **constants: Any,
+    ) -> Any:
+        async def load_storekeeper(request: dict[str, Any]) -> Any:
+            return await self._load_storekeeper(runtime_session, request)
+
+        async def load_messenger(request: dict[str, Any]) -> Any:
+            return await self._load_messenger(runtime_session, request)
+
         return await render(
             self.loader.infrastructure,
             self.loader.get_managers(),
@@ -625,20 +647,22 @@ class Port(ABC):
             controller_context=controller_context,
             source_name=source_name,
             async_block_loaders={
-                "storekeeper": lambda request: self._load_storekeeper(
-                    runtime_session, request
-                ),
-                "messenger": lambda request: self._load_messenger(
-                    runtime_session, request
-                ),
+                "storekeeper": load_storekeeper,
+                "messenger": load_messenger,
             },
             **constants,
         )
 
-    async def render_node(self, parent, node, context, runtime_session=None):
+    async def render_node(
+        self,
+        parent: Any,
+        node: ET.Element,
+        context: dict[str, Any],
+        runtime_session: Any | None = None,
+    ) -> Any:
         """Trasforma ricorsivamente i nodi XML in oggetti del Driver"""
         tag = dom.tag_name(node)
-        in_svg = context.get('in_svg', False)
+        in_svg = bool(context.get('in_svg', False))
         if tag.lower() == "svg":
             in_svg = True
 
@@ -650,12 +674,15 @@ class Port(ABC):
             if defender is None:
                 raise RuntimeError("Defender non disponibile per il tag <Defender>")
             authorized = await defender.authorized(
+                runtime_session,
                 "presentation",
-                session=runtime_session,
                 action="VIEW",
                 resource=attributes.get("resource", ""),
                 location=attributes.get("location", ""),
-                request=attributes.get("request", {}),
+                request=cast(
+                    Any,
+                    attributes["request"] if "request" in attributes else {},
+                ),
             )
             if not authorized:
                 denied = attributes.get("denied")
@@ -677,7 +704,7 @@ class Port(ABC):
                 self.DOM[ID] = extracted
 
         # Controllo se il tag è un componente (custom tag)
-        component_paths = [
+        component_paths: list[str] = [
             #f"src/application/view/components/{tag}.xml",
             f"src/application/view/component/{tag}.xml"
         ]
@@ -721,7 +748,7 @@ class Port(ABC):
                 )
 
         # Gestione Standard dei tag DSL
-        children = []
+        children: list[Any] = []
         new_context = context.copy()
         new_context['in_svg'] = in_svg
         for child in dom.children(node):
@@ -748,6 +775,7 @@ class Port(ABC):
             if not node_id:
                 raise Exception(f"Errore UI Reattiva: Un elemento con attributo 'bind' ({bind_var}) DEVE avere un attributo 'id' esplicito per permettere l'aggiornamento tramite WebSockets. Nodo incriminato: <{tag}>")
                 
+            dsl_alias: str | None = None
             if ":" in bind_var:
                 dsl_alias, var_path = bind_var.split(":", 1)
                 controller_file = f"src/application/controller/{dsl_alias}.dsl"
@@ -765,14 +793,14 @@ class Port(ABC):
                     bind_node_name = f"_auto_bind_{node_id}_{var_path}"
                     
                     if bind_node_name not in runner.nodes[controller_file]:
-                        async def auto_bind_task(inputs):
+                        async def auto_bind_task(inputs: dict[str, Any]) -> bool:
                             sid = inputs.get("sid")
                             #print("#############################",inputs)
                             if sid:
-                                await self.rebuild(node_id, sid, inputs,dsl_alias)
+                                await self.rebuild(sid, node_id, inputs, dsl_alias)
                             return True
                             
-                        bind_node = {
+                        bind_node: dict[str, Any] = {
                             "name":        bind_node_name,
                             "fn":          auto_bind_task,
                             "default":     None,

@@ -8,8 +8,8 @@
   "hashes": {
     "Manager": {
       "rebuild": {
-        "production": "06bec542753f1b716895f8065f5798df2ec663c6add4fa29575c5277c99f6157",
-        "test": "06bec542753f1b716895f8065f5798df2ec663c6add4fa29575c5277c99f6157"
+        "production": "e9f2171d1fbcac6b0ea8c139b7feaae57044f4bbc2cdefe7666d6d746c2ae21e",
+        "test": "e9f2171d1fbcac6b0ea8c139b7feaae57044f4bbc2cdefe7666d6d746c2ae21e"
       }
     }
   }

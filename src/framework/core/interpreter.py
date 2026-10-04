@@ -14,7 +14,7 @@ import inspect
 import uuid
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from types import TracebackType
-from typing import Any
+from typing import Any, cast
 
 import framework.core.flow as flow
 
@@ -65,14 +65,16 @@ class SessionHandle:
         self.sid: str = sid or (
             session_data["id"] if session_data else uuid.uuid4().hex
         )
+        if session_data is None:
+            session_data = SessionData({
+                "id": self.sid,
+                "context": pure_mapping(self.env),
+                "authentication": {},
+                "results": {},
+            })
         if session_data_store is None:
             self._session_data_store = {
-                self.sid: session_data or SessionData({
-                    "id": self.sid,
-                    "context": pure_mapping(self.env),
-                    "authentication": {},
-                    "results": {},
-                })
+                self.sid: session_data
             }
         else:
             self._session_data_store = session_data_store
@@ -147,7 +149,8 @@ class SessionHandle:
         self.env.update(env or {})
         bindings = pure_mapping(self.env)
         bindings["session"] = self.session_data
-        self.registry.register_dict(self.env)
+        if self.registry is not None:
+            self.registry.register_dict(self.env)
 
         session = self.execution(dag_name)
         created = session is None
@@ -313,15 +316,22 @@ class Interpreter:
         if dag is None:
             return flow.error(f"Programma DSL non registrato: {program_name}")
 
-        expression = dag.definition.context
+        expression: Any = dag.definition.context
         for part in name.split("."):
-            if not isinstance(expression, dict) or part not in expression:
+            if not isinstance(expression, dict):
                 return flow.error(
                     f"Dichiarazione DSL non trovata: {program_name}.{name}"
                 )
-            expression = expression[part]
+            expression_mapping = cast(dict[str, Any], expression)
+            if part not in expression_mapping:
+                return flow.error(
+                    f"Dichiarazione DSL non trovata: {program_name}.{name}"
+                )
+            expression = expression_mapping[part]
 
-        scope_data = copy.deepcopy(dag.definition.context)
+        scope_data: dict[str, Any] = copy.deepcopy(
+            dict(dag.definition.context)
+        )
         scope_data.update(pure_mapping(bindings))
         try:
             result = await self.evaluator.evaluate(
@@ -475,7 +485,7 @@ class Interpreter:
             self.session_envs[sid] = merged_env
 
         current = self.session_data.get(sid)
-        payload = current.to_dict() if current is not None else {
+        payload: dict[str, Any] = current.to_dict() if current is not None else {
             "id": sid,
             "context": {},
             "authentication": {},

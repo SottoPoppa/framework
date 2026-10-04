@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 
 import framework.core.flow as flow
@@ -22,8 +22,8 @@ class Manager(manager.Port):
             loader: loader.Loader,
             defender: defender.Manager,
             authentications: list[authentication.Port], 
-            **constants
-        ):
+            **constants: Any,
+        ) -> None:
         """
         Inizializza il manager con i servizi necessari alla gestione delle richieste.
 
@@ -39,34 +39,36 @@ class Manager(manager.Port):
         self.defender = defender
 
         # Configurazione ricevuta dal container, conservata per il bootstrap.
-        self.config = constants
+        self.config: dict[str, Any] = constants
 
         # Provider di autenticazione utilizzati dai metodi del ciclo di vita
         # dell'utente: authenticate, activate, reinstate e terminate.
         self.authentications = authentications
 
         # Nomi dei controller DSL caricati durante startup().
-        self.controllers = []
+        self.controllers: list[str] = []
 
         # Policy caricate e valutate dall'interprete, indicizzate per nome.
-        self.policies = {}
+        self.policies: dict[str, Any] = {}
         self.logger = get_logger("authenticator")
 
     @flow.result(inputs=(), outputs=())
-    async def shutdown(self, session):
+    async def shutdown(self, session: Any) -> None:
         self.logger.info("Authenticator: arresto", providers=len(self.authentications))
         pass
     
     @flow.result(inputs=(), outputs=())
-    async def startup(self, session=None):
+    async def startup(self, session: Any = None) -> None:
         self.logger.info("Authenticator: avvio", providers=len(self.authentications))
         return None
 
-    async def _authorized(self, action):
-        return await self.defender.authorized("authentication", action=action)
+    async def _authorized(self, session: Any, action: str) -> bool:
+        return await self.defender.authorized(
+            session, "authentication", action=action
+        )
 
     @staticmethod
-    def _session_data(session) -> SessionData:
+    def _session_data(session: Any) -> SessionData:
         snapshot = getattr(session, "session_data", session)
         if isinstance(snapshot, SessionData):
             return snapshot
@@ -75,7 +77,11 @@ class Manager(manager.Port):
         raise TypeError("Authenticator richiede uno snapshot SessionData")
 
     @staticmethod
-    def _merge_authentication_result(session, authentication, session_result):
+    def _merge_authentication_result(
+        session: Any,
+        authentication: authentication.Port,
+        session_result: Any,
+    ) -> tuple[SessionData, flow.FlowResult | None]:
         session = Manager._session_data(session)
         if flow.is_result(session_result):
             if not flow.check(session_result):
@@ -87,11 +93,14 @@ class Manager(manager.Port):
         if not isinstance(payload, dict):
             return session, flow.error("Authentication provider returned an invalid payload")
 
-        providers = payload.get('providers', {})
-        user = payload.get('user')
+        payload_data = cast(dict[str, Any], payload)
+        providers = cast(dict[str, Any], payload_data.get('providers', {}))
+        user: Any = payload_data.get('user')
         provider = providers.get(authentication.name)
         if not isinstance(provider, dict) or not isinstance(user, dict):
             return session, flow.error("Authentication provider returned incomplete identity data")
+        provider = cast(dict[str, Any], provider)
+        user = cast(dict[str, Any], user)
 
         authentication_data = session["authentication"].copy()
         current_providers = authentication_data.get("providers", {}).copy()
@@ -101,7 +110,9 @@ class Manager(manager.Port):
         return session.evolve(authentication=authentication_data), None
     
     @flow.result(inputs=('session',), outputs=())
-    async def invalidate(self, session, **constants) -> bool:
+    async def invalidate(
+        self, session: Any, **constants: Any
+    ) -> flow.FlowResult:
         """
         Invalida la sessione di un utente specificato.
 
@@ -109,13 +120,13 @@ class Manager(manager.Port):
         :return: True se la sessione è stata terminata, False se l'utente non esiste.
         """
 
-        if not await self._authorized("sign_out"):
+        snapshot = self._session_data(session)
+        if not await self._authorized(snapshot, "sign_out"):
             self.logger.warning("Authenticator: invalidazione negata dalla policy")
             return flow.error("Authentication policy denied sign_out")
-        snapshot = self._session_data(session)
         authentication_data = snapshot["authentication"].copy()
         for authentication in self.authentications:
-            session_result = await authentication.sign_out(authentication_data.copy())
+            session_result = await authentication.sign_out(snapshot)
             if flow.is_result(session_result) and not flow.check(session_result):
                 self.logger.warning(
                     "Authenticator: invalidazione provider fallita",
@@ -132,7 +143,9 @@ class Manager(manager.Port):
         return flow.success(snapshot)
 
     @flow.result(inputs=('session',), outputs=('session',))
-    async def regenerate(self, session, **constants):
+    async def regenerate(
+        self, session: Any, **constants: Any
+    ) -> flow.FlowResult:
         """
         Autentica un utente utilizzando i provider configurati.
 
@@ -140,11 +153,11 @@ class Manager(manager.Port):
         :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
         """
         snapshot = self._session_data(session)
-        if not await self._authorized("sign_aid"):
+        if not await self._authorized(snapshot, "sign_aid"):
             self.logger.warning("Authenticator: rigenerazione negata dalla policy")
             return flow.error("Authentication policy denied sign_aid")
         for authentication in self.authentications:
-            session_result = await authentication.sign_aid(**constants)
+            session_result = await authentication.sign_aid(snapshot, **constants)
             snapshot, merge_error = self._merge_authentication_result(
                 snapshot, authentication, session_result
             )
@@ -158,7 +171,9 @@ class Manager(manager.Port):
         return flow.success(snapshot)
 
     @flow.result(inputs=('session',), outputs=('session',))
-    async def authenticate(self, session, **constants):
+    async def authenticate(
+        self, session: Any, **constants: Any
+    ) -> flow.FlowResult:
         """
         Autentica un utente utilizzando i provider configurati.
 
@@ -166,11 +181,11 @@ class Manager(manager.Port):
         :return: Dizionario di sessione aggiornato se l'autenticazione ha successo, altrimenti None.
         """
         snapshot = self._session_data(session)
-        if not await self._authorized("sign_in"):
+        if not await self._authorized(snapshot, "sign_in"):
             self.logger.warning("Authenticator: autenticazione negata dalla policy")
             return flow.error("Authentication policy denied sign_in")
         for authentication in self.authentications:
-            session_result = await authentication.sign_in(**constants)
+            session_result = await authentication.sign_in(snapshot, **constants)
             snapshot, merge_error = self._merge_authentication_result(
                 snapshot, authentication, session_result
             )
@@ -185,7 +200,9 @@ class Manager(manager.Port):
 
 
     @flow.result(inputs=('session',), outputs=('session',))
-    async def activate(self, session, **constants) -> Any:
+    async def activate(
+        self, session: Any, **constants: Any
+    ) -> flow.FlowResult:
         """
         Registra un utente utilizzando i provider configurati.
 
@@ -193,11 +210,11 @@ class Manager(manager.Port):
         :return: Dizionario di sessione aggiornato se la registrazione ha successo, altrimenti None.
         """
         snapshot = self._session_data(session)
-        if not await self._authorized("sign_up"):
+        if not await self._authorized(snapshot, "sign_up"):
             self.logger.warning("Authenticator: attivazione negata dalla policy")
             return flow.error("Authentication policy denied sign_up")
         for authentication in self.authentications:
-            session_result = await authentication.sign_up(**constants)
+            session_result = await authentication.sign_up(snapshot, **constants)
             snapshot, merge_error = self._merge_authentication_result(
                 snapshot, authentication, session_result
             )

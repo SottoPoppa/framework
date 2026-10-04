@@ -6,14 +6,23 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import framework.core.flow as flow
 from framework.manager.defender import Manager as Defender
+from framework.core.session import SessionData
 from infrastructure.authentication.stub import Adapter
 
 
 class StubPasswordHashingTests(unittest.IsolatedAsyncioTestCase):
     async def test_password_is_salted_hashed_and_verified(self):
         adapter = Adapter()
+        session = SessionData({
+            "id": "authentication-test",
+            "context": {},
+            "authentication": {},
+            "results": {},
+        })
 
-        registered = await adapter.sign_up("alice@example.test", "correct horse")
+        registered = await adapter.sign_up(
+            session, "alice@example.test", "correct horse"
+        )
         stored_user = adapter._users["alice@example.test"]
         encoded = stored_user["password_hash"]
         algorithm, iterations, salt, _ = encoded.split("$", 3)
@@ -37,10 +46,18 @@ class StubPasswordHashingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(int(iterations), adapter._password_iterations)
         self.assertEqual(len(salt), 32)
         self.assertTrue(
-            flow.check(await adapter.sign_in("alice@example.test", "correct horse"))
+            flow.check(
+                await adapter.sign_in(
+                    session, "alice@example.test", "correct horse"
+                )
+            )
         )
         self.assertFalse(
-            flow.check(await adapter.sign_in("alice@example.test", "wrong password"))
+            flow.check(
+                await adapter.sign_in(
+                    session, "alice@example.test", "wrong password"
+                )
+            )
         )
 
 

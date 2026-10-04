@@ -1,18 +1,26 @@
 import re
 import json
-import hashlib
-import copy
-from typing import Any, Callable, Dict, List, Tuple
-from collections.abc import Mapping
-from functools import partial
+from importlib import import_module
+from typing import Any, Callable, Protocol, cast
 from jinja2 import Environment
 
 import tomllib
 
 
-from cerberus import Validator
-
 import framework.core.flow as flow
+
+
+class _Validator(Protocol):
+    errors: Any
+    document: Any
+
+    def validate(self, document: Any) -> bool: ...
+
+
+_validator_factory = cast(
+    Callable[[dict[str, Any]], _Validator],
+    getattr(import_module("cerberus"), "Validator"),
+)
 
 
 # Registry condiviso: il loader lo aggiorna in-place durante il bootstrap.
@@ -25,7 +33,11 @@ jinja_env: Environment | None = None
 # ==============================================================================
 
 @flow.result(action="data.get", component="accessor")
-async def get(data: Any = None, path: str = "", default: Any = None) -> flow.Result:
+async def get(
+    data: Any = None,
+    path: str = "",
+    default: Any = None,
+) -> flow.FlowResult:
     """
     Estrae un valore da strutture annidate.
     Supporta l'uso diretto `await get(data, path)` o curried per le pipe.
@@ -38,7 +50,11 @@ async def get(data: Any = None, path: str = "", default: Any = None) -> flow.Res
 
 
 @flow.result(action="data.set", component="accessor")
-async def put(data: Any = None, path: str = "", value: Any = None) -> flow.Result:
+async def put(
+    data: Any = None,
+    path: str = "",
+    value: Any = None,
+) -> flow.FlowResult:
     """
     Imposta un valore in modo immutabile.
     Supporta l'uso diretto `await set(data, path, value)` o curried per le pipe.
@@ -51,11 +67,11 @@ async def put(data: Any = None, path: str = "", value: Any = None) -> flow.Resul
 
 @flow.result(action="data.transform", component="transformer")
 async def transform(
-    data_dict: dict,
-    mapper: dict,
+    data_dict: dict[str, Any],
+    mapper: dict[str, Any],
     source: str,
     direction: str = "external_to_model",
-) -> flow.Result:
+) -> flow.FlowResult:
     """
     Traduce i dati tra un provider esterno e il modello interno.
 
@@ -76,6 +92,12 @@ async def transform(
             "direction deve essere 'external_to_model' o 'model_to_external'"
         )
 
+    def has_source_value(item: tuple[Any, Any]) -> bool:
+        return flow.map_get_value(item[1])(data_dict) is not None
+
+    def map_output(item: tuple[Any, Any]) -> dict[Any, Any]:
+        return {item[0]: flow.map_get_value(item[1])(data_dict)}
+
     return await flow.pipe(
         # Crea il contesto con i dati, il mapper, il provider e la direzione.
         {"data": data_dict, "mapper": mapper, "source": source, "direction": direction},
@@ -91,14 +113,10 @@ async def transform(
         ),
 
         # Mantiene solo le coppie il cui path di input esiste nei dati.
-        flow.tuple_filter_tuple(
-            lambda item: flow.map_get_value(item[1])(data_dict) is not None
-        ),
+        flow.tuple_filter_tuple(has_source_value),
 
         # Converte ogni coppia in {chiave_output: valore_input}.
-        flow.tuple_map_tuple(
-            lambda item: {item[0]: flow.map_get_value(item[1])(data_dict)}
-        ),
+        flow.tuple_map_tuple(map_output),
 
         # Fonde i campi adattati nel modello interno finale.
         flow.tuple_merge_map(),
@@ -106,11 +124,12 @@ async def transform(
     )
 
 
-def normalize(value: Any, schema: dict) -> flow.Result:
+def normalize(value: Any, schema: dict[str, Any]) -> flow.FlowResult:
     """Normalizza un documento o una collezione di documenti tramite schema."""
     if isinstance(value, (list, tuple)):
-        normalized = []
-        for index, item in enumerate(value):
+        values = cast(list[Any] | tuple[Any, ...], value)
+        normalized: list[Any] = []
+        for index, item in enumerate(values):
             result = normalize(item, schema)
             if not result.is_success:
                 return flow.error({
@@ -124,7 +143,7 @@ def normalize(value: Any, schema: dict) -> flow.Result:
         field: {rule: option for rule, option in definition.items() if rule != "comment"}
         for field, definition in schema.items()
     }
-    validator = Validator(validation_schema)
+    validator = _validator_factory(validation_schema)
 
     return flow.pipe_sync(
         value,
@@ -138,13 +157,17 @@ def normalize(value: Any, schema: dict) -> flow.Result:
     )
 
 
-_FORMAT_PARSERS: Dict[str, Callable[[str], Any]] = {
+_FORMAT_PARSERS: dict[str, Callable[[str], Any]] = {
     "toml": tomllib.loads,
     "json": json.loads,
 }
 
 
-def convert(value: Any, target: type = str, format: str | None = None) -> Any:
+def convert(
+    value: Any,
+    target: type[Any] = str,
+    format: str | None = None,
+) -> Any:
     """
     Converte un valore in un tipo Python o decodifica una stringa in un formato
     strutturato (es. 'toml', 'json') prima di restituirla.
@@ -154,14 +177,14 @@ def convert(value: Any, target: type = str, format: str | None = None) -> Any:
         if parser is None:
             raise ValueError(f"Formato non supportato per convert(): {format}")
         return parser(value)
-    if target is None or isinstance(value, target):
+    if isinstance(value, target):
         return value
     return target(value)
 
 
 def resolve_schemes(
     schemes: dict[str, Any],
-    render: Callable[[str, dict], str],
+    render: Callable[[str, dict[str, Any]], str],
 ) -> dict[str, Any]:
     """Risolve riferimenti e template presenti negli schemi caricati."""
     resolved: dict[str, Any] = {}
@@ -170,9 +193,11 @@ def resolve_schemes(
 
     def resolve_value(value: Any) -> Any:
         if isinstance(value, dict):
-            return {key: resolve_value(item) for key, item in value.items()}
+            mapping = cast(dict[Any, Any], value)
+            return {key: resolve_value(item) for key, item in mapping.items()}
         if isinstance(value, list):
-            return [resolve_value(item) for item in value]
+            items = cast(list[Any], value)
+            return [resolve_value(item) for item in items]
         if not isinstance(value, str) or "{{" not in value:
             return value
 
@@ -208,8 +233,12 @@ class Scheme(flow.Immutable):
     """Dict immutabile basato su schema nativo."""
     SCHEME: dict[str, dict[str, Any]] = {}
 
-    def __init__(self, *args, **kwargs):
-        input_data = args[0] if (args and isinstance(args[0], dict) and not kwargs) else kwargs
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        input_data: dict[str, Any] = (
+            cast(dict[str, Any], args[0])
+            if args and isinstance(args[0], dict) and not kwargs
+            else kwargs
+        )
         result = normalize(input_data, self.SCHEME)
         if not result.is_success:
             raise result.output.error

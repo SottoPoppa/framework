@@ -14,16 +14,16 @@
   "hashes": {
     "Adapter": {
       "can": {
-        "production": "13cde4d061777656095306942ef6e552bec531dc65a542647dfc0862ff649da0",
-        "test": "13cde4d061777656095306942ef6e552bec531dc65a542647dfc0862ff649da0"
+        "production": "44855949cfd98bad0b399b8647a05797001e0981ab35b8b3d963807ea62838ed",
+        "test": "44855949cfd98bad0b399b8647a05797001e0981ab35b8b3d963807ea62838ed"
       },
       "post": {
-        "production": "b930cb14478101b910a195cc1895df9637ac7df577866b84e405bc3343b4407a",
-        "test": "b930cb14478101b910a195cc1895df9637ac7df577866b84e405bc3343b4407a"
+        "production": "2128575dff3f35c713b6896f8557894b380b217e801edef771a37935bbc7ace8",
+        "test": "2128575dff3f35c713b6896f8557894b380b217e801edef771a37935bbc7ace8"
       },
       "read": {
-        "production": "d9ea0fcdce05c038106f3f390aacf03a47cf7a680b0a63f78664bd990147f5fa",
-        "test": "d9ea0fcdce05c038106f3f390aacf03a47cf7a680b0a63f78664bd990147f5fa"
+        "production": "cafeff45046c21297d64a09da020e9f9594a8f6921f41423c3ca8702dc64deb5",
+        "test": "cafeff45046c21297d64a09da020e9f9594a8f6921f41423c3ca8702dc64deb5"
       }
     }
   },

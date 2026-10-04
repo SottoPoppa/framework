@@ -5,6 +5,7 @@ from typing import Any
 
 import framework.port.authentication as authentication
 import framework.core.flow as flow
+from framework.core.session import SessionData
 
 
 class Adapter(authentication.Port):
@@ -65,7 +66,9 @@ class Adapter(authentication.Port):
             "user": {"id": name, "email": email},
         }
 
-    async def sign_up(self, email: str, password: str, **kwargs: Any):
+    async def sign_up(
+        self, session: SessionData, email: str, password: str, **kwargs: Any
+    ):
         if email in self._users:
             return flow.error("User already exists")
         user_id = self._user_id(email)
@@ -76,7 +79,7 @@ class Adapter(authentication.Port):
         }
         return flow.success(self._result(user_id, email))
 
-    async def sign_in(self, email: str, password: str):
+    async def sign_in(self, session: SessionData, email: str, password: str):
         user = self._users.get(email)
         if user is None:
             return flow.error("User not found")
@@ -84,13 +87,15 @@ class Adapter(authentication.Port):
             return flow.error("Invalid credentials")
         return flow.success(self._result(user["id"], email))
 
-    async def sign_out(self, session: dict[str, Any]):
+    async def sign_out(self, session: SessionData):
         return flow.success({"session": session})
 
-    async def get_user(self, session: dict[str, Any]):
-        return flow.success(session.get("user", {}))
+    async def get_user(self, session: SessionData):
+        return flow.success(session["authentication"].get("user", {}))
 
-    async def sign_aid(self, email: str, **kwargs: Any):
+    async def sign_aid(
+        self, session: SessionData, email: str, **kwargs: Any
+    ):
         user = self._users.get(email)
         if user is None:
             return flow.error("User not found")

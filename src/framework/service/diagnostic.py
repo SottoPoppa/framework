@@ -4,14 +4,14 @@ import sys
 import os
 import platform
 import socket
-import re
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, cast as _cast
 from contextlib import contextmanager
 import time
 import contextvars
 from collections import deque
 from threading import Lock
+from types import TracebackType
 
 
 # =====================================================================
@@ -20,11 +20,11 @@ from threading import Lock
 
 class DiagnosticEncoder(json.JSONEncoder):
     """JSONEncoder per serializzare oggetti complessi nei report diagnostici."""
-    def default(self, obj):
+    def default(self, o: Any) -> Any:
         try:
-            return super().default(obj)
+            return super().default(o)
         except TypeError:
-            return str(obj)
+            return str(o)
 
 
 def truncate_value(value: Any, max_str_len: int = 256, max_list_len: int = 20) -> Any:
@@ -35,13 +35,18 @@ def truncate_value(value: Any, max_str_len: int = 256, max_list_len: int = 20) -
         return value
 
     elif isinstance(value, (list, tuple, set)):
-        if len(value) > max_list_len:
-            truncated = list(value)[:max_list_len]
-            return f"{truncated} ... [TRONCATA, N={len(value)}]"
-        return list(value)
+        values = _cast(list[Any] | tuple[Any, ...] | set[Any], value)
+        if len(values) > max_list_len:
+            truncated = list(values)[:max_list_len]
+            return f"{truncated} ... [TRONCATA, N={len(values)}]"
+        return list(values)
 
     elif isinstance(value, dict):
-        return {k: truncate_value(v, max_str_len, max_list_len) for k, v in value.items()}
+        values = _cast(dict[Any, Any], value)
+        return {
+            key: truncate_value(item, max_str_len, max_list_len)
+            for key, item in values.items()
+        }
 
     return value
 
@@ -51,10 +56,11 @@ def _render_value(value: Any) -> str:
     (a differenza del repr() grezzo di Python)."""
     val = truncate_value(value, max_str_len=200)
     if isinstance(val, (dict, list)):
+        json_value = _cast(dict[Any, Any] | list[Any], val)
         try:
-            return json.dumps(val, cls=DiagnosticEncoder, ensure_ascii=False)
+            return json.dumps(json_value, cls=DiagnosticEncoder, ensure_ascii=False)
         except Exception:
-            return str(val)
+            return str(json_value)
     if isinstance(val, str):
         return val
     return str(val)
@@ -83,9 +89,9 @@ def get_system_info() -> Dict[str, Any]:
     }
 
 
-def analyze_traceback(tb) -> List[Dict[str, Any]]:
+def analyze_traceback(tb: TracebackType | None) -> List[Dict[str, Any]]:
     """Estrae informazioni strutturate dal traceback."""
-    frames = []
+    frames: List[Dict[str, Any]] = []
     current_tb = tb
 
     while current_tb is not None:
@@ -96,7 +102,7 @@ def analyze_traceback(tb) -> List[Dict[str, Any]]:
             current_tb = current_tb.tb_next
             continue
 
-        local_vars = {
+        local_vars: Dict[str, Any] = {
             k: truncate_value(v)
             for k, v in frame.f_locals.items()
             if not k.startswith('_')
@@ -126,7 +132,13 @@ def analyze_traceback(tb) -> List[Dict[str, Any]]:
     return frames
 
 
-def create_diagnostic_report(exc_info: tuple = None) -> Dict[str, Any]:
+def create_diagnostic_report(
+    exc_info: tuple[
+        type[BaseException] | None,
+        BaseException | None,
+        TracebackType | None,
+    ] | None = None,
+) -> Dict[str, Any]:
     """Genera un report diagnostico dettagliato per un'eccezione."""
     if exc_info:
         exc_type, exc_value, exc_traceback = exc_info
@@ -139,7 +151,7 @@ def create_diagnostic_report(exc_info: tuple = None) -> Dict[str, Any]:
     frames = analyze_traceback(exc_traceback)
     final_frame = frames[-1] if frames else {}
 
-    report = {
+    report: Dict[str, Any] = {
         "timestamp": datetime.now().isoformat(),
         "exception": {
             "type": exc_type.__name__,
@@ -202,12 +214,14 @@ _log_context: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
 )
 
 
-def set_log_context(metadata: dict[str, Any]):
+def set_log_context(
+    metadata: dict[str, Any],
+) -> contextvars.Token[dict[str, Any]]:
     """Imposta il contesto di correlazione per la task corrente."""
     return _log_context.set(dict(metadata))
 
 
-def reset_log_context(token) -> None:
+def reset_log_context(token: contextvars.Token[dict[str, Any]]) -> None:
     """Ripristina il contesto di correlazione precedente."""
     _log_context.reset(token)
 def _component_color(name: str) -> str:
@@ -243,7 +257,7 @@ def _format_entry(
     message: str,
     component: Optional[str],
     indent: int,
-    metadata: dict,
+    metadata: Dict[str, Any],
     exception: Optional[BaseException],
 ) -> str:
     """Costruisce (senza stampare) una entry di log, eventualmente multi-riga."""
@@ -293,7 +307,7 @@ class LogBuffer:
     """Buffer bounded condivisibile dai visualizzatori dell'applicazione."""
 
     def __init__(self, max_entries: int = 200):
-        self._entries = deque(maxlen=max_entries)
+        self._entries: deque[str] = deque(maxlen=max_entries)
         self._lock = Lock()
 
     def append(self, entry: str) -> None:
@@ -323,8 +337,13 @@ def _emit_entry(entry: str, sink: LogBuffer | None = None) -> None:
         active_sink.append(entry)
 
 
-def log(level: str, message: str, component: Optional[str] = None,
-        exception: Optional[BaseException] = None, **metadata):
+def log(
+    level: str,
+    message: str,
+    component: Optional[str] = None,
+    exception: Optional[BaseException] = None,
+    **metadata: Any,
+) -> None:
     """Log immediato: stampa subito a schermo (comportamento storico)."""
     indent = _log_indent.get()
     entry = _format_entry(level, message, component, indent, metadata, exception)
@@ -372,47 +391,63 @@ class LogScope:
         self._buffer: List[str] = []
         self._failed = False
         self._start = 0.0
-        self._token = None
+        self._token: contextvars.Token[int] | None = None
         self._extra_summary: Dict[str, Any] = {}
 
     # -- logging bufferizzato --------------------------------------------
-    def _add(self, level: str, message: str, exception: Optional[BaseException] = None, **metadata):
+    def _add(
+        self,
+        level: str,
+        message: str,
+        exception: Optional[BaseException] = None,
+        **metadata: Any,
+    ) -> None:
         indent = _log_indent.get()
         entry = _format_entry(level, message, self.component, indent, metadata, exception)
         self._buffer.append(entry)
 
-    def debug(self, message, **metadata):
+    def debug(self, message: str, **metadata: Any) -> None:
         self._add("DEBUG", message, **metadata)
 
-    def info(self, message, **metadata):
+    def info(self, message: str, **metadata: Any) -> None:
         self._add("INFO", message, **metadata)
 
-    def warning(self, message, **metadata):
+    def warning(self, message: str, **metadata: Any) -> None:
         self._add("WARNING", message, **metadata)
 
-    def error(self, message, exception: Optional[BaseException] = None, **metadata):
+    def error(
+        self,
+        message: str,
+        exception: Optional[BaseException] = None,
+        **metadata: Any,
+    ) -> None:
         self._add("ERROR", message, exception=exception, **metadata)
         self._failed = True
 
-    def mark_failed(self):
+    def mark_failed(self) -> None:
         """Segna il blocco come fallito senza necessariamente loggare un errore
         (es. un assert non andato a buon fine, non un'eccezione Python)."""
         self._failed = True
 
-    def set_summary(self, **kv):
+    def set_summary(self, **kv: Any) -> None:
         """Info extra mostrate nella riga compatta finale, es. set_summary(passed=3, failed=0)."""
         self._extra_summary.update(kv)
 
     # -- context manager ---------------------------------------------------
-    def __enter__(self):
+    def __enter__(self) -> "LogScope":
         self._start = time.perf_counter()
         indent = _log_indent.get()
         self._token = _log_indent.set(indent + 1)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool:
         duration = time.perf_counter() - self._start
-        _log_indent.reset(self._token)
+        _log_indent.reset(_cast(contextvars.Token[int], self._token))
 
         failed = self._failed or exc_type is not None
         icon = "✅" if not failed else "❌"
@@ -442,7 +477,7 @@ class LogScope:
                 _emit_entry(entry, self.sink)
             if exc_type is not None:
                 for line in _format_exception_lines(
-                    exc_val,
+                    _cast(BaseException, exc_val),
                     indent + 1,
                     "ERROR",
                     header="Traceback (non gestito nel blocco):",

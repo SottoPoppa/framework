@@ -44,8 +44,8 @@
       "test": "7b671a9157b51e15ca737c72b8502118fbdf973b0cd35557a9282bd8d3e56884"
     },
     "pipe_sync": {
-      "production": "17a9f268f87db0830d693d9a6508d6d6abb63164d5ed59be2377854bc6df3c26",
-      "test": "17a9f268f87db0830d693d9a6508d6d6abb63164d5ed59be2377854bc6df3c26"
+      "production": "a59c0c859828542b9d982c13c9b1bb20a31416705f15a87dcf6f666dd384cb2e",
+      "test": "a59c0c859828542b9d982c13c9b1bb20a31416705f15a87dcf6f666dd384cb2e"
     },
     "set_dev_sink": {
       "production": "705102984e91f2117f7c2cc71882ef82aa1847cdc256679c494248a09ee339c1",

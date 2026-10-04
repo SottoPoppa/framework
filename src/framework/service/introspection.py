@@ -1,10 +1,11 @@
-import os
 import ast
 import inspect
 import hashlib
 import json
 import re
 from pathlib import Path
+from types import ModuleType
+from typing import Any, cast
 
 class Reflection:
     """Utility di reflection sui moduli Python."""
@@ -16,7 +17,7 @@ class Reflection:
         except Exception:
             return []
 
-        result = set()
+        result: set[str] = set()
 
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -34,20 +35,27 @@ class Reflection:
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
     @staticmethod
-    def class_methods(cls, names: set[str] | None = None) -> dict[str, str]:
+    def class_methods(
+        class_type: type[Any],
+        names: set[str] | None = None,
+    ) -> dict[str, str]:
         """Sorgente dei metodi definiti direttamente su `cls`.
 
         Senza `names` conserva il comportamento storico e considera solo i
         metodi pubblici. Con una selezione esplicita permette a un contract di
         certificare anche un metodo privato dichiarato intenzionalmente.
         """
-        methods = {}
-        for name, member in vars(cls).items():
+        methods: dict[str, str] = {}
+        for name, member in vars(class_type).items():
             if names is None and name.startswith('_'):
                 continue
             if names is not None and name not in names:
                 continue
-            fn = member.__func__ if isinstance(member, (staticmethod, classmethod)) else member
+            fn: Any = (
+                getattr(cast(Any, member), "__func__")
+                if isinstance(member, (staticmethod, classmethod))
+                else member
+            )
             if not inspect.isfunction(fn):
                 continue
             try:
@@ -57,7 +65,10 @@ class Reflection:
         return methods
 
     @staticmethod
-    def module_components(module, names: set[str] | None = None) -> dict[str, str]:
+    def module_components(
+        module: ModuleType,
+        names: set[str] | None = None,
+    ) -> dict[str, str]:
         """Sorgente di tutti i componenti pubblici definiti DIRETTAMENTE in
         `module` (esclude import): funzioni a livello di modulo e metodi
         delle classi definite nel modulo.
@@ -97,23 +108,26 @@ class Reflection:
         return components
 
     @staticmethod
-    def dependencies(cls):
+    def dependencies(class_type: type[Any]) -> dict[str, Any]:
         return {
             name: p.annotation
-            for name, p in inspect.signature(cls.__init__).parameters.items()
+            for name, p in inspect.signature(class_type.__init__).parameters.items()
             if name != "self"
             and p.annotation is not inspect.Parameter.empty
         }
 
     @staticmethod
-    def is_port_list(annotation):
+    def is_port_list(annotation: Any) -> bool:
         return (
             getattr(annotation, "__origin__", None)
             is list
         )
 
     @staticmethod
-    def file_dependencies(file_path: str | None, root="src"):
+    def file_dependencies(
+        file_path: str | None,
+        root: str | Path = "src",
+    ) -> list[str]:
         if not file_path:
             return []
         source_path = Path(file_path)
@@ -124,20 +138,20 @@ class Reflection:
         except (OSError, UnicodeError):
             return []
 
-        def rooted_path(path):
+        def rooted_path(path: str | Path) -> str:
             try:
                 relative = Path(path).relative_to(root_path)
                 return str(root_path / relative)
             except ValueError:
                 return str(path)
 
-        deps = {rooted_path(file_path)}
+        deps: set[str] = {rooted_path(file_path)}
 
-        def add(path):
+        def add(path: Path) -> None:
             if path.exists():
                 deps.add(rooted_path(path))
 
-        def add_import(module):
+        def add_import(module: str) -> None:
             module_path = Path(root_path, *module.split("."))
             add(module_path.with_suffix(".py"))
 

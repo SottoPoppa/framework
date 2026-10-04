@@ -11,14 +11,11 @@ from typing import (
     Any,
     Awaitable as _Awaitable,
     Callable,
-    Dict,
     Generic,
     Iterable,
-    List,
     Mapping,
     Never as _Never,
     ParamSpec as _ParamSpec,
-    Tuple,
     TypeAlias as _TypeAlias,
     TypeGuard,
     TypeVar,
@@ -51,7 +48,9 @@ _trace_state: contextvars.ContextVar[dict[str, Any] | None] = contextvars.Contex
 )
 
 
-def request_boundary(func: Callable) -> Callable:
+def request_boundary(
+    func: Callable[_P, Any],
+) -> Callable[_P, _Awaitable[Any]]:
     """Isola una nuova richiesta root dal contesto di una task longeva."""
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any):
@@ -114,10 +113,11 @@ def _request_metadata(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str
         details = {"session_id": str(value.id)}
         authentication = getattr(value, "authentication", {})
         if isinstance(authentication, dict):
+            authentication_data = _cast(dict[str, Any], authentication)
             actor = (
-                authentication.get("user_id")
-                or authentication.get("username")
-                or authentication.get("email")
+                authentication_data.get("user_id")
+                or authentication_data.get("username")
+                or authentication_data.get("email")
             )
             if actor is not None:
                 details["actor"] = str(actor)
@@ -141,7 +141,7 @@ def _trace_metadata() -> dict[str, Any]:
     state = _trace_state.get()
     if state is None:
         return {}
-    metadata = {}
+    metadata: dict[str, str] = {}
     if "trace_id" in state:
         metadata["trace_id"] = state["trace_id"]
     if "path" in state:
@@ -159,7 +159,7 @@ def _trace_metadata() -> dict[str, Any]:
     return metadata
 
 
-def _dev_log(
+def dev_log(
     message: str,
     *args: Any,
     exc_info: bool = False,
@@ -228,7 +228,7 @@ def _dev_log(
 # ==============================================================================
 
 
-def _fn_label(fn: Callable) -> str:
+def _fn_label(fn: Callable[..., Any]) -> str:
     """Restituisce un'etichetta leggibile per una funzione, incluse le lambda."""
     name = getattr(fn, "__name__", None)
     if name and name != "<lambda>":
@@ -251,10 +251,14 @@ def _named(fn: Callable[_P, T], name: str) -> Callable[_P, T]:
 # STRUTTURE DATI IMMUTABILI E RISULTATI
 # ==============================================================================
 
-class Immutable(dict):
+class Immutable(dict[Any, Any]):
 
-    def __init__(self, *args, **kwargs) -> None:
-        input_data = args[0] if (args and isinstance(args[0], dict) and not kwargs) else kwargs
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        input_data: dict[Any, Any] = (
+            _cast(dict[Any, Any], args[0])
+            if args and isinstance(args[0], dict) and not kwargs
+            else kwargs
+        )
         super().__init__(self._freeze(input_data))
 
     @classmethod
@@ -274,12 +278,16 @@ class Immutable(dict):
         # sottoclassi hanno uno SCHEME specifico che non ha senso imporre a
         # un dizionario annidato arbitrario.
         if isinstance(val, dict):
-            frozen_items = {k: cls._freeze(v) for k, v in val.items()}
-            obj = dict.__new__(Immutable)
-            dict.__init__(obj, frozen_items)
+            frozen_items: dict[Any, Any] = {}
+            for key, value in _cast(dict[Any, Any], val).items():
+                frozen_items[key] = cls._freeze(value)
+            obj: Immutable = dict.__new__(Immutable)
+            dict[Any, Any].__init__(obj, frozen_items)
             return obj
         if isinstance(val, (list, tuple)):
-            return tuple(cls._freeze(v) for v in val)
+            return tuple(
+                cls._freeze(value) for value in _cast(Iterable[Any], val)
+            )
         return val
 
     def __getattr__(self, item: str) -> Any:
@@ -288,21 +296,21 @@ class Immutable(dict):
         except KeyError:
             raise AttributeError(f"Campo '{item}' non presente in {self.__class__.__name__}")
 
-    def __setattr__(self, k, v): raise TypeError(f"{self.__class__.__name__} è immutabile")
-    def __setitem__(self, k, v): raise TypeError(f"{self.__class__.__name__} è immutabile")
-    def __delitem__(self, k): raise TypeError(f"{self.__class__.__name__} è immutabile")
-    def clear(self): raise TypeError(f"{self.__class__.__name__} è immutabile")
-    def pop(self, *args, **kwargs): raise TypeError(f"{self.__class__.__name__} è immutabile")
-    def popitem(self): raise TypeError(f"{self.__class__.__name__} è immutabile")
-    def setdefault(self, *args, **kwargs): raise TypeError(f"{self.__class__.__name__} è immutabile")
-    def update(self, *args, **kwargs): raise TypeError(f"{self.__class__.__name__} è immutabile")
-    def __ior__(self, other): raise TypeError(f"{self.__class__.__name__} è immutabile")
+    def __setattr__(self, k: str, v: Any) -> _Never: raise TypeError(f"{self.__class__.__name__} è immutabile")
+    def __setitem__(self, k: Any, v: Any) -> _Never: raise TypeError(f"{self.__class__.__name__} è immutabile")
+    def __delitem__(self, k: Any) -> _Never: raise TypeError(f"{self.__class__.__name__} è immutabile")
+    def clear(self) -> _Never: raise TypeError(f"{self.__class__.__name__} è immutabile")
+    def pop(self, *args: Any, **kwargs: Any) -> _Never: raise TypeError(f"{self.__class__.__name__} è immutabile")
+    def popitem(self) -> _Never: raise TypeError(f"{self.__class__.__name__} è immutabile")
+    def setdefault(self, *args: Any, **kwargs: Any) -> _Never: raise TypeError(f"{self.__class__.__name__} è immutabile")
+    def update(self, *args: Any, **kwargs: Any) -> _Never: raise TypeError(f"{self.__class__.__name__} è immutabile")
+    def __ior__(self, other: Any) -> _Never: raise TypeError(f"{self.__class__.__name__} è immutabile")
 
-    def __copy__(self):
+    def __copy__(self) -> dict[Any, Any]:
         return dict(self)
 
-    def __deepcopy__(self, memo):
-        copied = {}
+    def __deepcopy__(self, memo: dict[int, Any]) -> dict[Any, Any]:
+        copied: dict[Any, Any] = {}
         memo[id(self)] = copied
         for key, value in self.items():
             copied[copy.deepcopy(key, memo)] = copy.deepcopy(value, memo)
@@ -360,11 +368,11 @@ class Result(Immutable, Generic[T, F]):
         return self.output.is_success
 
     @property
-    def failed_step(self) -> "Result | None":
+    def failed_step(self) -> "Result[Any, Any] | None":
         return None if self.is_success else (self.transactions[-1] if self.transactions else None)
 
     @property
-    def successful_transactions(self) -> tuple["Result", ...]:
+    def successful_transactions(self) -> tuple["Result[Any, Any]", ...]:
         return tuple(tx for tx in self.transactions if tx.output.is_success)
 
     @property
@@ -384,28 +392,31 @@ class Result(Immutable, Generic[T, F]):
 FlowResult: _TypeAlias = Result[Any, Any]
 
 
-Valor = Success[Any] | Failure[Any]
+Valor = Immutable
 
 
 # ==============================================================================
 # CORE PIPELINE & DECORATORS
 # ==============================================================================
 
-def _normalize(raw: Any, transactions: list["Result"]) -> Valor:
+def _normalize(raw: Any, transactions: list[FlowResult]) -> Valor:
     if isinstance(raw, Result):
-        transactions.extend(list(raw.get("transactions", ())))
-        return raw.output
-    return raw if isinstance(raw, (Success, Failure)) else Success(value=raw)
+        nested_transactions: Iterable[FlowResult] = raw.get("transactions", ())
+        transactions.extend(nested_transactions)
+        return _cast(Valor, raw.output)
+    if isinstance(raw, (Success, Failure)):
+        return _cast(Valor, raw)
+    return Success(value=raw)
 
 
-async def _invoke(step: Step, value: Any, transactions: list["Result"]) -> Valor:
+async def _invoke(step: Step, value: Any, transactions: list[FlowResult]) -> Valor:
     try:
         out = step(value)
         if inspect.isawaitable(out):
             out = await out
         return _normalize(out, transactions)
     except Exception as exc:
-        _dev_log(
+        dev_log(
             "step.error",
             operation=getattr(step, "__name__", repr(step)),
             error_message=str(exc),
@@ -418,7 +429,7 @@ async def _invoke(step: Step, value: Any, transactions: list["Result"]) -> Valor
 
 async def pipe(value: Any, *steps: Step, action: str = "flow.pipe", component: str | None = None) -> FlowResult:
     start = time.perf_counter()
-    transactions: list[Result] = []
+    transactions: list[FlowResult] = []
     current: Valor = _normalize(value, transactions)
     for step in steps:
         match current:
@@ -427,12 +438,13 @@ async def pipe(value: Any, *steps: Step, action: str = "flow.pipe", component: s
                 break
 
             # 2. Se è un Success, destrutturiamo ed estraiamo direttamente 'value' in 'step_input'
-            case Success(value=step_input):
+            case Success():
+                step_input = current["value"]
                 step_start = time.perf_counter()
                 step_name = getattr(step, "__name__", str(step))
 
                 current = await _invoke(step, step_input, transactions)
-                transactions.append(Result(
+                transactions.append(Result[Any, Any](
                     input=step_input,
                     output=current,
                     execution_time_ms=(time.perf_counter() - step_start) * 1000,
@@ -441,10 +453,12 @@ async def pipe(value: Any, *steps: Step, action: str = "flow.pipe", component: s
                 ))
 
             # 3. Fallback di sicurezza per istanze generiche con is_success=False
-            case Immutable(is_success=False):
+            case _ if getattr(current, "is_success", None) is False:
                 break
+            case _:
+                pass
 
-    result = Result(
+    result: FlowResult = Result[Any, Any](
         input=value,
         output=current,
         execution_time_ms=(time.perf_counter() - start) * 1000,
@@ -453,12 +467,13 @@ async def pipe(value: Any, *steps: Step, action: str = "flow.pipe", component: s
         transactions=tuple(transactions)
     )
     failure_details = _failure_location(current) if isinstance(current, Failure) else {}
-    _dev_log(
+    current_object = _cast(object, current)
+    dev_log(
         "pipe.result",
         operation=action,
         component=component,
         success=result.is_success,
-        output_type=type(current).__name__,
+        output_type=type(current_object).__name__,
         transactions=len(transactions),
         elapsed_ms=round(result.execution_time_ms, 2),
         **failure_details,
@@ -468,19 +483,20 @@ async def pipe(value: Any, *steps: Step, action: str = "flow.pipe", component: s
 def pipe_sync(value: Any, *steps: Step, action: str = "flow.pipe_sync", component: str | None = None) -> FlowResult:
     """Esegue una pipeline composta da step sincroni."""
     start = time.perf_counter()
-    transactions: list[Result] = []
+    transactions: list[FlowResult] = []
     current: Valor = _normalize(value, transactions)
     for step in steps:
         match current:
             case Failure():
                 break
-            case Success(value=step_input):
+            case Success():
+                step_input = current["value"]
                 step_start = time.perf_counter()
                 step_name = getattr(step, "__name__", str(step))
                 try:
                     current = _normalize(step(step_input), transactions)
                 except Exception as exc:
-                    _dev_log(
+                    dev_log(
                         "step.error",
                         operation=step_name,
                         error_message=str(exc),
@@ -489,17 +505,19 @@ def pipe_sync(value: Any, *steps: Step, action: str = "flow.pipe_sync", componen
                         **_exception_location(exc),
                     )
                     current = Failure(error=exc, tb=traceback.format_exc())
-                transactions.append(Result(
+                transactions.append(Result[Any, Any](
                     input=step_input,
                     output=current,
                     execution_time_ms=(time.perf_counter() - step_start) * 1000,
                     action=step_name,
                     component=component
                 ))
-            case Immutable(is_success=False):
+            case _ if getattr(current, "is_success", None) is False:
                 break
+            case _:
+                pass
 
-    result = Result(
+    result: FlowResult = Result[Any, Any](
         input=value,
         output=current,
         execution_time_ms=(time.perf_counter() - start) * 1000,
@@ -508,12 +526,13 @@ def pipe_sync(value: Any, *steps: Step, action: str = "flow.pipe_sync", componen
         transactions=tuple(transactions)
     )
     failure_details = _failure_location(current) if isinstance(current, Failure) else {}
-    _dev_log(
+    current_object = _cast(object, current)
+    dev_log(
         "pipe_sync.result",
         operation=action,
         component=component,
         success=result.is_success,
-        output_type=type(current).__name__,
+        output_type=type(current_object).__name__,
         transactions=len(transactions),
         elapsed_ms=round(result.execution_time_ms, 2),
         **failure_details,
@@ -536,7 +555,7 @@ def result(
         @wraps(func)
         async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> FlowResult:
             start = time.perf_counter()
-            txs: list[Result] = []
+            txs: list[FlowResult] = []
             operation = action or getattr(func, "__qualname__", repr(func))
             trace_token = _enter_trace(operation, args, kwargs)
             log_token = set_log_context(_trace_metadata())
@@ -546,7 +565,7 @@ def result(
                     out = await out
                 valor = _normalize(out, txs)
             except Exception as exc:
-                _dev_log(
+                dev_log(
                     "result.error",
                     operation=operation,
                     error_message=str(exc),
@@ -560,7 +579,7 @@ def result(
                 reset_log_context(log_token)
                 raise
 
-            result = Result(
+            result: FlowResult = Result[Any, Any](
                 input={"args": args, "kwargs": kwargs},
                 output=valor,
                 execution_time_ms=(time.perf_counter() - start) * 1000,
@@ -568,7 +587,7 @@ def result(
                 component=component or getattr(func, "__module__", None),
                 transactions=tuple(txs),
             )
-            _dev_log(
+            dev_log(
                 "result.end",
                 operation=operation,
                 component=component or getattr(func, "__module__", None),
@@ -622,7 +641,9 @@ def check(value: object) -> bool:
 # 1. MAP / DICT (map_*) - Impatto su Dizionari e Schemi
 # ==============================================================================
 
-def map_get_value(path: str | int, default: Any = None) -> Callable:
+def map_get_value(
+    path: str | int, default: Any = None
+) -> Callable[[Any], Any]:
     """
     Estrae valori annidati tramite dot-notation:
     - 'data.id' -> naviga nei dizionari o Scheme
@@ -644,10 +665,13 @@ def map_get_value(path: str | int, default: Any = None) -> Callable:
         if filter_match:
             field, expected_value = filter_match.groups()
             if isinstance(current, (list, tuple)):
-                matches = [
-                    item for item in current
-                    if isinstance(item, dict) and str(item.get(field)) == expected_value
-                ]
+                matches: list[dict[Any, Any]] = []
+                for item in _cast(Iterable[Any], current):
+                    if not isinstance(item, dict):
+                        continue
+                    item_map = _cast(dict[Any, Any], item)
+                    if str(item_map.get(field)) == expected_value:
+                        matches.append(item_map)
                 resolved = [_resolve(item, rest) for item in matches]
                 return resolved if resolved else default
             return default
@@ -655,26 +679,31 @@ def map_get_value(path: str | int, default: Any = None) -> Callable:
         # Wildcard '*' per sequenze e dizionari
         if token == "*":
             if isinstance(current, (list, tuple)):
-                res = tuple(_resolve(item, rest) for item in current)
+                sequence = _cast(Iterable[Any], current)
+                res = tuple(_resolve(item, rest) for item in sequence)
                 return res if any(x is not None for x in res) else default
             elif isinstance(current, dict):
-                res = tuple(_resolve(val, rest) for val in current.values())
+                current_map = _cast(dict[Any, Any], current)
+                res = tuple(_resolve(val, rest) for val in current_map.values())
                 return res if any(x is not None for x in res) else default
             return default
 
         # Indice numerico per liste e tuple
         if token.isdigit() and isinstance(current, (list, tuple)):
             idx = int(token)
-            if 0 <= idx < len(current):
-                return _resolve(current[idx], rest)
+            sequence = _cast(list[Any] | tuple[Any, ...], current)
+            if 0 <= idx < len(sequence):
+                return _resolve(sequence[idx], rest)
             return default
 
         # Chiave per Dict / Scheme / Attributo
         if isinstance(current, dict):
-            if token in current:
-                return _resolve(current[token], rest)
-        if hasattr(current, token):
-            return _resolve(getattr(current, token), rest)
+            current_map = _cast(dict[Any, Any], current)
+            if token in current_map:
+                return _resolve(current_map[token], rest)
+        current_object = _cast(Any, current)
+        if hasattr(current_object, token):
+            return _resolve(getattr(current_object, token), rest)
 
         return default
 
@@ -687,35 +716,40 @@ def map_get_value(path: str | int, default: Any = None) -> Callable:
 
     return _named(_get, f"map_get_value({path})")
 
-def map_put_map(path: str, value: Any) -> Callable:
+def map_put_map(
+    path: str, value: Any
+) -> Callable[[Any], dict[Any, Any]]:
     """Inserisce un valore in un map tramite dot-notation senza mutare l'input."""
-    def _put(data: dict) -> dict:
+    def _put(data: Any) -> dict[Any, Any]:
         if not isinstance(data, dict):
             raise TypeError(f"map_put_map: atteso un dict, ricevuto {type(data).__name__}")
         if not path:
             raise ValueError("map_put_map: il path non può essere vuoto")
 
-        result = copy.deepcopy(dict(data))
-        current = result
+        result: dict[Any, Any] = copy.deepcopy(_cast(dict[Any, Any], data))
+        current: dict[Any, Any] = result
         parts = str(path).split(".")
         for part in parts[:-1]:
             nested = current.get(part)
             if not isinstance(nested, dict):
                 nested = {}
                 current[part] = nested
-            current = nested
+            current = _cast(dict[Any, Any], nested)
         current[parts[-1]] = value
         return Immutable(result) if isinstance(data, Immutable) else result
 
     return _named(_put, f"map_put_map({path})")
 
-def map_freeze_map() -> Callable:
+def map_freeze_map() -> Callable[[Any], Immutable]:
     """Congela ricorsivamente un map e i suoi valori."""
     return _named(lambda data: Immutable(data), "map_freeze_map")
 
-def map_compute_value(key: str, transform: Callable[[Any], Any]) -> Callable:
+def map_compute_value(
+    key: str,
+    transform: Callable[[Any], Any],
+) -> Callable[[dict[Any, Any]], dict[Any, Any]]:
     """Calcola e aggiunge un campo a un dict usando l'intero dict in input."""
-    def _compute(data: dict) -> dict:
+    def _compute(data: dict[Any, Any]) -> dict[Any, Any]:
         new_data = dict(data)
         new_data[key] = transform(data)
         return Immutable(new_data) if isinstance(data, Immutable) else new_data
@@ -732,17 +766,21 @@ def map_construct_value(
 
     return _named(_construct, f"map_construct_value({_fn_label(factory)})")
 
-def map_pick_map(*keys: str) -> Callable:
+def map_pick_map(
+    *keys: str,
+) -> Callable[[dict[Any, Any]], dict[Any, Any]]:
     """Estrae solo un sottoinsieme di chiavi da un dict/Scheme."""
     # FIX(5): preserva l'Immutable-ness dell'input, coerente con map_compute_value.
-    def _pick(data: dict) -> dict:
+    def _pick(data: dict[Any, Any]) -> dict[Any, Any]:
         picked = {k: data[k] for k in keys if k in data}
         return Immutable(picked) if isinstance(data, Immutable) else picked
     return _named(_pick, f"map_pick_map({', '.join(keys)})")
 
-def map_keys_map(fn: Callable[[Any], Any]) -> Callable:
+def map_keys_map(
+    fn: Callable[[Any], Any],
+) -> Callable[[dict[Any, Any]], dict[Any, Any]]:
     """Trasforma le chiavi di un dict/Scheme tramite una funzione."""
-    def _key_transform(data: dict) -> dict:
+    def _key_transform(data: dict[Any, Any]) -> dict[Any, Any]:
         return {fn(k): v for k, v in data.items()}
     return _named(_key_transform, f"map_keys_map({_fn_label(fn)})")
 
@@ -752,7 +790,11 @@ def map_items_tuple() -> Callable[
     """Converte gli elementi di una mappa in una tupla di coppie."""
     return _named(lambda data: tuple(data.items()), "map_items_tuple")
 
-def map_select_key_tuple(key: Any, reverse: bool = False) -> Callable:
+def map_select_key_tuple(
+    key: Any, reverse: bool = False
+) -> Callable[
+    [Mapping[Any, Any]], tuple[tuple[Any, Any], ...]
+]:
     """Seleziona una chiave dai map annidati e restituisce coppie in una tuple.
 
     Per esempio, dato ``{"name": {"github": "login"}}`` e ``key="github"``,
@@ -760,12 +802,17 @@ def map_select_key_tuple(key: Any, reverse: bool = False) -> Callable:
     ``(("login", "name"),)``. E' indipendente da provider e mapper, quindi
     riutilizzabile per qualunque map di configurazioni annidate.
     """
-    def _select(data: dict) -> tuple:
-        entries = []
+    def _select(
+        data: Mapping[Any, Any]
+    ) -> tuple[tuple[Any, Any], ...]:
+        entries: list[tuple[Any, Any]] = []
         for outer_key, nested in data.items():
-            if not isinstance(nested, dict) or key not in nested:
+            if not isinstance(nested, dict):
                 continue
-            pair = (outer_key, nested[key])
+            nested_map = _cast(dict[Any, Any], nested)
+            if key not in nested_map:
+                continue
+            pair = (outer_key, nested_map[key])
             entries.append(pair[::-1] if reverse else pair)
         return tuple(entries)
 
@@ -806,7 +853,9 @@ def tuple_filter_tuple(
     """Filtra gli elementi di una tupla in base al predicato."""
     return _named(lambda data: tuple(x for x in data if predicate(x)), f"tuple_filter_tuple({_fn_label(predicate)})")
 
-def tuple_reduce_value(fn: Callable[[Any, Any], Any], initial: Any = _NO_INITIAL) -> Callable:
+def tuple_reduce_value(
+    fn: Callable[[Any, Any], Any], initial: Any = _NO_INITIAL
+) -> Callable[[Iterable[Any]], Any]:
     """Aggrega gli elementi di una tupla in un singolo valore."""
     return _named(
         lambda data: _reduce(fn, data) if initial is _NO_INITIAL else _reduce(fn, data, initial),
@@ -815,14 +864,19 @@ def tuple_reduce_value(fn: Callable[[Any, Any], Any], initial: Any = _NO_INITIAL
 
 def tuple_flatten_tuple() -> Callable[[Iterable[Any]], tuple[Any, ...]]:
     """Appiattisce sequenze o liste annidate di un solo livello."""
-    def _flatten(data: Iterable[Any]) -> tuple:
-        flat = []
+    def _flatten(data: Iterable[Any]) -> tuple[Any, ...]:
+        flat: list[Any] = []
         for item in data:
-            flat.extend(item) if isinstance(item, (list, tuple, set)) else flat.append(item)
+            if isinstance(item, (list, tuple, set)):
+                flat.extend(_cast(Iterable[Any], item))
+            else:
+                flat.append(item)
         return tuple(flat)
     return _named(_flatten, "tuple_flatten_tuple")
 
-def tuple_unique_tuple(key_fn: Callable[[Any], Any] = lambda x: x) -> Callable:
+def tuple_unique_tuple(
+    key_fn: Callable[[Any], Any] = lambda x: x,
+) -> Callable[[Iterable[Any]], tuple[Any, ...]]:
     """Rimuove i duplicati da una tupla mantenendo l'ordine originale.
 
     Nota: con key_fn di default (identita'), l'elemento deve essere hashable.
@@ -831,8 +885,9 @@ def tuple_unique_tuple(key_fn: Callable[[Any], Any] = lambda x: x) -> Callable:
     hashabili, passa una key_fn che proietti su un valore hashable
     (es. key_fn=lambda x: x.id).
     """
-    def _unique(data: Iterable[Any]) -> tuple:
-        seen, res = set(), []
+    def _unique(data: Iterable[Any]) -> tuple[Any, ...]:
+        seen: set[Any] = set()
+        res: list[Any] = []
         for item in data:
             val = key_fn(item)
             if val not in seen:
@@ -841,27 +896,31 @@ def tuple_unique_tuple(key_fn: Callable[[Any], Any] = lambda x: x) -> Callable:
         return tuple(res)
     return _named(_unique, f"tuple_unique_tuple({_fn_label(key_fn)})")
 
-def tuple_group_by_map(key_fn: Callable[[Any], Any]) -> Callable:
+def tuple_group_by_map(
+    key_fn: Callable[[Any], Any],
+) -> Callable[[Iterable[Any]], dict[Any, tuple[Any, ...]]]:
     """Raggruppa una tupla di elementi in un dizionario basandosi su key_fn."""
-    def _group_by(data: Iterable[Any]) -> Dict[Any, tuple]:
-        grouped: Dict[Any, List[Any]] = {}
+    def _group_by(data: Iterable[Any]) -> dict[Any, tuple[Any, ...]]:
+        grouped: dict[Any, list[Any]] = {}
         for item in data:
             grouped.setdefault(key_fn(item), []).append(item)
         return {k: tuple(v) for k, v in grouped.items()}  # Convert lists to tuples
     return _named(_group_by, f"tuple_group_by_map({_fn_label(key_fn)})")
 
-def tuple_merge_map(skip_invalid: bool = False):
+def tuple_merge_map(
+    skip_invalid: bool = False,
+) -> Callable[[Iterable[Any]], dict[Any, Any]]:
     """Unisce una tupla di dizionari in un singolo dizionario.
 
     FIX(6): per default solleva TypeError se un elemento non e' un dict,
     invece di ignorarlo in silenzio (un bug a monte diventava invisibile).
     Passa skip_invalid=True per il vecchio comportamento permissivo.
     """
-    def _union(data: Iterable[dict]) -> dict:
-        result = {}
+    def _union(data: Iterable[Any]) -> dict[Any, Any]:
+        result: dict[Any, Any] = {}
         for d in data:
             if isinstance(d, dict):
-                result.update(d)
+                result.update(_cast(dict[Any, Any], d))
             elif not skip_invalid:
                 raise TypeError(
                     f"tuple_merge_map: atteso un dict, ricevuto {type(d).__name__}: {d!r}"
@@ -872,7 +931,7 @@ def tuple_merge_map(skip_invalid: bool = False):
 def tuple_validate_each_tuple(
     predicate: Callable[[Any], bool],
     error_message: Callable[[Any], str] | str = "Validazione fallita",
-) -> Callable:
+) -> Callable[[Iterable[Any]], tuple[Any, ...]]:
     """Valida ogni elemento di una tupla con 'predicate'.
 
     E' l'equivalente per-elemento di flow_ensure_value (che valida l'intero dato
@@ -891,7 +950,7 @@ def tuple_validate_each_tuple(
         tuple_map_tuple(lambda k: {k: value[k]}),
         tuple_validate_each_tuple(validator.validate, lambda kv: str(validator.errors)),
     """
-    def _step(data: Iterable[Any]) -> tuple:
+    def _step(data: Iterable[Any]) -> tuple[Any, ...]:
         data = tuple(data)
         for item in data:
             if not predicate(item):
@@ -900,7 +959,9 @@ def tuple_validate_each_tuple(
         return data
     return _named(_step, f"tuple_validate_each_tuple({_fn_label(predicate)})")
     
-def tuple_zip_tuple(iterable: Iterable[Any], strict: bool = False) -> Callable:
+def tuple_zip_tuple(
+    iterable: Iterable[Any], strict: bool = False
+) -> Callable[[Iterable[Any]], tuple[tuple[Any, Any], ...]]:
     """Accoppia gli elementi della lista corrente con un'altra lista/sequenza.
 
     FIX(7): l'iterable viene materializzato subito in una tupla, cosi' un
@@ -911,7 +972,7 @@ def tuple_zip_tuple(iterable: Iterable[Any], strict: bool = False) -> Callable:
     """
     fixed = tuple(iterable)
 
-    def _zip(data: Iterable[Any]) -> tuple:
+    def _zip(data: Iterable[Any]) -> tuple[tuple[Any, Any], ...]:
         data = tuple(data)
         if strict and len(data) != len(fixed):
             raise ValueError(
@@ -945,7 +1006,7 @@ def flow_ensure_value(
     predicate: Callable[[Any], bool],
     error_message: str | Callable[[Any], str] = "Validation failed",
     transform: Callable[[Any], Any] = lambda data: data,
-) -> Callable:
+) -> Callable[[Any], Any]:
     """Valida il dato nel flusso; solleva un errore se la condizione fallisce."""
     def _ensure(data: Any) -> Any:
         if not predicate(data):
@@ -954,11 +1015,18 @@ def flow_ensure_value(
         return transform(data)
     return _named(_ensure, f"flow_ensure_value({_fn_label(predicate)})")
 
-def flow_branch_value(condition: Callable, if_true: Callable, if_false: Callable = lambda x: x) -> Callable:
+def flow_branch_value(
+    condition: Callable[[Any], bool],
+    if_true: Callable[[Any], Any],
+    if_false: Callable[[Any], Any] = lambda value: value,
+) -> Callable[[Any], Any]:
     """Esegue una biforcazione condizionale del flusso (if-then-else)."""
     return _named(lambda data: if_true(data) if condition(data) else if_false(data), f"flow_branch_value({_fn_label(condition)})")
 
-def flow_match_value(*cases: Tuple[Callable, Callable], default: Callable | None = None) -> Callable:
+def flow_match_value(
+    *cases: tuple[Callable[[Any], bool], Callable[[Any], Any]],
+    default: Callable[[Any], Any] | None = None,
+) -> Callable[[Any], Any]:
     """Esegue pattern matching multi-ramo sul valore corrente."""
     def _match(data: Any) -> Any:
         for condition, action in cases:

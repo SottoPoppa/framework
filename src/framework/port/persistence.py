@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from typing import Any
+
 import framework.core.flow as flow
 
 class Port(ABC):
@@ -15,7 +17,7 @@ class Port(ABC):
     all'endpoint remoto.
     """
 
-    capabilities = {
+    capabilities: dict[str, Any] = {
         "encryption_at_rest": False,
         "audit": False,
         "soft_delete": False,
@@ -33,7 +35,7 @@ class Port(ABC):
 
     _seeds = []
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
 
         for method_name, decorator in Port._method_decorators.items():
@@ -43,36 +45,36 @@ class Port(ABC):
                 setattr(cls, method_name, decorator(original))
 
     @abstractmethod
-    async def request(self, *services, **constants):
+    async def request(self, *services: Any, **constants: Any) -> Any:
         """Esegue l'operazione primaria usando il provider concreto."""
         pass
 
     @abstractmethod
-    async def create(self,*services,**constants):
+    async def create(self, *services: Any, **constants: Any) -> Any:
         """Crea una nuova risorsa nel provider."""
         pass
 
     @abstractmethod
-    async def read(self,*services,**constants):
+    async def read(self, *services: Any, **constants: Any) -> Any:
         """Legge il contenuto di una risorsa esistente."""
         pass
 
     @abstractmethod
-    async def update(self,*services,**constants):
+    async def update(self, *services: Any, **constants: Any) -> Any:
         """Aggiorna una risorsa esistente nel provider."""
         pass
 
     @abstractmethod
-    async def delete(self,*services,**constants):
+    async def delete(self, *services: Any, **constants: Any) -> Any:
         """Elimina una risorsa dal provider."""
         pass
 
     @abstractmethod
-    async def query(self,*services,**constants):
+    async def query(self, *services: Any, **constants: Any) -> Any:
         """Cerca risorse e restituisce una raccolta piatta filtrabile."""
         pass
 
     @abstractmethod
-    async def view(self,*services,**constants):
+    async def view(self, *services: Any, **constants: Any) -> Any:
         """Restituisce una vista strutturata con metadati della risorsa."""
         pass

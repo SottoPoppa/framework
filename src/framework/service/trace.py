@@ -1,10 +1,21 @@
 import linecache
 import re
 import traceback
-from typing import Any
+from collections.abc import Mapping
+from types import TracebackType
+from typing import Any, Protocol, cast
 
 
 _SENSITIVE_KEYS = {"password", "passphrase", "secret", "token", "api_key", "authorization"}
+
+
+class _SessionHandleLike(Protocol):
+    sid: str
+
+
+class _FailureLike(Protocol):
+    error: Any
+    traceback: str | None
 
 
 def safe_value(value: Any, *, key: str = "", depth: int = 0) -> Any:
@@ -14,25 +25,36 @@ def safe_value(value: Any, *, key: str = "", depth: int = 0) -> Any:
     if depth > 8:
         return "<nested>"
     if isinstance(value, dict):
+        items = cast(dict[Any, Any], value)
         return {
             str(item_key): safe_value(item_value, key=str(item_key), depth=depth + 1)
-            for item_key, item_value in value.items()
+            for item_key, item_value in items.items()
         }
     if isinstance(value, (list, tuple, set)):
-        return [safe_value(item, depth=depth + 1) for item in value]
+        items = cast(list[Any] | tuple[Any, ...] | set[Any], value)
+        return [safe_value(item, depth=depth + 1) for item in items]
     if hasattr(value, "sid") and hasattr(value, "_session_data_store"):
-        details = {"session_id": str(value.sid)}
-        snapshot = value._session_data_store.get(value.sid)
-        authentication = snapshot.get("authentication", {}) if snapshot else {}
+        session = cast(_SessionHandleLike, value)
+        details = {"session_id": str(session.sid)}
+        session_data_store = cast(
+            Mapping[str, Any],
+            getattr(session, "_session_data_store"),
+        )
+        snapshot = session_data_store.get(session.sid)
+        authentication: Any = (
+            snapshot.get("authentication", {}) if snapshot else {}
+        )
         if isinstance(authentication, dict):
+            authentication_mapping = cast(dict[str, Any], authentication)
             actor = (
-                authentication.get("user_id")
-                or authentication.get("username")
-                or authentication.get("email")
+                authentication_mapping.get("user_id")
+                or authentication_mapping.get("username")
+                or authentication_mapping.get("email")
             )
-            user = authentication.get("user", {})
+            user = authentication_mapping.get("user", {})
             if actor is None and isinstance(user, dict):
-                actor = user.get("id") or user.get("username") or user.get("email")
+                user_mapping = cast(dict[str, Any], user)
+                actor = user_mapping.get("id") or user_mapping.get("username") or user_mapping.get("email")
             if actor is not None:
                 details["actor"] = str(actor)
         return details
@@ -57,7 +79,7 @@ def source_context(filename: str, lineno: int, radius: int = 2) -> str:
     """Restituisce le righe attorno al punto indicato nel sorgente."""
     first = max(1, lineno - radius)
     last = lineno + radius
-    context = []
+    context: list[str] = []
     for number in range(first, last + 1):
         source_line = linecache.getline(filename, number)
         if source_line:
@@ -71,6 +93,7 @@ def exception_location(exception: BaseException) -> dict[str, Any]:
     declared_location = getattr(exception, "location", {})
     if not isinstance(declared_location, dict):
         declared_location = {}
+    declared_location = cast(dict[str, Any], declared_location)
     details = {
         "exception_type": type(exception).__name__,
         "exception_message": str(exception),
@@ -80,7 +103,7 @@ def exception_location(exception: BaseException) -> dict[str, Any]:
     return details
 
 
-def traceback_location(tb: Any) -> dict[str, Any]:
+def traceback_location(tb: TracebackType | None) -> dict[str, Any]:
     """Estrae file, riga, funzione e contesto dall'ultimo frame noto."""
     if tb is None:
         return {}
@@ -93,43 +116,57 @@ def traceback_location(tb: Any) -> dict[str, Any]:
         "source_line": frame.lineno,
         "source_function": frame.name,
         "source_code": frame.line,
-        "source_context": source_context(frame.filename, frame.lineno),
+        "source_context": (
+            source_context(frame.filename, frame.lineno)
+            if frame.lineno is not None
+            else ""
+        ),
     }
 
 
 def _failure_error(error: Any) -> tuple[str, str, dict[str, Any]]:
     if isinstance(error, tuple):
-        if len(error) == 1:
-            value = error[0]
+        values = cast(tuple[Any, ...], error)
+        if len(values) == 1:
+            value = values[0]
             error_type, message, details = _failure_error(value)
             return error_type, message, details
-        return "tuple", "; ".join(str(value) for value in error), {}
+        return "tuple", "; ".join(str(value) for value in values), {}
     if isinstance(error, dict):
-        message = error.get("message") or error.get("error") or str(error)
-        details = {
-            key: error[key]
+        error_mapping = cast(dict[str, Any], error)
+        message = (
+            error_mapping.get("message")
+            or error_mapping.get("error")
+            or str(error_mapping)
+        )
+        details: dict[str, Any] = {
+            key: error_mapping[key]
             for key in ("code", "path")
-            if key in error
+            if key in error_mapping
         }
-        return str(error.get("code") or "dict"), str(message), details
+        return str(error_mapping.get("code") or "dict"), str(message), details
     return type(error).__name__, str(error), {}
 
 
 def failure_location(failure: Any) -> dict[str, Any]:
     """Estrae causa e posizione da una Failure, anche senza traceback."""
-    error_type, error_message, error_details = _failure_error(failure.error)
+    failure_data = cast(_FailureLike, failure)
+    error_type, error_message, error_details = _failure_error(failure_data.error)
     details = {
         "error_type": error_type,
         "error_message": error_message,
         **error_details,
     }
-    if not failure.traceback:
+    if not failure_data.traceback:
         return details
-    matches = re.findall(r'File "([^"]+)", line (\d+), in (.+)', failure.traceback)
+    matches = re.findall(
+        r'File "([^"]+)", line (\d+), in (.+)',
+        failure_data.traceback,
+    )
     if not matches:
         return details
     filename, lineno, function = matches[-1]
-    lines = failure.traceback.splitlines()
+    lines = failure_data.traceback.splitlines()
     source_code = next(
         (
             lines[index + 1].strip()

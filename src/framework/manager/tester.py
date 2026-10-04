@@ -1,7 +1,8 @@
 import os
 import inspect
 import uuid
-from typing import Optional
+from collections.abc import Mapping
+from typing import Any, Optional, cast
 
 import framework.service.diagnostic as diagnostic
 import framework.core.interpreter as interpreter
@@ -57,16 +58,16 @@ def is_contract_test_path(path: str) -> bool:
     return normalized.endswith('.test.dsl') and not is_integration_test_path(normalized)
 
 
-def resolve_target_name(target) -> str:
+def resolve_target_name(target: Any) -> str:
     """Ritorna il nome stabile usato per associare un callable al contract."""
     name = getattr(target, "__qualname__", None)
     return name if isinstance(name, str) else str(name or target)
 
 
 def resolve_export_alias(
-    target,
+    target: Any,
     callable_exports: dict[int, str],
-    object_exports: dict[int, tuple[str, object]],
+    object_exports: Mapping[int, tuple[str, object]],
 ) -> str | None:
     """Associa un callable all'export che lo contiene o lo espone."""
     alias = callable_exports.get(id(target))
@@ -97,15 +98,17 @@ def resolve_export_alias(
 
 
 class Manager(manager.Port):
-    def __init__(self, loader: loader_module.Loader, **constants):
+    def __init__(
+        self, loader: loader_module.Loader, **constants: Any
+    ) -> None:
         """Inizializza il Manager per l'esecuzione dei test DSL.
 
         :param loader: Il Loader del framework (dipendenza iniettata)
         :param constants: Configurazioni aggiuntive (incluso filtro da CLI)
         """
         self.loader = loader
-        self.filter_raw = constants.get('filter', None)
-        self.prefix = resolve_filter(self.filter_raw)
+        self.filter_raw: str | None = constants.get('filter')
+        self.prefix: str | None = resolve_filter(self.filter_raw)
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
@@ -118,7 +121,7 @@ class Manager(manager.Port):
     def _discover_test_files(self, integration: bool = False) -> list[str]:
         """Elenca in anticipo tutti i file .test.dsl da eseguire, così da
         poter mostrare un contatore [i/N] e un riepilogo coerente."""
-        found = []
+        found: list[str] = []
         for root, _, files in os.walk('./src'):
             for file in files:
                 path = os.path.join(root, file).replace('./', '')
@@ -133,41 +136,43 @@ class Manager(manager.Port):
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
     @flow.result()
-    async def startup(self, session=None):
+    async def startup(self, session: Any = None) -> Any:
         pass
 
     @flow.result()
-    async def shutdown(self, session=None):
+    async def shutdown(self, session: Any = None) -> Any:
         pass
 
     @flow.result()
-    async def run(self, session, **constants):
+    async def run(self, session: Any, **constants: Any) -> Any:
         """Esegue i test di contract DSL filtrati secondo il prefisso configurato."""
         return await self._run_suites(session, integration=False, **constants)
 
     @flow.result()
-    async def run_integration(self, session, **constants):
+    async def run_integration(self, session: Any, **constants: Any) -> Any:
         """Esegue gli scenari DSL sul runtime gia costruito dal Loader."""
         return await self._run_suites(session, integration=True, **constants)
 
-    async def _run_suites(self, session, integration: bool, **constants):
-        session_data = getattr(session, "session_data", session)
+    async def _run_suites(
+        self, session: Any, integration: bool, **constants: Any
+    ) -> bool:
+        session_data: Any = getattr(session, "session_data", session)
         filter_raw = constants.get('filter', self.filter_raw)
         self.filter_raw = filter_raw
         self.prefix = resolve_filter(filter_raw)
         label = self.prefix or 'tutti'
 
-        test_files = self._discover_test_files(integration=integration)
+        test_files: list[str] = self._discover_test_files(integration=integration)
         suite_label = 'integrazione' if integration else 'contract'
         _logger.info(
             f"Avvio esecuzione suite {suite_label}… filtro: {label}",
             file_trovati=len(test_files),
         )
 
-        interp = interpreter.Interpreter()
+        interp: interpreter.Interpreter = interpreter.Interpreter()
         await interp.start()
 
-        summary = {
+        summary: dict[str, Any] = {
             "file_totali": len(test_files),
             "file_ok": 0,
             "file_con_test_falliti": [],   # il file gira, ma almeno un test fallisce
@@ -183,10 +188,10 @@ class Manager(manager.Port):
             # mostrato tutto il dettaglio bufferizzato (incluso traceback).
             with _logger.scope(f"[{i}/{len(test_files)}] {path}") as s:
                 try:
-                    res = await self.loader.resource(path)
+                    res: Any = await self.loader.resource(path)
                     source = flow.output(res) if flow.is_result(res) else res
                     await interp.load_file(path, source)
-                    outcome = await self._execute_dsl(
+                    outcome: dict[str, Any] = await self._execute_dsl(
                         interp,
                         path,
                         s,
@@ -248,8 +253,8 @@ class Manager(manager.Port):
         path: str,
         s: "diagnostic.LogScope",
         integration: bool = False,
-        session_data=None,
-    ) -> dict:
+        session_data: Any = None,
+    ) -> dict[str, Any]:
         """Esegue una suite di test DSL e registra i risultati.
 
         :param interp: L'interprete DSL
@@ -273,17 +278,17 @@ class Manager(manager.Port):
             }
         )
 
-        session = interp.open_session(sid=session_id)
+        session: Any = interp.open_session(sid=session_id)
 
         try:
             run_result = await session.run(path)
             if flow.is_result(run_result) and not run_result.is_success:
                 error = flow.output(run_result)
                 raise error if isinstance(error, Exception) else RuntimeError(str(error))
-            execution = session.execution(path)
+            execution: Any = session.execution(path)
             if execution is None:
                 raise RuntimeError(f"L'esecuzione DSL {path} non ha prodotto un contesto runtime")
-            ctx = execution.context.flatten()
+            ctx: dict[str, Any] = execution.context.flatten()
         except Exception as e:
             s.error(
                 f"Il file DSL {path} non è stato eseguito correttamente (errore di parsing o runtime)",
@@ -291,35 +296,39 @@ class Manager(manager.Port):
             )
             return {"success": False, "data": {"error": str(e)}}
 
-        test_suite = interpreter.flatten_records(ctx.get('test_suite', []))
+        test_suite: list[Any] = interpreter.flatten_records(ctx.get('test_suite', []))
 
         if not any(isinstance(test, dict) for test in test_suite):
             message = "test_suite vuota: deve contenere almeno un test valido."
             s.error(message)
             return {"success": False, "data": {"error": message}}
 
-        exports = ctx.get('exports', {}) or {}
-        exported_targets = {
+        exports_value: Any = ctx.get('exports', {}) or {}
+        exports_are_mapping = isinstance(exports_value, dict)
+        exports: dict[str, Any] = (
+            cast(dict[str, Any], exports_value) if exports_are_mapping else {}
+        )
+        exported_targets: dict[int, str] = {
             id(target): alias
             for alias, target in exports.items()
             if callable(target) and not inspect.isclass(target)
-        } if isinstance(exports, dict) else {}
-        exported_objects = {
+        }
+        exported_objects: dict[int, tuple[str, Any]] = {
             id(target): (alias, target)
             for alias, target in exports.items()
             if (not callable(target) or inspect.isclass(target)) and target is not None
-        } if isinstance(exports, dict) else {}
-        export_methods = {
+        }
+        export_methods: dict[str, set[str]] = {
             alias: set()
             for alias, target in exports.items()
             if callable(target)
-        } if isinstance(exports, dict) else {}
+        }
         invalid_exports = [
             alias for alias, target in exports.items()
             if target is None
-        ] if isinstance(exports, dict) else ["exports"]
+        ] if exports_are_mapping else ["exports"]
 
-        results = {
+        results: dict[str, Any] = {
             "total": 0,
             "passed": 0,
             "failed": 0,
@@ -332,22 +341,23 @@ class Manager(manager.Port):
             results["export_errors"].append(
                 f"Export non valido: {', '.join(sorted(invalid_exports))}"
             )
-        used_exports = set()
+        used_exports: set[str] = set()
 
-        for alias, target in exports.items() if isinstance(exports, dict) else ():
+        for alias, target in exports.items():
             if callable(target):
                 export_methods[alias].add(resolve_target_name(target))
 
         for i, test in enumerate(test_suite):
             if not isinstance(test, dict):
                 continue
+            test_case = cast(dict[str, Any], test)
 
             results["total"] += 1
-            target = test.get('action')
-            args = test.get('inputs', ())
-            expected = test.get('outputs')
-            assert_fn = test.get('assert')
-            test_note = test.get('note', f'Test #{i}')
+            target: Any = test_case.get('action')
+            args: Any = test_case.get('inputs', ())
+            expected: Any = test_case.get('outputs')
+            assert_fn: Any = test_case.get('assert')
+            test_note: Any = test_case.get('note', f'Test #{i}')
 
             # ── validazione preventiva ──────────────────────────────────
             if not callable(target):
@@ -378,48 +388,42 @@ class Manager(manager.Port):
                 if flow.is_result(args):
                     received = await interp.call(target, (args,))
                 elif isinstance(args, dict) and ('args' in args or 'kwargs' in args):
-                    positional = args.get('args', ())
-                    keyword = args.get('kwargs', {})
+                    input_mapping = cast(dict[str, Any], args)
+                    positional: Any = input_mapping.get('args', ())
+                    keyword: Any = input_mapping.get('kwargs', {})
                     if not isinstance(positional, (list, tuple)):
-                        positional = (positional,)
+                        positional_args = (positional,)
+                    else:
+                        positional_args = tuple(
+                            cast(list[Any] | tuple[Any, ...], positional)
+                        )
                     if not isinstance(keyword, dict):
                         raise TypeError("'inputs.kwargs' deve essere un dizionario")
-                    received = await interp.call(target, tuple(positional), keyword)
+                    received = await interp.call(
+                        target, positional_args, cast(dict[str, Any], keyword)
+                    )
                 elif isinstance(args, dict):
+                    keyword_arguments = cast(dict[str, Any], args)
                     try:
                         parameters = inspect.signature(target).parameters
-                        accepts_keywords = any(name in parameters for name in args) or any(
+                        accepts_keywords = any(
+                            name in parameters for name in keyword_arguments
+                        ) or any(
                             parameter.kind is inspect.Parameter.VAR_KEYWORD
                             for parameter in parameters.values()
                         )
                     except (TypeError, ValueError):
                         accepts_keywords = False
                     received = (
-                        await interp.call(target, (), args)
+                        await interp.call(target, (), keyword_arguments)
                         if accepts_keywords
-                        else await interp.call(target, (args,))
+                        else await interp.call(target, (keyword_arguments,))
                     )
                 elif isinstance(args, (list, tuple)):
-                    received = await interp.call(target, args)
+                    positional_args = cast(list[Any] | tuple[Any, ...], args)
+                    received = await interp.call(target, positional_args)
                 else:
-                    if isinstance(args, dict):
-                        try:
-                            parameters = inspect.signature(target).parameters
-                            accepts_keywords = any(
-                                name in parameters for name in args
-                            ) or any(
-                                parameter.kind is inspect.Parameter.VAR_KEYWORD
-                                for parameter in parameters.values()
-                            )
-                        except (TypeError, ValueError):
-                            accepts_keywords = False
-                        received = await interp.call(
-                            target,
-                            (),
-                            args if accepts_keywords else None,
-                        ) if accepts_keywords else await interp.call(target, (args,))
-                    else:
-                        received = await interp.call(target, (args,))
+                    received = await interp.call(target, (args,))
             except Exception as e:
                 results["failed"] += 1
                 results["errors"].append({"target": str(target), "error": str(e), "test_note": test_note, "phase": "action"})
@@ -483,7 +487,7 @@ class Manager(manager.Port):
         return {"success": results["success"], "data": results}
 
     @staticmethod
-    def _assertion_value(result):
+    def _assertion_value(result: Any) -> bool:
         if flow.is_result(result):
             if not flow.check(result):
                 error = flow.output(result)
@@ -506,7 +510,14 @@ class Manager(manager.Port):
         return value
 
     @staticmethod
-    def _record_setup_error(results: dict, s: "diagnostic.LogScope", i: int, test_note: str, target, message: str) -> None:
+    def _record_setup_error(
+        results: dict[str, Any],
+        s: "diagnostic.LogScope",
+        i: int,
+        test_note: str,
+        target: Any,
+        message: str,
+    ) -> None:
         """Registra un test non partito per un problema di configurazione
         (action/assert non risolti), distinguendolo da un vero fallimento
         dell'azione o dell'assert."""

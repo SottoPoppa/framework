@@ -11,12 +11,12 @@
   "hashes": {
     "Manager": {
       "capabilities_authorized": {
-        "production": "406a5fb5399efbc27875cb041d22e91e61205215fff2b9554e6a0b4793533cd3",
-        "test": "406a5fb5399efbc27875cb041d22e91e61205215fff2b9554e6a0b4793533cd3"
+        "production": "743560daa386289cafc6e52987701fd7205b1e36ea2a7def9da3ecae73fb2b5c",
+        "test": "743560daa386289cafc6e52987701fd7205b1e36ea2a7def9da3ecae73fb2b5c"
       },
       "compatible_adapters": {
-        "production": "b4c07480f8449af33dff90edaf463027596e26eb810bf46c2b87d78990b793ad",
-        "test": "b4c07480f8449af33dff90edaf463027596e26eb810bf46c2b87d78990b793ad"
+        "production": "783e806bcdf39eb36261aca17a29d622e3a160fcfbec850f296255a8c67276a3",
+        "test": "783e806bcdf39eb36261aca17a29d622e3a160fcfbec850f296255a8c67276a3"
       }
     }
   }

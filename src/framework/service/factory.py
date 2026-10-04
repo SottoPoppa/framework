@@ -1,59 +1,67 @@
 import re
 from urllib.parse import quote
 from jinja2 import Environment, meta, nodes
-import asyncio 
-import signal
+from typing import Any, Callable, cast
 
 import framework.service.scheme as scheme
 import framework.core.flow as flow
 import framework.service.template as template_service
 
 class Repository:
-    def __init__(self, **constants):
+    def __init__(self, **constants: Any) -> None:
+        locations: dict[str, Any] = constants.get('location', {})
         self.location = {
             str(k).casefold(): v
-            for k, v in constants.get('location', {}).items()
+            for k, v in locations.items()
         }
-        self.actions = constants.get('actions', {})
-        self.schema = constants.get('model')
-        self.mapper = constants.get('mapper', {})
-        self.envelope = constants.get('envelope')
+        self.actions: dict[str, Any] = constants.get('actions', {})
+        self.schema: Any = constants.get('model')
+        self.mapper: dict[str, Any] = constants.get('mapper', {})
+        self.envelope: Any = constants.get('envelope')
 
-    def _unwrap_response(self, data):
+    def _unwrap_response(self, data: Any) -> Any:
         if not self.envelope or not isinstance(data, dict):
             return data
 
-        value = flow.map_get_value(self.envelope)(data)
-        return value if value is not None else data
+        response = cast(dict[str, Any], data)
+        value = flow.map_get_value(self.envelope)(response)
+        return value if value is not None else response
 
-    def _map_provider_data(self, data, profile):
+    def _map_provider_data(self, data: Any, profile: Any) -> Any:
         """Converte i nomi del provider nei nomi canonici del modello."""
         if isinstance(data, list):
-            return [self._map_provider_data(item, profile) for item in data]
-        if not isinstance(data, dict) or not isinstance(self.mapper, dict):
+            return [
+                self._map_provider_data(item, profile)
+                for item in cast(list[Any], data)
+            ]
+        if not isinstance(data, dict):
             return data
 
+        data_map = cast(dict[str, Any], data)
         profile_key = str(profile).lower()
-        mapping = {}
+        mapping: dict[str, Any] = {}
         for model_key, provider_keys in self.mapper.items():
             if not isinstance(provider_keys, dict):
                 continue
+            provider_map = cast(dict[str, Any], provider_keys)
             mapping.update({
                 model_key: source
-                for name, source in provider_keys.items()
+                for name, source in provider_map.items()
                 if str(name).lower() == profile_key
             })
 
-        mapped = dict(data)
+        mapped: dict[str, Any] = dict(data_map)
         for model_key, provider_path in mapping.items():
-            value = flow.map_get_value(provider_path)(data)
+            value = flow.map_get_value(provider_path)(data_map)
             if value is not None:
-                mapped = flow.map_put_map(model_key, value)(mapped)
+                mapped = cast(
+                    dict[str, Any], flow.map_put_map(model_key, value)(mapped)
+                )
                 if isinstance(provider_path, str) and "." not in provider_path:
                     mapped.pop(provider_path, None)
         return mapped
 
-    def get_requirements(self, template_str):
+    def get_requirements(self, template_str: Any) -> list[str]:
         """
         Estrae i requisiti dal template analizzando l'albero sintattico (AST) di Jinja2.
         Più robusto: supporta notazione a parentesi [] e ignora scope e cicli interni.
@@ -64,9 +72,9 @@ class Repository:
             jinja_env = Environment()
             ast = jinja_env.parse(template_str)
             valid_roots = meta.find_undeclared_variables(ast)
-            paths = set()
+            paths: set[str] = set()
             
-            def visit(node):
+            def visit(node: nodes.Node) -> str | None:
                 if isinstance(node, nodes.Name):
                     return node.name if node.name in valid_roots else None
                 elif isinstance(node, nodes.Getattr):
@@ -81,7 +89,7 @@ class Repository:
                     return visit(node.node)
                 return None
 
-            def traverse(node):
+            def traverse(node: nodes.Node) -> None:
                 path = visit(node)
                 if path:
                     paths.add(path)
@@ -90,7 +98,7 @@ class Repository:
 
             traverse(ast)
             
-            cleaned_paths = set()
+            cleaned_paths: set[str] = set()
             for p in paths:
                 if p.endswith('.items') or p.endswith('.keys') or p.endswith('.values'):
                     cleaned_paths.add(p.rsplit('.', 1)[0])
@@ -108,16 +116,24 @@ class Repository:
             # Fallback
             return re.findall(r'\{(\w+)\}', template_str)
 
-    def select(self, templates, data):
+    def select(self, templates: Any, data: Any) -> str | None:
         """
         Sceglie il miglior template in base alla densità di requisiti soddisfatti.
         Prioritizza i template che utilizzano percorsi più profondi (più specifici).
         """
-        best_t, max_score = None, -1
+        if isinstance(templates, str):
+            candidates: list[str] | tuple[str, ...] = [templates]
+        elif isinstance(templates, (list, tuple)):
+            candidates = cast(list[str] | tuple[str, ...], templates)
+        else:
+            return None
+
+        best_t: str | None = None
+        max_score = -1.0
         
-        for t in (templates if isinstance(templates, (list, tuple)) else [templates]):
+        for t in candidates:
             reqs = self.get_requirements(t)
-            score = 0
+            score = 0.0
             
             if not reqs:
                 score = 0.1 # Template statico
@@ -138,7 +154,7 @@ class Repository:
                 
         return best_t if max_score >= 0 else None
 
-    async def results(self, transaction, profile):
+    async def results(self, transaction: Any, profile: Any) -> Any:
         """Hook opzionale per post-processing."""
         if not self.schema:
             return transaction
@@ -161,23 +177,45 @@ class Repository:
             return flow.error(flow.output(normalized))
         return flow.success(flow.output(normalized))
 
-    async def parameters(self, **inputs):
+    async def parameters(self, **inputs: Any) -> dict[str, Any]:
         """Prepara i parametri della rotta risolvendo il template tramite Scheme."""
         
         operation = inputs.get('operation')
         profile = inputs.get('provider')
-        action = self.actions.get(operation, {})
+        action_data: Any = (
+            self.actions.get(operation) if isinstance(operation, str) else None
+        )
+        action: dict[str, Any] = (
+            cast(dict[str, Any], action_data)
+            if isinstance(action_data, dict)
+            else {}
+        )
         
         # 1. Definizione Payload e Logica
         payload_fn = action.get('payload')
-        payload = payload_fn(**inputs.get('payload', {})) if callable(payload_fn) else inputs.get('payload', {})
+        payload_input = cast(dict[str, Any], inputs.get('payload', {}))
+        payload: dict[str, Any] = payload_input
+        if callable(payload_fn):
+            payload = cast(
+                dict[str, Any],
+                cast(Callable[..., Any], payload_fn)(**payload_input),
+            )
         
         logic_fn = action.get('logic')
-        process = logic_fn(**inputs) if callable(logic_fn) else inputs
+        process: dict[str, Any] = inputs
+        if callable(logic_fn):
+            process = cast(
+                dict[str, Any], cast(Callable[..., Any], logic_fn)(**inputs)
+            )
         
         # 2. Selezione dinamica del Template
-        combined = {**inputs, **payload, **process}
-        templates = self.location.get(profile, [])
+        combined: dict[str, Any] = {**inputs, **payload, **process}
+        empty_templates: list[str] = []
+        templates: Any = (
+            self.location.get(profile, empty_templates)
+            if isinstance(profile, str)
+            else empty_templates
+        )
         
         template = self.select(templates, combined)
         
@@ -185,7 +223,7 @@ class Repository:
             raise ValueError(f"Nessun template compatibile trovato per {profile}. Dati: {list(combined.keys())}")
 
         # 3. Formattazione e Encoding
-        path = await template_service.format(template, **combined)
+        path = cast(str, await template_service.format(template, **combined))
         if '?' in path:
             base, query = path.split('?', 1)
             path = f"{base}?{quote(query, safe='=&%')}"

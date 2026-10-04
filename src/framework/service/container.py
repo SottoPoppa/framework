@@ -1,14 +1,16 @@
 from collections import defaultdict
-from typing import Type, Any, Union
+from typing import Any
 
 class Container:
     """Singleton manager, istanze multiple adapter, porte collegate agli adapter."""
 
-    def __init__(self):
-        self._instances: dict = {}
-        self._ports: dict = defaultdict(list)
+    def __init__(self) -> None:
+        self._instances: dict[type[Any], list[Any]] = {}
+        self._ports: defaultdict[type[Any] | str, list[Any]] = defaultdict(list)
 
-    def _match(self, target: Union[Type, str], candidate_cls: Type) -> bool:
+    def _match(
+        self, target: type[Any] | str, candidate_cls: type[Any] | str
+    ) -> bool:
         """Verifica se una chiave o classe corrisponde a un target (classe o stringa parziale)."""
         if isinstance(target, str):
             search_str = target.lower()
@@ -18,13 +20,13 @@ class Container:
             return search_str in class_name or search_str in full_path
         return candidate_cls is target or target == candidate_cls
 
-    def put(self, cls: Type, obj: Any, singleton=True):
+    def put(self, cls: type[Any], obj: Any, singleton: bool = True) -> None:
         if singleton:
             self._instances[cls] = [obj]
         else:
             self._instances.setdefault(cls, []).append(obj)
 
-    def get(self, cls: Union[Type, str]):
+    def get(self, cls: type[Any] | str) -> Any | None:
         # 1. Cerca per corrispondenza (classe o stringa) tra le istanze registrate
         for k, val in self._instances.items():
             if self._match(cls, k) and val:
@@ -38,12 +40,12 @@ class Container:
                     return val[-1]
         return None
 
-    def clear_port(self, iface):
+    def clear_port(self, iface: type[Any] | str) -> None:
         for k in list(self._ports.keys()):
             if self._match(iface, k):
                 self._ports[k].clear()
 
-    def remove(self, cls: Union[Type, str]):
+    def remove(self, cls: type[Any] | str) -> None:
         keys_to_pop = [
             k for k in self._instances 
             if self._match(cls, k) or (not isinstance(cls, str) and getattr(cls, '__module__', None) == getattr(k, '__module__', None))
@@ -58,11 +60,11 @@ class Container:
                 if not (self._match(cls, o.__class__) or (mod_name and getattr(o.__class__, '__module__', None) == mod_name))
             ]
 
-    def add_port(self, iface: Union[Type, str], obj: Any):
+    def add_port(self, iface: type[Any] | str, obj: Any) -> None:
         self._ports[iface].append(obj)
 
-    def get_port(self, iface: Union[Type, str]):
-        results = []
+    def get_port(self, iface: type[Any] | str) -> list[Any]:
+        results: list[Any] = []
         
         # Se passi una stringa (es. "persistence", "network", ecc.)
         if isinstance(iface, str):

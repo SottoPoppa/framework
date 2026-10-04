@@ -11,6 +11,7 @@ import uuid
 from typing import Any
 
 import framework.core.flow as flow
+from framework.service.trace import safe_value
 
 from .data import Registry
 from .evaluation import Evaluator
@@ -106,7 +107,7 @@ class DagRunner:
         dag = self.dags[dag_name]
         session = session or await self.create_session(dag_name)
 
-        entries = []
+        entries: list[str] = []
         for node_name in dag.entries():
             if getattr(dag.get(node_name), "metadata", {}).get("source") is True:
                 self._start_source(dag, session, node_name)
@@ -142,7 +143,7 @@ class DagRunner:
         node = dag.get(node_name)
         session.mark(node_name, NodeState.RUNNING)
         event_node = getattr(node, "metadata", {}).get("on_event")
-        flow._dev_log(
+        flow.dev_log(
             "dag.source.start node=%s event=%s session=%s",
             node_name,
             event_node,
@@ -163,7 +164,7 @@ class DagRunner:
                     if not flow.check(value):
                         session.errors[node_name] = value
                         session.mark(node_name, NodeState.FAILED)
-                        flow._dev_log("dag.source.failed node=%s", node_name)
+                        flow.dev_log("dag.source.failed node=%s", node_name)
                         return
                     value = flow.output(value)
 
@@ -174,28 +175,28 @@ class DagRunner:
                     )
                     session.errors[node_name] = error
                     session.mark(node_name, NodeState.FAILED)
-                    flow._dev_log("dag.source.empty node=%s", node_name)
+                    flow.dev_log("dag.source.empty node=%s", node_name)
                     return
 
                 self._publish(session, node_name, value)
-                flow._dev_log(
+                flow.dev_log(
                     "dag.source.received node=%s payload_type=%s",
                     node_name,
                     type(value).__name__,
                 )
-                flow._dev_log(
+                flow.dev_log(
                     "dag.source.event source=%s target=%s", node_name, event_node
                 )
                 self._bind_event(dag, session, event_node, value)
                 await self._run_node(dag, session, event_node)
         except asyncio.CancelledError:
             session.mark(node_name, NodeState.PENDING)
-            flow._dev_log("dag.source.cancelled node=%s", node_name)
+            flow.dev_log("dag.source.cancelled node=%s", node_name)
             raise
         except Exception as exc:
             session.errors[node_name] = exc
             session.mark(node_name, NodeState.FAILED)
-            flow._dev_log("dag.source.error node=%s error=%r", node_name, exc)
+            flow.dev_log("dag.source.error node=%s error=%r", node_name, exc)
 
     # ── esecuzione di un nodo ────────────────────────────────────────────────
 
@@ -281,11 +282,11 @@ class DagRunner:
                     session.results[name] = value
                     session.errors[name] = flow.output(value)
                     session.mark(name, NodeState.FAILED)
-                    flow._dev_log(
+                    flow.dev_log(
                         "dag.node.failed",
                         controller=session.dag_name,
                         node=name,
-                        error=flow._safe_log_value(flow.output(value)),
+                        error=safe_value(flow.output(value)),
                         success=False,
                     )
                     return _FAILED
@@ -297,7 +298,7 @@ class DagRunner:
                 if attempt >= max_retries:
                     session.errors[name] = exc
                     session.mark(name, NodeState.FAILED)
-                    flow._dev_log(
+                    flow.dev_log(
                         "dag.node.error",
                         controller=session.dag_name,
                         node=name,
@@ -379,7 +380,7 @@ class DagRunner:
 
     def _reset_subgraph(self, dag: Dag, session: Session, node: str) -> None:
         pending = [node]
-        visited = set()
+        visited: set[str] = set()
         while pending:
             current = pending.pop()
             if current in visited:

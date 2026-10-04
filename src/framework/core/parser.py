@@ -1,6 +1,9 @@
 import ast
+from typing import Any, Iterable, cast as _cast
 
-from lark import Lark, Token, Transformer, v_args
+import lark.visitors as _lark_visitors
+from lark import Lark, Token, Transformer
+from lark.tree import Meta, Tree
 
 from .ast import (
     AnyVal,
@@ -26,6 +29,8 @@ from .ast import (
     Var,
 )
 import framework.core.flow as flow
+
+_v_args: Any = getattr(_lark_visitors, "v_args")
 
 GRAMMAR = r"""
 start: dictionary | [item (item)*] -> dictionary_node
@@ -100,10 +105,9 @@ COMMENT: /\/\/[^\n]*/ | /\/\*[\s\S]*?\*\//
 """
 
 
-@v_args(meta=True)
-class DSLTransformer(Transformer):
+class DSLTransformer(Transformer[Token, ASTNode]):
 
-    def _meta(self, meta) -> NodeMeta:
+    def _meta(self, meta: Meta) -> NodeMeta:
         if hasattr(meta, "line"):
             return NodeMeta(
                 line=meta.line,
@@ -113,68 +117,78 @@ class DSLTransformer(Transformer):
             )
         return NodeMeta()
 
-    def task(self, meta, items):
+    def task(self, meta: Meta, items: list[Any]) -> Task:
         items = [i for i in items if i is not None]
         return Task(trigger=items[0], action=items[1], meta=self._meta(meta))
 
-    def number(self, meta, n):
+    def number(self, meta: Meta, n: list[Token]) -> NumberLiteral:
         v = str(n[0])
         val = float(v) if "." in v else int(v)
         return NumberLiteral(value=val, meta=self._meta(meta))
 
-    def string(self, meta, s):
+    def string(self, meta: Meta, s: list[Token]) -> StringLiteral:
         return StringLiteral(value=ast.literal_eval(str(s[0])), meta=self._meta(meta))
 
-    def true(self, meta, _):
+    def true(self, meta: Meta, _: list[Token]) -> BoolLiteral:
         return BoolLiteral(value=True, meta=self._meta(meta))
 
-    def false(self, meta, _):
+    def false(self, meta: Meta, _: list[Token]) -> BoolLiteral:
         return BoolLiteral(value=False, meta=self._meta(meta))
 
-    def any_val(self, meta, _):
+    def any_val(self, meta: Meta, _: list[Token]) -> AnyVal:
         return AnyVal(meta=self._meta(meta))
 
-    def identifier(self, meta, s):
+    def identifier(self, meta: Meta, s: list[Token]) -> Var:
         return Var(name=str(s[0]), meta=self._meta(meta))
 
-    def context_var(self, meta, s):
+    def context_var(self, meta: Meta, s: list[Token]) -> ContextVar:
         return ContextVar(name=str(s[0]), meta=self._meta(meta))
 
-    def function_value(self, meta, a):
+    def function_value(self, meta: Meta, a: list[ASTNode]) -> FunctionDef:
         return FunctionDef(
             params=a[0], body=a[1], return_type=a[2], meta=self._meta(meta)
         )
 
-    def sequence(self, meta, items):
+    def sequence(
+        self, meta: Meta, items: list[ASTNode | None]
+    ) -> SequenceNode:
         clean_items = tuple(i for i in items if i is not None)
         return SequenceNode(items=clean_items, meta=self._meta(meta))
 
-    def call_arg(self, meta, items):
+    def call_arg(self, meta: Meta, items: list[ASTNode]) -> ASTNode:
         return items[0]
 
-    def _unwrap_items(self, items) -> tuple:
+    def _unwrap_items(
+        self, items: list[ASTNode | None]
+    ) -> tuple[ASTNode, ...]:
         clean = [i for i in items if i is not None]
         if len(clean) == 1 and isinstance(clean[0], SequenceNode):
             return clean[0].items
         return tuple(clean)
 
-    def tuple_node(self, meta, items):
+    def tuple_node(
+        self, meta: Meta, items: list[ASTNode | None]
+    ) -> TupleNode:
         return TupleNode(items=self._unwrap_items(items), meta=self._meta(meta))
 
-    def list_node(self, meta, items):
+    def list_node(self, meta: Meta, items: list[ASTNode | None]) -> ListNode:
         return ListNode(items=self._unwrap_items(items), meta=self._meta(meta))
 
-    def dictionary_node(self, meta, items):
+    def dictionary_node(
+        self, meta: Meta, items: list[ASTNode | None]
+    ) -> DictNode:
         clean_items = tuple(i for i in items if i is not None)
         return DictNode(items=clean_items, meta=self._meta(meta))
 
-    def pair(self, meta, a):
+    def pair(self, meta: Meta, a: list[ASTNode]) -> Pair:
         return Pair(key=a[0], value=a[1], meta=self._meta(meta))
 
-    def entry(self, meta, a):
+    def entry(self, meta: Meta, a: list[ASTNode]) -> Pair:
         return Pair(key=a[0], value=a[1], meta=self._meta(meta))
 
-    def _extract_targets(self, node: ASTNode) -> tuple:
+    def _extract_targets(
+        self, node: ASTNode
+    ) -> tuple[tuple[str | None, str | None], ...]:
         if isinstance(node, Pair):
             t = node.key.name if isinstance(node.key, (Var, ContextVar)) else None
             v = node.value
@@ -186,7 +200,7 @@ class DSLTransformer(Transformer):
             return ((t, n),)
 
         if isinstance(node, SequenceNode):
-            res = []
+            res: list[tuple[str | None, str | None]] = []
             for item in node.items:
                 res.extend(self._extract_targets(item))
             return tuple(res)
@@ -196,7 +210,7 @@ class DSLTransformer(Transformer):
 
         return ()
 
-    def declaration(self, meta, tree):
+    def declaration(self, meta: Meta, tree: list[ASTNode]) -> Declaration:
         target = tree[0]
         return Declaration(
             target=target,
@@ -205,19 +219,19 @@ class DSLTransformer(Transformer):
             meta=self._meta(meta),
         )
 
-    def function_call(self, meta, tree):
+    def function_call(self, meta: Meta, tree: list[ASTNode]) -> FunctionCall:
         fn = tree[0]
         lazy = isinstance(fn, ContextVar)
         raw_inputs = tree[1] if len(tree) > 1 else None
 
-        inputs = []
+        inputs: list[ASTNode] = []
         if isinstance(raw_inputs, SequenceNode):
             inputs = list(raw_inputs.items)
         elif raw_inputs is not None:
             inputs = [raw_inputs]
 
-        args = []
-        kwargs = {}
+        args: list[ASTNode] = []
+        kwargs: dict[str, ASTNode] = {}
         for inp in inputs:
             if isinstance(inp, Pair):
                 key_name = inp.key.name if isinstance(inp.key, (Var, ContextVar)) else str(inp.key)
@@ -234,59 +248,70 @@ class DSLTransformer(Transformer):
             meta=self._meta(meta),
         )
 
-    def binary_op(self, meta, a):
+    def binary_op(self, meta: Meta, a: list[Any]) -> BinaryOp:
         return BinaryOp(
             op=str(a[1]), left=a[0], right=a[2], meta=self._meta(meta)
         )
 
-    def power_op(self, meta, a):
+    def power_op(self, meta: Meta, a: list[ASTNode]) -> ASTNode:
         if len(a) == 1:
             return a[0]
         return BinaryOp(op="^", left=a[0], right=a[1], meta=self._meta(meta))
 
-    def not_op(self, meta, a):
+    def not_op(self, meta: Meta, a: list[ASTNode]) -> NotOp:
         return NotOp(value=a[0], meta=self._meta(meta))
 
-    def and_op(self, meta, a):
+    def and_op(self, meta: Meta, a: list[ASTNode]) -> BinaryOp:
         return BinaryOp(op="and", left=a[0], right=a[1], meta=self._meta(meta))
 
-    def or_op(self, meta, a):
+    def or_op(self, meta: Meta, a: list[ASTNode]) -> BinaryOp:
         return BinaryOp(op="or", left=a[0], right=a[1], meta=self._meta(meta))
 
-    def in_op(self, meta, a):
+    def in_op(self, meta: Meta, a: list[ASTNode]) -> BinaryOp:
         return BinaryOp(op="in", left=a[0], right=a[1], meta=self._meta(meta))
 
-    def pipe_node(self, meta, items):
+    def pipe_node(
+        self, meta: Meta, items: list[ASTNode | Token | None]
+    ) -> PipeNode:
         clean_items = tuple(
             i for i in items if not isinstance(i, Token) and i is not None
         )
         return PipeNode(steps=clean_items, meta=self._meta(meta))
 
-    def start(self, meta, items):
+    def start(self, meta: Meta, items: list[ASTNode]) -> ASTNode:
         return items[0]
+
+
+DSLTransformer = _cast(
+    type[DSLTransformer], _v_args(meta=True)(DSLTransformer)
+)
 
 
 class Parser:
 
-    def __init__(self, parser=None):
+    def __init__(self, parser: "Parser | None" = None) -> None:
         if parser is not None:
             self.parser = parser
         else:
-            self._lark = Lark(GRAMMAR, start="start", parser="lalr", propagate_positions=True)
-            self._transformer = DSLTransformer()
+            self._lark: Lark = Lark(
+                GRAMMAR, start="start", parser="lalr", propagate_positions=True
+            )
+            self._transformer: Transformer[Token, ASTNode] = DSLTransformer()
             self.parser = None
 
     def parse(self, source: str) -> Program:
         if self.parser is not None:
             return self.parser.parse(source)
 
-        tree = self._lark.parse(source)
-        res = self._transformer.transform(tree)
+        tree: Tree[Token] = _cast(
+            Tree[Token], _cast(Any, self._lark).parse(source)
+        )
+        res: Any = _cast(Any, self._transformer).transform(tree)
 
         if isinstance(res, Program):
             return res
         if isinstance(res, (list, tuple)):
-            return Program(statements=tuple(res))
+            return Program(statements=tuple(_cast(Iterable[ASTNode], res)))
 
         return Program(statements=(res,))
 

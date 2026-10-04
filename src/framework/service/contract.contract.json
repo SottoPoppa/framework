@@ -8,8 +8,8 @@
   "hashes": {
     "Contract": {
       "write": {
-        "production": "0097a1d212a3a66483f88a4a19206366d6541e617fd05e4fe5c9e216c913d64b",
-        "test": "0097a1d212a3a66483f88a4a19206366d6541e617fd05e4fe5c9e216c913d64b"
+        "production": "1abfde5154b6d6c20afccfb83632ea5343c8c7fb04b5321cf6fa29844bf116b2",
+        "test": "1abfde5154b6d6c20afccfb83632ea5343c8c7fb04b5321cf6fa29844bf116b2"
       }
     }
   }

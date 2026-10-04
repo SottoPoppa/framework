@@ -1,7 +1,7 @@
 import inspect
 from secrets import token_urlsafe
-from typing import Dict, Any
-from urllib.parse import urlparse, parse_qs, urljoin
+from collections.abc import Iterable
+from typing import Any, cast
 
 
 import framework.core.interpreter as interpreter
@@ -18,7 +18,6 @@ class Manager(manager.Port):
         "session_create",
         "session_get",
         "get_policy",
-        "authorized",
         "resolve_route",
         "get_configuration",
     }
@@ -27,8 +26,8 @@ class Manager(manager.Port):
         loader: loader.Loader,
         framework: framework_module.Framework,
         authentications: list[authentication.Port],
-        **constants,
-    ):
+        **constants: Any,
+    ) -> None:
         """
         Inizializza il manager con i servizi necessari alla gestione delle richieste.
 
@@ -52,20 +51,25 @@ class Manager(manager.Port):
         # Provider di autenticazione utilizzati dai metodi del ciclo di vita
         # dell'utente: authenticate, activate, reinstate e terminate.
         self.authentications = authentications
-
-        # Nomi dei controller DSL caricati durante startup().
-        self.controllers = []
+        self.controllers: list[str] = []
 
         # Policy caricate e valutate dall'interprete, indicizzate per nome.
-        self.policies = {}
-        self.port_configurations = {}
-        self.port_capabilities = {}
-        self.port_adapters = {}
+        self.managers: dict[str, Any] = {}
+        self.policies: dict[str, dict[str, Any]] = {}
+        self.port_configurations: dict[str, dict[str, Any]] = {}
+        self.port_capabilities: dict[str, list[dict[str, Any]]] = {}
+        self.port_adapters: dict[str, list[Any]] = {}
 
-    def _register_capabilities(self, session, port, capabilities, adapter=None):
+    def _register_capabilities(
+        self,
+        session: Any,
+        port: str,
+        capabilities: Any,
+        adapter: Any = None,
+    ) -> bool:
         """Registra capability e istanza concreta di un adapter per una Port."""
         profiles = self.port_capabilities.setdefault(port, [])
-        normalized = dict(capabilities)
+        normalized = cast(dict[str, Any], dict(capabilities))
         if normalized not in profiles:
             profiles.append(normalized)
         if adapter is not None:
@@ -74,7 +78,13 @@ class Manager(manager.Port):
                 adapters.append(adapter)
         return True
 
-    def compatible_adapters(self, session, port, requirements, adapters=None):
+    def compatible_adapters(
+        self,
+        session: Any,
+        port: str,
+        requirements: dict[str, Any],
+        adapters: list[Any] | None = None,
+    ) -> list[Any]:
         """Restituisce gli adapter le cui capability soddisfano i requisiti tecnici."""
         candidates = self.port_adapters.get(port, []) if adapters is None else adapters
         return [
@@ -82,25 +92,40 @@ class Manager(manager.Port):
             if self._profile_satisfies(requirements, getattr(adapter, "capabilities", adapter))
         ]
 
-    def authorized_adapters(self, session, port, policy, adapters=None):
+    def authorized_adapters(
+        self,
+        session: Any,
+        port: str,
+        policy: Any,
+        adapters: list[Any] | None = None,
+    ) -> list[Any]:
         """Seleziona gli adapter compatibili con la sezione security di una policy."""
         if not isinstance(policy, dict):
             return []
         security = self._security_requirements(policy)
         return self.compatible_adapters(session, port, security, adapters)
 
-    def capabilities_authorized(self, session, policy, port=None, profile=None) -> bool:
+    def capabilities_authorized(
+        self,
+        session: Any,
+        policy: Any,
+        port: str | None = None,
+        profile: Any = None,
+    ) -> bool:
         """Verifica che almeno un profilo adapter soddisfi la sicurezza della policy."""
         if not isinstance(policy, dict):
             return False
         requirements = self._security_requirements(policy)
         if not requirements:
             return True
-        profiles = profile
-        if profiles is None:
-            profiles = self.port_capabilities.get(port, [])
-        if isinstance(profiles, dict):
-            profiles = (profiles,)
+        if profile is None:
+            profiles: Iterable[Any] = (
+                self.port_capabilities.get(port, []) if port is not None else []
+            )
+        elif isinstance(profile, dict):
+            profiles = (cast(dict[str, Any], profile),)
+        else:
+            profiles = cast(Iterable[Any], profile)
         return bool(profiles) and any(
             self._profile_satisfies(
                 requirements, getattr(candidate, "capabilities", candidate)
@@ -108,35 +133,48 @@ class Manager(manager.Port):
             for candidate in profiles
         )
 
-    def _profile_satisfies(self, requirements: dict, profile: dict) -> bool:
+    def _profile_satisfies(
+        self, requirements: dict[str, Any], profile: Any
+    ) -> bool:
         """Confronta un profilo adapter con i requisiti tecnici richiesti."""
-        if requirements.get("tls") is True and profile.get("tls") is not True:
+        if not isinstance(profile, dict):
+            return False
+        profile_data = cast(dict[str, Any], profile)
+        if requirements.get("tls") is True and profile_data.get("tls") is not True:
             return False
         versions = {"TLSv1.2": 2, "TLSv1.3": 3}
         required_version = requirements.get("min_tls_version")
-        if required_version and versions.get(profile.get("min_tls_version"), 0) < versions.get(required_version, 99):
+        profile_version = profile_data.get("min_tls_version")
+        if isinstance(required_version, str) and (
+            not isinstance(profile_version, str)
+            or versions.get(profile_version, 0) < versions.get(required_version, 99)
+        ):
             return False
         for key, required in requirements.items():
-            if isinstance(required, bool) and required and profile.get(key) is not True:
+            if isinstance(required, bool) and required and profile_data.get(key) is not True:
                 return False
         required_authentication = requirements.get("required_authentication")
-        return not required_authentication or required_authentication in profile.get("authentication", [])
+        return not required_authentication or required_authentication in profile_data.get("authentication", [])
 
     @staticmethod
-    def _security_requirements(policy: dict) -> dict:
-        configuration = policy.get("configuration", {})
+    def _security_requirements(policy: Any) -> dict[str, Any]:
+        if not isinstance(policy, dict):
+            return {}
+        policy_data = cast(dict[str, Any], policy)
+        configuration = policy_data.get("configuration", {})
         if not isinstance(configuration, dict):
             return {}
-        requirements = configuration.get("security", {})
-        return requirements if isinstance(requirements, dict) else {}
+        configuration_data = cast(dict[str, Any], configuration)
+        requirements = configuration_data.get("security", {})
+        return cast(dict[str, Any], requirements) if isinstance(requirements, dict) else {}
 
     @flow.result(inputs=(), outputs=())
-    async def shutdown(self, session):
+    async def shutdown(self, session: Any) -> None:
         """Arresta l'interprete DSL e chiude il ciclo di vita del Defender."""
         await self.interpreter.stop()
     
     @flow.result(inputs=(), outputs=())
-    async def startup(self, session=None):
+    async def startup(self, session: Any = None) -> Any:
         """Avvia l'interprete e carica policy e controller applicativi."""
         if session is not None:
             return None
@@ -148,10 +186,14 @@ class Manager(manager.Port):
             "persistence": "storekeeper",
             "message": "messenger",
         }
-        manager_config = self.loader.current_config.get("manager", {})
+        current_config = self.loader.current_config
+        manager_config = cast(dict[str, Any], current_config.get("manager", {}))
         for policy, manager_name in policy_managers.items():
-            config = manager_config.get(manager_name, {})
-            filename = config.get(policy) if isinstance(config, dict) else None
+            config: Any = manager_config.get(manager_name, {})
+            config_data = (
+                cast(dict[str, Any], config) if isinstance(config, dict) else None
+            )
+            filename = config_data.get(policy) if config_data is not None else None
             if not filename:
                 continue
             path = f"src/application/policy/{policy}/{filename}"
@@ -225,68 +267,83 @@ class Manager(manager.Port):
         
         self.framework.logger.info("Controller caricati", controllers=self.controllers)
 
-    def _validate_policy(self, port, policy):
+    def _validate_policy(self, port: str, policy: Any) -> Any:
         """Valida configurazione, schema e capability della policy di una Port."""
         if not isinstance(policy, dict):
             return flow.error(f"Policy '{port}' non valida: il risultato DSL non è un dizionario")
-        policy = dict(policy)
-        configuration = policy.get("configuration") or policy.get(f"{port}:configuration") or (policy.get(port, {}).get("configuration") if isinstance(policy.get(port), dict) else None)
+        policy_data = dict(cast(dict[str, Any], policy))
+        port_policy = policy_data.get(port)
+        configuration = (
+            policy_data.get("configuration")
+            or policy_data.get(f"{port}:configuration")
+            or (
+                cast(dict[str, Any], port_policy).get("configuration")
+                if isinstance(port_policy, dict)
+                else None
+            )
+        )
         if configuration is None:
             return flow.error(f"Configurazione globale mancante per la Port '{port}'")
-        schema = scheme.schemes.get(port)
+        schemas = scheme.schemes
+        schema = schemas.get(port)
         if not schema:
             return flow.error(f"Schema '{port}' non trovato per la policy '{port}'")
-        normalized = scheme.normalize(configuration, schema)
+        normalized: Any = scheme.normalize(configuration, schema)
         if not normalized.is_success:
             return flow.error(f"Configurazione policy '{port}' non valida: {normalized.output.error}")
-        policy["configuration"] = normalized.output.value
-        return flow.success(policy)
+        policy_data["configuration"] = normalized.output.value
+        return flow.success(policy_data)
 
     @flow.result(inputs=(), outputs=())
-    async def session_create(self, env=None, **session):
+    async def session_create(
+        self, env: Any = None, **session: Any
+    ) -> Any:
         """Crea una sessione DSL con un identificatore univoco e l'ambiente runtime."""
-        env = env or {}
-        env = env | {**self.managers}
+        session_environment = cast(dict[str, Any], env or {}) | self.managers
         if not session.get("id"):
             session["id"] = token_urlsafe(16)
-        authentication = {
+        authentication: dict[str, Any] = {
             key: value for key, value in session.items() if key != "id"
         }
         return self.interpreter.open_session(
-            env=env,
+            env=session_environment,
             sid=session["id"],
             authentication=authentication,
         )
 
-    def session_get(self, sid):
+    def session_get(self, sid: Any) -> interpreter.SessionHandle | None:
         """Restituisce l'handle runtime dato un id o uno snapshot sessione."""
-        session_data = getattr(sid, "session_data", sid)
-        sid = session_data.get("id") if isinstance(session_data, dict) else getattr(
-            session_data, "id", session_data
+        session_data: Any = getattr(sid, "session_data", sid)
+        session_id = (
+            cast(dict[str, Any], session_data).get("id")
+            if isinstance(session_data, dict)
+            else getattr(session_data, "id", session_data)
         )
-        if sid not in self.interpreter.session_data:
+        if not isinstance(session_id, str) or session_id not in self.interpreter.session_data:
             return None
-        return self.interpreter.open_session(sid=sid)
+        return self.interpreter.open_session(sid=session_id)
     
-    def get_policy(self, policy):
+    def get_policy(self, policy: str) -> dict[str, Any] | None:
         """Restituisce la policy caricata con il nome indicato."""
         return self.policies.get(policy)
 
-    def get_configuration(self, port):
+    def get_configuration(self, port: str) -> dict[str, Any] | None:
         """Restituisce la configurazione globale validata di una Port."""
         return self.port_configurations.get(port)
 
     @staticmethod
-    def _policy_session(session):
-        session_data = getattr(session, "session_data", session)
+    def _policy_session(session: Any) -> Any:
+        session_data: Any = getattr(session, "session_data", session)
         if not isinstance(session_data, dict):
             return session
-        snapshot = (
-            session_data.to_dict()
-            if callable(getattr(session_data, "to_dict", None))
-            else dict(session_data)
+        to_dict = getattr(cast(Any, session_data), "to_dict", None)
+        snapshot = cast(
+            dict[str, Any],
+            to_dict()
+            if callable(to_dict)
+            else dict(cast(dict[str, Any], session_data)),
         )
-        authentication = snapshot.get("authentication", {})
+        authentication = cast(dict[str, Any], snapshot.get("authentication", {}))
         return {
             **authentication,
             **snapshot,
@@ -294,26 +351,30 @@ class Manager(manager.Port):
             "authentication": authentication,
         }
 
-    async def authorized(self, policy, **constants) -> bool:
+    async def authorized(
+        self, session: Any, policy: str, **constants: Any
+    ) -> bool:
         """Valuta le regole DSL di una policy per azione, risorsa, posizione e sessione."""
         policy_name = policy
-        policy = self.get_policy(policy_name)
-        if not policy:
+        policy_data = self.get_policy(policy_name)
+        if not policy_data:
             return False
-        if not self.capabilities_authorized(None, policy, policy_name, self.port_capabilities.get(policy_name)):
+        if not self.capabilities_authorized(
+            None, policy_data, policy_name, self.port_capabilities.get(policy_name)
+        ):
             return False
-        rules = policy.get('rules', {})
+        rules: dict[str, Any] = cast(dict[str, Any], policy_data.get("rules", {}))
         action, resource, location = constants.get('action', ''), constants.get('resource', ''), constants.get('location', '')
-        runtime_session = constants.get("session")
+        runtime_session = session
         policy_session = self._policy_session(runtime_session)
-        target = {
+        target: dict[str, Any] = {
             'action': action,
             'resource': resource,
             'location': location,
             'session': policy_session,
             'request': constants.get('request', {}),
         }
-        filted_rules = []
+        filted_rules: Any = []
         if location in rules:
             filted_rules = rules.get(location)
         elif resource in rules:
@@ -325,9 +386,10 @@ class Manager(manager.Port):
 
         denied = False
         allowed = False
-        for rule in filted_rules:
-            for_target = rule.get('target', {}) | target
-            condition = model.decode(rule.get('condition'))
+        for rule in cast(list[dict[str, Any]], filted_rules):
+            rule_target = cast(dict[str, Any], rule.get("target", {}))
+            for_target: dict[str, Any] = rule_target | target
+            condition: Any = model.decode(rule.get("condition"))
             if callable(condition):
                 tes = condition(**for_target)
                 if inspect.isawaitable(tes):

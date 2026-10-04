@@ -15,7 +15,7 @@ Due scelte deliberate:
 
 from __future__ import annotations
 
-from typing import Any, Iterator
+from typing import Any, Iterator, cast as _cast
 
 
 class _Missing:
@@ -33,16 +33,18 @@ MISSING = _Missing()
 
 def _descend(current: Any, part: str) -> Any:
     if isinstance(current, dict):
-        if part in current:
-            return current[part]
-        if type(current) is not dict and not part.startswith("_"):
-            return getattr(current, part, MISSING)
+        current_map = _cast(dict[Any, Any], current)
+        if part in current_map:
+            return current_map[part]
+        if type(_cast(object, current)) is not dict and not part.startswith("_"):
+            return getattr(_cast(Any, current), part, MISSING)
         return MISSING
     if isinstance(current, (list, tuple)):
         if not part.lstrip("-").isdigit():
             return MISSING
         index = int(part)
-        return current[index] if -len(current) <= index < len(current) else MISSING
+        sequence = _cast(list[Any] | tuple[Any, ...], current)
+        return sequence[index] if -len(sequence) <= index < len(sequence) else MISSING
     if part.startswith("_"):
         return MISSING
     return getattr(current, part, MISSING)
@@ -119,24 +121,25 @@ class Scope:
         if not path:
             return
         parts = path.split(".")
-        current = self._data
+        current: dict[str, Any] = self._data
         for part in parts[:-1]:
             nested = current.get(part)
             if not isinstance(nested, dict):
                 nested = {}
                 current[part] = nested
-            current = nested
+            current = _cast(dict[str, Any], nested)
         current[parts[-1]] = value
 
     def delete(self, path: str) -> bool:
         if not path:
             return False
         parts = path.split(".")
-        current = self._data
+        current: dict[str, Any] = self._data
         for part in parts[:-1]:
-            current = current.get(part)
-            if not isinstance(current, dict):
+            nested = current.get(part)
+            if not isinstance(nested, dict):
                 return False
+            current = _cast(dict[str, Any], nested)
         return current.pop(parts[-1], MISSING) is not MISSING
 
     # ── comodità ─────────────────────────────────────────────────────────────

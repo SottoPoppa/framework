@@ -1,26 +1,27 @@
 import asyncio
 import inspect
 import signal
-from typing import Any
+from typing import Any, cast
 
 import framework.core.flow as flow
-from framework.service.diagnostic import get_logger
 
 class Application:
     """Gestisce il ciclo di vita dell'applicazione, segnali OS e worker asincroni."""
 
-    def __init__(self, loader: Any, managers: list, session: Any = None):
+    def __init__(
+        self, loader: Any, managers: list[Any], session: Any = None
+    ) -> None:
         self._loader = loader
         self._logger = loader.framework.get_logger("application")
         self._managers = managers
         self._stop_event = asyncio.Event()
-        self._running_tasks: list[asyncio.Task] = []
+        self._running_tasks: list[asyncio.Future[Any]] = []
         self._session = session
         self._previous_signal_handlers: dict[signal.Signals, Any] = {}
         self._signal_loop: asyncio.AbstractEventLoop | None = None
         self._loop_signal_handlers: set[signal.Signals] = set()
         self._shutdown_started = False
-        self._shutdown_result: flow.Result | None = None
+        self._shutdown_result: flow.Result[Any, Any] | None = None
         self._background_errors: list[BaseException] = []
 
     def _request_shutdown(self, sig: signal.Signals) -> None:
@@ -36,7 +37,7 @@ class Application:
                 signal.Signals(signum),
             )
 
-    def _handle_task_completion(self, task: asyncio.Task) -> None:
+    def _handle_task_completion(self, task: asyncio.Future[Any]) -> None:
         if task.cancelled():
             return
         exception = task.exception()
@@ -79,7 +80,7 @@ class Application:
                         exception=fallback_exc,
                     )
 
-    async def _message_consumer_worker(self):
+    async def _message_consumer_worker(self) -> None:
         """Worker in background per la gestione degli eventi di reload."""
         try:
             while not self._stop_event.is_set():
@@ -123,7 +124,7 @@ class Application:
         except asyncio.CancelledError:
             self._logger.info("Worker di messaggistica terminato")
 
-    async def startup(self):
+    async def startup(self) -> None:
         """Avvia l'applicazione e gestisce i segnali di arresto."""
         self._logger.info("Avvio dei manager del framework")
         if self._loader.kwargs.get("dev"):
@@ -155,15 +156,23 @@ class Application:
             if not result:
                 continue
 
-            coros = result if isinstance(result, (list, tuple)) else [result]
+            coros: list[Any] = (
+                list(cast(list[Any] | tuple[Any, ...], result))
+                if isinstance(result, (list, tuple))
+                else [result]
+            )
             for c in coros:
                 if asyncio.iscoroutine(c) or inspect.isawaitable(c):
-                    task = asyncio.create_task(c, name=f"manager-{type(manager).__name__}")
+                    task_name = f"manager-{type(manager).__name__}"
+                    task = asyncio.ensure_future(c)
+                    set_name = getattr(task, "set_name", None)
+                    if callable(set_name):
+                        set_name(task_name)
                     task.add_done_callback(self._handle_task_completion)
                     self._running_tasks.append(task)
                     self._logger.debug(
                         "Task indipendente avviato",
-                        task=task.get_name(),
+                        task=task_name,
                     )
 
         self._logger.info("Framework runtime avviato. In ascolto")
@@ -171,7 +180,7 @@ class Application:
         if self._background_errors:
             raise self._background_errors[0]
 
-    async def shutdown(self):
+    async def shutdown(self) -> flow.Result[Any, Any]:
         """Esegue il graceful shutdown di tutti i componenti registrati."""
         if self._shutdown_started:
             return (
@@ -181,7 +190,7 @@ class Application:
             )
         self._shutdown_started = True
         self._logger.info("Spegnimento controllato dei servizi")
-        errors = []
+        errors: list[BaseException] = []
         try:
             for manager in reversed(self._managers):
                 if not hasattr(manager, "shutdown"):
