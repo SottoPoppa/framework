@@ -28,6 +28,17 @@
     "type": "string",
     "required": true
   },
+  "id": {
+    "type": "string",
+    "required": false
+  },
+  "exclude_dirs": {
+    "type": "list",
+    "schema": {
+      "type": "string"
+    },
+    "required": false
+  },
   "filter": {
     "type": "dict",
     "required": false,

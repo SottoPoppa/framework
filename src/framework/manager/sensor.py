@@ -28,7 +28,7 @@ class Manager(manager.Port):
         framework: framework_module.Framework,
         **constants: Any,
     ) -> None:
-        self.sensors: list[Any] = sensors
+        self.sensors: list[sensation.Port] = sensors
         self.loader = loader
         self.framework = framework
         self.logger = framework.get_logger("sensor")
@@ -40,14 +40,16 @@ class Manager(manager.Port):
     # ------------------------------------------------------------------
 
     @flow.result(inputs=(), outputs=())
-    async def startup(self, session: Any) -> list[Any]:
+    async def startup(self, session: object) -> list[Awaitable[object]]:
         """Inizializza ed avvia l'ascolto/polling di tutti gli adapter sensore."""
-        loops: list[Any] = []
+        loops: list[Awaitable[object]] = []
         self.logger.info("Sensor Manager startup", active_sensors=len(self.sensors))
 
         for sensor_adapter in self.sensors:
             if hasattr(sensor_adapter, "start"):
-                async def run_sensor(current: Any = sensor_adapter) -> Any:
+                async def run_sensor(
+                    current: sensation.Port = sensor_adapter,
+                ) -> object:
                     adapter_name = getattr(current, "name", None) or type(current).__name__
                     self.logger.info("Avvio sensor adapter", adapter=adapter_name)
                     result = await current.start(session)
@@ -61,10 +63,10 @@ class Manager(manager.Port):
         return loops
 
     @flow.result(inputs=(), outputs=())
-    async def shutdown(self, session: Any) -> flow.FlowResult:
+    async def shutdown(self, session: object) -> flow.FlowResult:
         """Arresta le letture e chiude le connessioni ai sensori."""
         self.logger.info("Arresto in corso per i sensori...")
-        errors: list[Any] = []
+        errors: list[object] = []
         for sensor_adapter in reversed(self.sensors):
             stop = getattr(sensor_adapter, "stop", None)
             if not callable(stop):
@@ -100,11 +102,11 @@ class Manager(manager.Port):
     @flow.result(inputs=(), outputs=())
     async def read_data(
         self,
-        session: Any,
+        session: object,
         sensor_id: str,
         field: str | None = None,
         **constants: Any,
-    ) -> Any:
+    ) -> object:
         """Legge i dati da un sensore specifico.
         Applica automaticamente eventuale calibrazione/offset e filtri se presenti.
         """
@@ -113,7 +115,7 @@ class Manager(manager.Port):
             self.logger.error("Sensore non trovato", sensor_id=sensor_id)
             return None
 
-        raw_data: Any = await driver.read(
+        raw_data: object | None = await driver.read(
             session, sensor_id=sensor_id, **constants
         ) if hasattr(driver, "read") else None
         if raw_data is None:
@@ -131,12 +133,15 @@ class Manager(manager.Port):
         return processed_data
 
     @flow.result(inputs=(), outputs=())
-    async def read_all(self, session: Any) -> dict[str, Any]:
+    async def read_all(self, session: object) -> dict[str, Any]:
         """Effettua una scansione/lettura completa di tutti i sensori registrati."""
         results: dict[str, Any] = {}
         for sensor_adapter in self.sensors:
-            if hasattr(sensor_adapter, "read_all"):
-                data: Any = await sensor_adapter.read_all(session)
+            read_all = getattr(sensor_adapter, "read_all", None)
+            if callable(read_all):
+                data: object = await cast(
+                    Callable[..., Awaitable[object]], read_all
+                )(session)
                 if isinstance(data, dict):
                     results.update(cast(dict[str, Any], data))
         return results
@@ -147,8 +152,8 @@ class Manager(manager.Port):
 
     @flow.result(inputs=(), outputs=())
     async def calibrate(
-        self, session: Any, sensor_id: str, offset: float
-    ) -> dict[str, Any]:
+        self, session: object, sensor_id: str, offset: float
+    ) -> dict[str, str | float]:
         """Imposta un valore di offset per la calibrazione delle letture."""
         self._calibration_offsets[sensor_id] = offset
         self.logger.info("Calibrazione sensore aggiornata", sensor_id=sensor_id, offset=offset)
@@ -166,7 +171,7 @@ class Manager(manager.Port):
     @flow.result(inputs=(), outputs=())
     async def set_threshold(
         self,
-        session: Any,
+        session: object,
         sensor_id: str,
         min_value: float | None = None,
         max_value: float | None = None,
@@ -183,7 +188,7 @@ class Manager(manager.Port):
     # Helper Metodi Interni
     # ------------------------------------------------------------------
 
-    def _process_raw_data(self, sensor_id: str, data: Any) -> Any:
+    def _process_raw_data(self, sensor_id: str, data: object) -> object:
         """Applica filtri, calibrazione e pulizia ai dati grezzi ricevuti."""
         offset = self._calibration_offsets.get(sensor_id, 0.0)
 
@@ -200,7 +205,7 @@ class Manager(manager.Port):
         return data
 
     async def _check_thresholds(
-        self, session: Any, sensor_id: str, data: Any
+        self, session: object, sensor_id: str, data: object
     ) -> None:
         """Verifica se i dati superano le soglie impostate ed emette eventuali log/notifiche."""
         if sensor_id not in self._thresholds:

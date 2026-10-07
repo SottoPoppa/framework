@@ -1,6 +1,6 @@
 import inspect
 from secrets import token_urlsafe
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any, cast
 
 
@@ -62,7 +62,7 @@ class Manager(manager.Port):
 
     def _register_capabilities(
         self,
-        session: Any,
+        session: object,
         port: str,
         capabilities: Any,
         adapter: Any = None,
@@ -80,7 +80,7 @@ class Manager(manager.Port):
 
     def compatible_adapters(
         self,
-        session: Any,
+        session: object,
         port: str,
         requirements: dict[str, Any],
         adapters: list[Any] | None = None,
@@ -94,28 +94,28 @@ class Manager(manager.Port):
 
     def authorized_adapters(
         self,
-        session: Any,
+        session: object,
         port: str,
-        policy: Any,
+        policy: object,
         adapters: list[Any] | None = None,
     ) -> list[Any]:
         """Seleziona gli adapter compatibili con la sezione security di una policy."""
         if not isinstance(policy, dict):
             return []
-        security = self._security_requirements(policy)
+        security = self._security_requirements(cast(dict[str, Any], policy))
         return self.compatible_adapters(session, port, security, adapters)
 
     def capabilities_authorized(
         self,
-        session: Any,
-        policy: Any,
+        session: object,
+        policy: object,
         port: str | None = None,
-        profile: Any = None,
+        profile: object = None,
     ) -> bool:
         """Verifica che almeno un profilo adapter soddisfi la sicurezza della policy."""
         if not isinstance(policy, dict):
             return False
-        requirements = self._security_requirements(policy)
+        requirements = self._security_requirements(cast(dict[str, Any], policy))
         if not requirements:
             return True
         if profile is None:
@@ -134,7 +134,7 @@ class Manager(manager.Port):
         )
 
     def _profile_satisfies(
-        self, requirements: dict[str, Any], profile: Any
+        self, requirements: dict[str, Any], profile: object
     ) -> bool:
         """Confronta un profilo adapter con i requisiti tecnici richiesti."""
         if not isinstance(profile, dict):
@@ -157,7 +157,7 @@ class Manager(manager.Port):
         return not required_authentication or required_authentication in profile_data.get("authentication", [])
 
     @staticmethod
-    def _security_requirements(policy: Any) -> dict[str, Any]:
+    def _security_requirements(policy: object) -> dict[str, Any]:
         if not isinstance(policy, dict):
             return {}
         policy_data = cast(dict[str, Any], policy)
@@ -169,12 +169,14 @@ class Manager(manager.Port):
         return cast(dict[str, Any], requirements) if isinstance(requirements, dict) else {}
 
     @flow.result(inputs=(), outputs=())
-    async def shutdown(self, session: Any) -> None:
+    async def shutdown(self, session: object) -> None:
         """Arresta l'interprete DSL e chiude il ciclo di vita del Defender."""
         await self.interpreter.stop()
     
     @flow.result(inputs=(), outputs=())
-    async def startup(self, session: Any = None) -> Any:
+    async def startup(
+        self, session: object | None = None
+    ) -> flow.FlowResult | None:
         """Avvia l'interprete e carica policy e controller applicativi."""
         if session is not None:
             return None
@@ -267,7 +269,7 @@ class Manager(manager.Port):
         
         self.framework.logger.info("Controller caricati", controllers=self.controllers)
 
-    def _validate_policy(self, port: str, policy: Any) -> Any:
+    def _validate_policy(self, port: str, policy: object) -> flow.FlowResult:
         """Valida configurazione, schema e capability della policy di una Port."""
         if not isinstance(policy, dict):
             return flow.error(f"Policy '{port}' non valida: il risultato DSL non è un dizionario")
@@ -296,10 +298,10 @@ class Manager(manager.Port):
 
     @flow.result(inputs=(), outputs=())
     async def session_create(
-        self, env: Any = None, **session: Any
-    ) -> Any:
+        self, env: dict[str, Any] | None = None, **session: Any
+    ) -> interpreter.SessionHandle:
         """Crea una sessione DSL con un identificatore univoco e l'ambiente runtime."""
-        session_environment = cast(dict[str, Any], env or {}) | self.managers
+        session_environment = (env or {}) | self.managers
         if not session.get("id"):
             session["id"] = token_urlsafe(16)
         authentication: dict[str, Any] = {
@@ -311,12 +313,12 @@ class Manager(manager.Port):
             authentication=authentication,
         )
 
-    def session_get(self, sid: Any) -> interpreter.SessionHandle | None:
+    def session_get(self, sid: object) -> interpreter.SessionHandle | None:
         """Restituisce l'handle runtime dato un id o uno snapshot sessione."""
-        session_data: Any = getattr(sid, "session_data", sid)
+        session_data: object = getattr(sid, "session_data", sid)
         session_id = (
-            cast(dict[str, Any], session_data).get("id")
-            if isinstance(session_data, dict)
+            cast(Mapping[str, Any], session_data).get("id")
+            if isinstance(session_data, Mapping)
             else getattr(session_data, "id", session_data)
         )
         if not isinstance(session_id, str) or session_id not in self.interpreter.session_data:
@@ -332,8 +334,8 @@ class Manager(manager.Port):
         return self.port_configurations.get(port)
 
     @staticmethod
-    def _policy_session(session: Any) -> Any:
-        session_data: Any = getattr(session, "session_data", session)
+    def _policy_session(session: object) -> object:
+        session_data: object = getattr(session, "session_data", session)
         if not isinstance(session_data, dict):
             return session
         to_dict = getattr(cast(Any, session_data), "to_dict", None)
@@ -352,7 +354,7 @@ class Manager(manager.Port):
         }
 
     async def authorized(
-        self, session: Any, policy: str, **constants: Any
+        self, session: object, policy: str, **constants: Any
     ) -> bool:
         """Valuta le regole DSL di una policy per azione, risorsa, posizione e sessione."""
         policy_name = policy

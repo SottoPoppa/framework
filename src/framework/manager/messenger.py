@@ -1,10 +1,13 @@
 import asyncio
+from collections.abc import Mapping
 from typing import Any
 
+import framework.core.interpreter as interpreter
 import framework.port.message as message
 import framework.port.manager as manager
 import framework.core.flow as flow
 import framework.core.framework as framework_module
+from framework.core.session import SessionData
 from framework.service.diagnostic import get_logger
 
 from framework.manager.defender import Manager as Defender
@@ -52,7 +55,7 @@ class Manager(manager.Port):
 
     async def _authorized_provider(
         self,
-        session: Any,
+        session: interpreter.SessionHandle | SessionData | Mapping[str, Any] | str,
         action: str,
         provider: message.Port,
         destination: str | None,
@@ -76,7 +79,7 @@ class Manager(manager.Port):
 
     async def _dispatch(
         self,
-        session: Any,
+        session: interpreter.SessionHandle | SessionData | Mapping[str, Any] | str,
         domain: str | None,
         **constants: Any,
     ) -> flow.FlowResult:
@@ -118,7 +121,9 @@ class Manager(manager.Port):
                     "Messenger: sessione runtime non trovata",
                     receiver=destination,
                     domain=domain,
-                    session_id=session["id"],
+                    session_id=(
+                        session.get("id") if isinstance(session, Mapping) else session
+                    ),
                 )
                 return flow.error("Sessione runtime non trovata")
             result = await runtime.dispatch_controller_event(
@@ -203,14 +208,20 @@ class Manager(manager.Port):
         return failure or flow.success()
 
     @staticmethod
-    def _as_session_data(session: Any) -> Any:
+    def _as_session_data(
+        session: interpreter.SessionHandle | SessionData | Mapping[str, Any] | str,
+    ) -> SessionData | Mapping[str, Any] | str:
         """Estrae lo snapshot puro dagli handle runtime legacy."""
-        return getattr(session, "session_data", session)
+        return (
+            session.session_data
+            if isinstance(session, interpreter.SessionHandle)
+            else session
+        )
 
     @flow.result(inputs=('messenger',), outputs=())
     async def send(
         self,
-        session: Any,
+        session: interpreter.SessionHandle | SessionData | Mapping[str, Any] | str,
         **constants: Any,
     ) -> flow.FlowResult:
         """
@@ -232,7 +243,7 @@ class Manager(manager.Port):
     @flow.result(inputs=(), outputs=())
     async def receive(
         self,
-        session: Any,
+        session: interpreter.SessionHandle | SessionData | Mapping[str, Any] | str,
         **constants: Any,
     ) -> flow.FlowResult:
         """

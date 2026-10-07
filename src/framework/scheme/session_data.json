@@ -1,0 +1,19 @@
+{
+  "id": {
+    "type": "string",
+    "required": true,
+    "empty": false
+  },
+  "context": {
+    "type": "dict",
+    "required": true
+  },
+  "authentication": {
+    "type": "dict",
+    "required": true
+  },
+  "results": {
+    "type": "dict",
+    "required": true
+  }
+}

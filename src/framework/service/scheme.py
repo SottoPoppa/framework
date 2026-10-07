@@ -1,13 +1,20 @@
-import re
+from __future__ import annotations
+
 import json
+import re
+import tomllib
+from collections.abc import Mapping
 from importlib import import_module
 from typing import Any, Callable, Protocol, cast
+
 from jinja2 import Environment
 
-import tomllib
-
-
 import framework.core.flow as flow
+from framework.scheme.runtime import Scheme, class_schema, is_scheme_type
+
+# Registry condiviso: il loader lo aggiorna in-place durante il bootstrap.
+schemes: dict[str, Any] = {}
+jinja_env: Environment | None = None
 
 
 class _Validator(Protocol):
@@ -21,11 +28,6 @@ _validator_factory = cast(
     Callable[[dict[str, Any]], _Validator],
     getattr(import_module("cerberus"), "Validator"),
 )
-
-
-# Registry condiviso: il loader lo aggiorna in-place durante il bootstrap.
-schemes: dict[str, Any] = {}
-jinja_env: Environment | None = None
 
 
 # ==============================================================================
@@ -124,8 +126,17 @@ async def transform(
     )
 
 
-def normalize(value: Any, schema: dict[str, Any]) -> flow.FlowResult:
+def normalize(
+    value: Any,
+    schema: Mapping[str, Any] | type[Scheme],
+) -> flow.FlowResult:
     """Normalizza un documento o una collezione di documenti tramite schema."""
+    scheme_type = schema if is_scheme_type(schema) else None
+    validation_schema = (
+        class_schema(scheme_type)
+        if scheme_type is not None
+        else dict(cast(Mapping[str, Any], schema))
+    )
     if isinstance(value, (list, tuple)):
         values = cast(list[Any] | tuple[Any, ...], value)
         normalized: list[Any] = []
@@ -141,11 +152,11 @@ def normalize(value: Any, schema: dict[str, Any]) -> flow.FlowResult:
 
     validation_schema = {
         field: {rule: option for rule, option in definition.items() if rule != "comment"}
-        for field, definition in schema.items()
+        for field, definition in validation_schema.items()
     }
     validator = _validator_factory(validation_schema)
 
-    return flow.pipe_sync(
+    result = flow.pipe_sync(
         value,
         flow.flow_ensure_value(
             validator.validate,
@@ -154,6 +165,13 @@ def normalize(value: Any, schema: dict[str, Any]) -> flow.FlowResult:
         ),
         flow.map_freeze_map(),
         action="normalize_pipeline",
+    )
+    if scheme_type is None or not result.is_success:
+        return result
+    return flow.success(
+        scheme_type.from_mapping(
+            cast(Mapping[str, Any], flow.output(result))
+        )
     )
 
 
@@ -228,18 +246,3 @@ def resolve_schemes(
         return resolved[name]
 
     return {name: resolve_scheme(name) for name in schemes}
-
-class Scheme(flow.Immutable):
-    """Dict immutabile basato su schema nativo."""
-    SCHEME: dict[str, dict[str, Any]] = {}
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        input_data: dict[str, Any] = (
-            cast(dict[str, Any], args[0])
-            if args and isinstance(args[0], dict) and not kwargs
-            else kwargs
-        )
-        result = normalize(input_data, self.SCHEME)
-        if not result.is_success:
-            raise result.output.error
-        super().__init__(result.output.value)

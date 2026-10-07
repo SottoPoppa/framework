@@ -53,34 +53,34 @@ class Manager(manager.Port):
         self.logger = get_logger("authenticator")
 
     @flow.result(inputs=(), outputs=())
-    async def shutdown(self, session: Any) -> None:
+    async def shutdown(self, session: object) -> None:
         self.logger.info("Authenticator: arresto", providers=len(self.authentications))
         pass
     
     @flow.result(inputs=(), outputs=())
-    async def startup(self, session: Any = None) -> None:
+    async def startup(self, session: object | None = None) -> None:
         self.logger.info("Authenticator: avvio", providers=len(self.authentications))
         return None
 
-    async def _authorized(self, session: Any, action: str) -> bool:
+    async def _authorized(self, session: object, action: str) -> bool:
         return await self.defender.authorized(
             session, "authentication", action=action
         )
 
     @staticmethod
-    def _session_data(session: Any) -> SessionData:
+    def _session_data(session: object) -> SessionData:
         snapshot = getattr(session, "session_data", session)
         if isinstance(snapshot, SessionData):
             return snapshot
         if isinstance(snapshot, dict):
-            return SessionData.from_dict(snapshot)
+            return SessionData.from_dict(cast(dict[str, Any], snapshot))
         raise TypeError("Authenticator richiede uno snapshot SessionData")
 
     @staticmethod
     def _merge_authentication_result(
-        session: Any,
+        session: object,
         authentication: authentication.Port,
-        session_result: Any,
+        session_result: object,
     ) -> tuple[SessionData, flow.FlowResult | None]:
         session = Manager._session_data(session)
         if flow.is_result(session_result):
@@ -111,7 +111,7 @@ class Manager(manager.Port):
     
     @flow.result(inputs=('session',), outputs=())
     async def invalidate(
-        self, session: Any, **constants: Any
+        self, session: object, **constants: Any
     ) -> flow.FlowResult:
         """
         Invalida la sessione di un utente specificato.
@@ -144,7 +144,7 @@ class Manager(manager.Port):
 
     @flow.result(inputs=('session',), outputs=('session',))
     async def regenerate(
-        self, session: Any, **constants: Any
+        self, session: object, **constants: Any
     ) -> flow.FlowResult:
         """
         Autentica un utente utilizzando i provider configurati.
@@ -172,7 +172,7 @@ class Manager(manager.Port):
 
     @flow.result(inputs=('session',), outputs=('session',))
     async def authenticate(
-        self, session: Any, **constants: Any
+        self, session: object, **constants: Any
     ) -> flow.FlowResult:
         """
         Autentica un utente utilizzando i provider configurati.
@@ -201,7 +201,7 @@ class Manager(manager.Port):
 
     @flow.result(inputs=('session',), outputs=('session',))
     async def activate(
-        self, session: Any, **constants: Any
+        self, session: object, **constants: Any
     ) -> flow.FlowResult:
         """
         Registra un utente utilizzando i provider configurati.

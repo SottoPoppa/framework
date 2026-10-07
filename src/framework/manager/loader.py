@@ -563,6 +563,9 @@ class Loader:
 
     async def _prepare_core(self, context: LoaderContext) -> LoaderContext:
         schemes = await self.load_schemes(["src/framework/scheme", "src/application/model"])
+        from framework.scheme.models import bind_schemas
+
+        bind_schemas(schemes)
         jinja_env = self.infrastructure.get_jinja()
         scheme.schemes.clear()
         scheme.schemes.update(schemes)

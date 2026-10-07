@@ -70,7 +70,7 @@ class Manager(manager.Port):
     @flow.result(inputs='intent')
     async def provision(
         self,
-        session: Any,
+        session: object,
         intent: dict[str, Any],
     ) -> flow.FlowResult:
         requirements = intent.get('requirements', {})
@@ -91,7 +91,7 @@ class Manager(manager.Port):
     @flow.result(inputs=('application', 'requirements'))
     async def route(
         self,
-        session: Any,
+        session: object,
         application: dict[str, Any],
         requirements: dict[str, Any],
     ) -> flow.FlowResult:
@@ -110,7 +110,7 @@ class Manager(manager.Port):
         return result
 
     @flow.result()
-    async def compute(self, session: Any) -> list[Any]:
+    async def compute(self, session: object) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         for provider in self.networks:
             result = await provider.compute()
@@ -119,7 +119,7 @@ class Manager(manager.Port):
         return results
 
     @flow.result()
-    async def monitor(self, session: Any) -> flow.FlowResult:
+    async def monitor(self, session: object) -> flow.FlowResult:
         statuses: list[flow.FlowResult] = []
         for provider in self.networks:
             if hasattr(provider, 'monitor'):
@@ -128,7 +128,7 @@ class Manager(manager.Port):
         return flow.success({"networks": statuses})
 
     @flow.result()
-    async def status(self, session: Any) -> flow.FlowResult:
+    async def status(self, session: object) -> flow.FlowResult:
         network_status: dict[str, flow.FlowResult] = {}
         for provider in self.networks:
             if hasattr(provider, 'status'):

@@ -30,7 +30,7 @@ class Port(Protocol):
 
     def read(
         self,
-        session: Any,
+        session: object,
         *services: Any,
         **constants: Any,
     ) -> Awaitable[flow.FlowResult]:
@@ -39,7 +39,7 @@ class Port(Protocol):
 
     def post(
         self,
-        session: Any,
+        session: object,
         *services: Any,
         **constants: Any,
     ) -> Awaitable[flow.FlowResult]:

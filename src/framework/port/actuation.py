@@ -45,7 +45,7 @@ class Port(Protocol):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def start(self, session: Any) -> Awaitable[flow.FlowResult]:
+    def start(self, session: object) -> Awaitable[flow.FlowResult]:
         """Inizializza la connessione con l'hardware o con il servizio remoto."""
         ...
 
@@ -74,14 +74,14 @@ class Port(Protocol):
     @abstractmethod
     def set_state(
         self,
-        session: Any,
+        session: object,
         state: dict[str, Any],
     ) -> Awaitable[flow.FlowResult]:
         """Imposta lo stato target del dispositivo (es. target_temp=24, speed=100)."""
         ...
 
     @abstractmethod
-    def get_state(self, session: Any) -> Awaitable[flow.FlowResult]:
+    def get_state(self, session: object) -> Awaitable[flow.FlowResult]:
         """Legge lo stato attuale o confermato direttamente dall'attuatore."""
         ...
 
@@ -92,7 +92,7 @@ class Port(Protocol):
     @abstractmethod
     def toggle_feature(
         self,
-        session: Any,
+        session: object,
         feature_name: str,
         enabled: bool | None = None,
     ) -> Awaitable[flow.FlowResult]:

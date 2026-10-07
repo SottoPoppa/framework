@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, NoReturn, cast
 
-from framework.service.scheme import Scheme
+from framework.scheme.models import SessionDataScheme
 
 from . import model
 from .scope import Scope
@@ -80,30 +80,19 @@ def pure_mapping(mapping: Any) -> dict[str, Any]:
     return projection
 
 
-SESSION_DATA_SCHEME: dict[str, Any] = {
-    "id": {"type": "string", "required": True, "empty": False},
-    "context": {"type": "dict", "required": True},
-    "authentication": {"type": "dict", "required": True},
-    "results": {"type": "dict", "required": True},
-}
-
-
-class SessionData(Scheme):
+class SessionData(SessionDataScheme):
     """Snapshot immutabile e validato dei soli dati di sessione."""
-
-    SCHEME = SESSION_DATA_SCHEME
 
     def __init__(self, payload: Any):
         if not isinstance(payload, dict):
             raise TypeError("Lo stato della sessione deve essere una mappa")
         payload_mapping = cast(dict[str, Any], payload)
-        state = {
-            "id": str(payload_mapping.get("id") or ""),
-            "context": pure_value(payload_mapping.get("context") or {}),
-            "authentication": pure_value(payload_mapping.get("authentication") or {}),
-            "results": pure_value(payload_mapping.get("results") or {}),
-        }
-        super().__init__(state)
+        super().__init__(
+            id=str(payload_mapping.get("id") or ""),
+            context=pure_value(payload_mapping.get("context") or {}),
+            authentication=pure_value(payload_mapping.get("authentication") or {}),
+            results=pure_value(payload_mapping.get("results") or {}),
+        )
 
     def clear(self) -> NoReturn:
         raise TypeError("SessionData è immutabile; usa evolve()")
@@ -182,7 +171,7 @@ class SessionData(Scheme):
         """Valida lo snapshot con lo schema sessione o uno schema fornito."""
         from framework.service import scheme
 
-        return scheme.normalize(self.to_dict(), schema or SESSION_DATA_SCHEME)
+        return scheme.normalize(self.to_dict(), schema or self.SCHEME)
 
 
 class NodeState(str, Enum):

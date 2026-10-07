@@ -6,13 +6,13 @@ from typing import Any
 class encryption(ABC):
 
     @abstractmethod
-    def loader(**constants: Any) -> Any:
+    def loader(**constants: Any) -> object:
         pass
 
     @abstractmethod
-    def encryption(self, **constants: Any) -> Any:
+    def encryption(self, **constants: Any) -> object:
         pass
 
     @abstractmethod
-    def decryption(self, **constants: Any) -> Any:
+    def decryption(self, **constants: Any) -> object:
         pass

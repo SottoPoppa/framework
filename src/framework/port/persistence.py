@@ -17,6 +17,8 @@ class Port(ABC):
     all'endpoint remoto.
     """
 
+    config: dict[str, Any]
+
     capabilities: dict[str, Any] = {
         "encryption_at_rest": False,
         "audit": False,

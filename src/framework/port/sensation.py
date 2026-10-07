@@ -46,7 +46,7 @@ class Port(Protocol):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def start(self, session: Any) -> Awaitable[flow.FlowResult]:
+    def start(self, session: object) -> Awaitable[flow.FlowResult]:
         """Inizializza la pipeline di percezione o la connessione al motore di analisi."""
         ...
 

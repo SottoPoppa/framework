@@ -9,11 +9,11 @@
   "hashes": {
     "Manager": {
       "receive": {
-        "production": "54b6233ef2606b31fcba841f1ccd89b64badc00eea61f91fb9a53638dec4e049",
+        "production": "0bf57e1dc0779d2b7be2347211c591ca8b8a5b6e1e3d353afd2be7d4fba6df7b",
         "test": "eb97bdb7e677aedf47ba63f28790f53ce8d4b5743de42a4733a8c15f77442704"
       },
       "send": {
-        "production": "518493f6c1ed77d9b782bab32e84c471aa22ab284fdcfc18e8ab6c0016b21a06",
+        "production": "aa4d4a3cf190d883782736387217c50a201ea5bfd5693ff4f031f7bb59635979",
         "test": "12f448d75204cb09772e27cdf2ffadd6794a9c3f26416c31d0bc40ee3bcaa81b"
       }
     }

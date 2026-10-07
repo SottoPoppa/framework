@@ -1,16 +1,23 @@
+from __future__ import annotations
+
 import asyncio
-from collections.abc import Awaitable, Callable, Coroutine, Sequence
-from typing import Any, cast
+from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Literal, Unpack, cast
 
 import framework.port.persistence as persistence
 import framework.port.manager as manager
 import framework.core.flow as flow
+import framework.core.interpreter as interpreter
 from framework.service.diagnostic import get_logger
 from framework.service.factory import Repository
+from framework.scheme.models import StorekeeperScheme
 
 from framework.manager.messenger import Manager as Messenger
 from framework.manager.orchestrator import Manager as Orchestrator
 from framework.manager.defender import Manager as Defender
+
+if TYPE_CHECKING:
+    from framework.scheme.models import StorekeeperSchemeKwargs
 
 
 class Manager(manager.Port):
@@ -32,7 +39,7 @@ class Manager(manager.Port):
         self.logger = get_logger("storekeeper")
 
     @flow.result()
-    async def startup(self, session: Any) -> flow.FlowResult:
+    async def startup(self, session: interpreter.SessionHandle) -> flow.FlowResult:
         self.logger.info("Storekeeper: avvio", providers=len(self.persistences))
         notification = await self.messenger.send(
             session,
@@ -76,7 +83,7 @@ class Manager(manager.Port):
         return flow.success(None)
 
     @flow.result()
-    async def shutdown(self, session: Any) -> flow.FlowResult:
+    async def shutdown(self, session: interpreter.SessionHandle) -> flow.FlowResult:
         self.logger.info("Storekeeper: arresto")
         notification = await self.messenger.send(
             session,
@@ -96,9 +103,9 @@ class Manager(manager.Port):
         return flow.success(None)
 
     async def _stop_providers(
-        self, providers: Sequence[Any], session: Any
-    ) -> list[Any]:
-        errors: list[Any] = []
+        self, providers: Sequence[persistence.Port], session: object
+    ) -> list[object]:
+        errors: list[object] = []
         for provider in reversed(providers):
             stop = getattr(provider, "stop", None)
             if not callable(stop):
@@ -126,7 +133,7 @@ class Manager(manager.Port):
         return errors
 
     @flow.result()
-    async def _load_repository(self, repository_name: str):
+    async def _load_repository(self, repository_name: str) -> flow.FlowResult:
         """Carica e mette in cache il repository DSL richiesto."""
         if repository_name not in self.maked:
             path = f'src/application/repository/{repository_name}.dsl'
@@ -181,10 +188,11 @@ class Manager(manager.Port):
     @flow.result()
     async def _prepare_provider(
         self,
-        provider: Any,
+        provider: persistence.Port,
         repository: Repository,
-        storekeeper: dict[str, Any],
-        session: Any,
+        storekeeper: StorekeeperScheme,
+        constants: dict[str, Any],
+        session: object,
     ) -> flow.FlowResult:
         """Prepara il task di un provider compatibile, se disponibile."""
         configured_profile = provider.config.get('name')
@@ -194,14 +202,14 @@ class Manager(manager.Port):
 
         if profile not in repository.location:
             return flow.error(
-                f"Provider {provider} repository_name {storekeeper.get('repository')} "
+                f"Provider {provider} repository_name {storekeeper.repository} "
                 f"profile {profile} non ha un profilo trovato."
             )
 
-        operation: str = storekeeper.get('operation', '')
+        operation = storekeeper.operation
         try:
             task_args: dict[str, Any] = await repository.parameters(
-                **storekeeper | {'provider': profile, 'session': session}
+                **constants | {'provider': profile, 'session': session}
             )
         except Exception as error:
             self.logger.error(
@@ -232,18 +240,21 @@ class Manager(manager.Port):
     async def _prepare_operations(
         self,
         repository: Repository,
-        storekeeper: dict[str, Any],
-        session: Any,
+        storekeeper: StorekeeperScheme,
+        constants: dict[str, Any],
+        session: object,
     ) -> flow.FlowResult:
         """Crea i task per tutti i provider compatibili con il repository."""
         tasks: list[asyncio.Task[Any]] = []
         repository_profiles: set[str] = set(repository.location)
-        providers: list[Any] = list(self.persistences)
-        operation: str = str(storekeeper.get("operation", "")).upper()
-        resource: Any = storekeeper.get("repository", "")
-        policy: Any = self.defender.get_policy("persistence") if self.defender else None
+        providers: list[persistence.Port] = list(self.persistences)
+        operation = storekeeper.operation.upper()
+        resource = storekeeper.repository
+        policy: dict[str, Any] | None = (
+            self.defender.get_policy("persistence") if self.defender else None
+        )
         security: Any = (
-            cast(dict[str, Any], policy).get("security", {})
+            policy.get("security", {})
             if isinstance(policy, dict)
             else {}
         )
@@ -252,7 +263,7 @@ class Manager(manager.Port):
             "persistence",
             action=operation,
             resource=resource,
-            request=storekeeper,
+            request=constants,
         ):
             self.logger.warning(
                 "Storekeeper: operazione negata dalla policy",
@@ -277,7 +288,7 @@ class Manager(manager.Port):
                 continue
             try:
                 prepared_task: flow.FlowResult = await self._prepare_provider(
-                    provider, repository, storekeeper, session
+                    provider, repository, storekeeper, constants, session
                 )
                 if not flow.check(prepared_task):
                     for pending in tasks:
@@ -304,28 +315,32 @@ class Manager(manager.Port):
             )
             return flow.error(
                 f"Nessun provider compatibile per il repository "
-                f"'{storekeeper.get('repository')}'. "
+                f"'{storekeeper.repository}'. "
                 f"Profili richiesti: {sorted(repository_profiles)}."
             )
         return flow.success(tasks)
 
     @flow.result()
     async def preparation(
-        self, session: Any, storekeeper: dict[str, Any]
+        self, session: object, storekeeper: Mapping[str, Any]
     ) -> flow.FlowResult:
-        repository_name: Any = storekeeper.get('repository')
-        if not repository_name:
-            return flow.error("Nome del repository non specificato.")
+        constants = dict(storekeeper)
+        scheme_values = {
+            key: value
+            for key, value in constants.items()
+            if key in StorekeeperScheme.SCHEME
+        }
+        storekeeper_scheme = StorekeeperScheme.from_mapping(scheme_values)
 
         repository_result: flow.FlowResult = await self._load_repository(
-            repository_name
+            storekeeper_scheme.repository
         )
         if not flow.check(repository_result):
             return repository_result
         repository: Repository = cast(Repository, flow.output(repository_result))
 
         preparation: flow.FlowResult = await self._prepare_operations(
-            repository, storekeeper, session
+            repository, storekeeper_scheme, constants, session
         )
         if not flow.check(preparation):
             return preparation
@@ -333,9 +348,14 @@ class Manager(manager.Port):
     
     @flow.result()
     async def _execute(
-        self, operation: str, session: Any, constants: dict[str, Any]
+        self,
+        operation: Literal["view", "read", "create", "delete", "update"],
+        session: object,
+        constants: Mapping[str, Any],
     ) -> flow.FlowResult:
-        state = await self.preparation(session, constants | {'operation': operation})
+        state = await self.preparation(
+            session, dict(constants) | {"operation": operation}
+        )
         if not flow.check(state):
             self.logger.warning(
                 "Storekeeper: preparazione fallita",
@@ -362,25 +382,45 @@ class Manager(manager.Port):
 
     # overview/view/get
     @flow.result()
-    async def overview(self, session: Any, **constants: Any) -> flow.FlowResult:
+    async def overview(
+        self,
+        session: object,
+        **constants: Unpack[StorekeeperSchemeKwargs],
+    ) -> flow.FlowResult:
         return await self._execute('view', session, constants)
 
     # gather/read/get
     @flow.result()
-    async def gather(self, session: Any, **constants: Any) -> flow.FlowResult:
+    async def gather(
+        self,
+        session: object,
+        **constants: Unpack[StorekeeperSchemeKwargs],
+    ) -> flow.FlowResult:
         return await self._execute('read', session, constants)
 
     # store/create/put
     @flow.result()
-    async def store(self, session: Any, **constants: Any) -> flow.FlowResult:
+    async def store(
+        self,
+        session: object,
+        **constants: Unpack[StorekeeperSchemeKwargs],
+    ) -> flow.FlowResult:
         return await self._execute('create', session, constants)
 
     # remove/delete
     @flow.result()
-    async def remove(self, session: Any, **constants: Any) -> flow.FlowResult:
+    async def remove(
+        self,
+        session: object,
+        **constants: Unpack[StorekeeperSchemeKwargs],
+    ) -> flow.FlowResult:
         return await self._execute('delete', session, constants)
 
     # change/update/patch
     @flow.result()
-    async def change(self, session: Any, **constants: Any) -> flow.FlowResult:
+    async def change(
+        self,
+        session: object,
+        **constants: Unpack[StorekeeperSchemeKwargs],
+    ) -> flow.FlowResult:
         return await self._execute('update', session, constants)
